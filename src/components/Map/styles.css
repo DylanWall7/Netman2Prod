@@ -1,0 +1,29 @@
+/* height of the container */
+
+.cluster-icon {
+  background-color: #333;
+  height: 2em;
+  width: 2em;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  box-shadow: 0 0 0px 5px #fff;
+}
+
+input[type="range"] {
+  position: absolute;
+  top: 1em;
+  right: 1em;
+  z-index: 100000000;
+  width: 140px;
+  height: 10px;
+  margin: 0;
+  border: none;
+  padding: 1px 2px;
+  border-radius: 30px;
+  background: #f1f0ee;
+  outline: 0;
+}
