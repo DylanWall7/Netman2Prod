@@ -9,10 +9,13 @@ import {
   AutocompleteItem,
   Accordion,
   AccordionItem,
+  Select,
+  SelectItem,
 } from "@nextui-org/react";
 import ProvisionLoading from "./ProvisionLoading";
 import { GizmoRequest } from "../../authConfig";
 import { set, useForm } from "react-hook-form";
+import { body } from "framer-motion/client";
 
 export const ProvAccordian = () => {
   const [dhcpSite, setDHCPSite] = React.useState("");
@@ -35,6 +38,7 @@ export const ProvAccordian = () => {
   const [deployLoading, setDeployLoading] = React.useState(false);
   const [modelList, setModelList] = React.useState([]);
   const [netboxLoading, setNetboxLoading] = useState(false);
+  const [template, setTemplate] = React.useState(new Set([]));
 
   const {
     register: registerDHCP,
@@ -74,6 +78,12 @@ export const ProvAccordian = () => {
     account: accounts[0],
   };
 
+  function resetforms() {
+    setValidation([]);
+    setPostStatus("");
+    setDhcpStatus("");
+  }
+
   useEffect(() => {
     (async () => {
       setIsLoading(true);
@@ -92,7 +102,7 @@ export const ProvAccordian = () => {
   }, [accounts.length === 0]);
 
   const handleAddNetbox = async () => {
-    setDhcpStatus("");
+    resetforms();
     setNetboxLoading(true);
 
     try {
@@ -121,9 +131,7 @@ export const ProvAccordian = () => {
     }
   };
   const handleDHCP = async () => {
-    setValidation([]);
-    setPostStatus("");
-    setDhcpStatus("");
+    resetforms();
     setDhcpLoading(true);
     try {
       await CreatDHCPVlan1({
@@ -138,9 +146,7 @@ export const ProvAccordian = () => {
     }
   };
   const handleCreateMist = async () => {
-    setValidation([]);
-    setPostStatus("");
-    setDhcpStatus("");
+    resetforms();
     setMistLoading(true);
     try {
       await CreateMistSite({
@@ -156,9 +162,7 @@ export const ProvAccordian = () => {
     }
   };
   const handleDeployDevice = async () => {
-    setValidation([]);
-    setPostStatus("");
-    setDhcpStatus("");
+    resetforms();
     setDeployLoading(true);
     try {
       await DeplyDevicetoNetbox({
@@ -258,7 +262,9 @@ export const ProvAccordian = () => {
 
     const options = {
       method: "POST",
-
+      body: JSON.stringify({
+        gateway_template: template?.currentKey,
+      }),
       headers: headers,
     };
 
@@ -378,6 +384,12 @@ export const ProvAccordian = () => {
     setDhcpLoading(false);
     setLoading(false);
   }
+  const Templates = [
+    { key: "V102_SRX3XX_INTERNET", label: "V102_SRX3XX_INTERNET" },
+    { key: "V102_SRX3XX_DUAL_INTERNET", label: "V102_SRX3XX_DUAL_INTERNET" },
+    { key: "V102_SRX3XX_KPN", label: "V102_SRX3XX_KPN" },
+    { key: "V102_SRX3XX_KPN_INET", label: "V102_SRX3XX_KPN_INET" },
+  ];
 
   // React.useEffect(() => {
   //   setTimeout(() => {
@@ -573,6 +585,7 @@ export const ProvAccordian = () => {
                             label="Selected Site"
                             className="max-w-lg"
                             placeholder="Site Description"
+                            variant="bordered"
                             value={siteCodeSelected}
                             isDisabled={
                               siteCodeSelected?.length > 1 ? false : true
@@ -615,6 +628,7 @@ export const ProvAccordian = () => {
                             size="sm"
                             label="Selected Site"
                             className="max-w-lg"
+                            variant="bordered"
                             placeholder="Site Description"
                             value={siteCodeSelected}
                             isDisabled={
@@ -622,7 +636,25 @@ export const ProvAccordian = () => {
                             }
                             {...registerMist("siteMist")}
                           />
+                          <div className="p-3" />
+                          <Select
+                            isRequired
+                            size="sm"
+                            label="SRX Template"
+                            selectedKeys={template}
+                            placeholder="Select a Template"
+                            onSelectionChange={setTemplate}
+                            className="max-w-sm text-pink-400"
+                            variant="bordered"
+                          >
+                            {Templates.map((template) => (
+                              <SelectItem key={template.key}>
+                                {template.label}
+                              </SelectItem>
+                            ))}
+                          </Select>
                         </div>
+
                         <div className=" p-2 ">
                           <div className="dark text-foreground bg-background-pink-300 "></div>
                         </div>
@@ -805,11 +837,11 @@ export const ProvAccordian = () => {
 
                             <div className=" justify-self-end	">
                               {validateLoading ? (
-                                <div class="flex justify-center items-center  ">
-                                  <div class="relative inline-flex">
-                                    <div class="w-5 h-5 bg-pink-600 rounded-full"></div>
-                                    <div class="w-5 h-5 bg-pink-600 rounded-full absolute top-0 left-0 animate-ping"></div>
-                                    <div class="w-5 h-5 bg-pink-600 rounded-full absolute top-0 left-0 animate-pulse"></div>
+                                <div className="flex justify-center items-center  ">
+                                  <div className="relative inline-flex">
+                                    <div className="w-5 h-5 bg-pink-600 rounded-full"></div>
+                                    <div className="w-5 h-5 bg-pink-600 rounded-full absolute top-0 left-0 animate-ping"></div>
+                                    <div className="w-5 h-5 bg-pink-600 rounded-full absolute top-0 left-0 animate-pulse"></div>
                                   </div>
                                 </div>
                               ) : item.status === 0 ? (

@@ -19,7 +19,7 @@ module.exports = {
           600: "#00f2d7", //Add Button color
           700: "#00222e", //SideBar Color
           800: "#C62828",
-          900: "#B71C1C",
+          900: "#272729",
         },
       },
     },
