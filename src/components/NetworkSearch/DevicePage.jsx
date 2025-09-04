@@ -2,23 +2,10 @@
 import { useParams, Link } from "react-router-dom";
 import { devices } from "./data.js";
 import { useEffect, useState } from "react";
-import JuniperEX3400 from "./JuniperEX3400.jsx";
 
 export default function DevicePage() {
   const { name } = useParams();
   const device = devices.find((d) => d.name === name);
-
-  const [lights, setLights] = useState(
-    Array.from({ length: 24 }, () => Math.random() > 0.5)
-  );
-
-  // Blink random lights every second
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLights((prev) => prev.map(() => Math.random() > 0.5));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   if (!device) {
     return (

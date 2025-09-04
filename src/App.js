@@ -101,10 +101,10 @@ function App() {
               element={<DeployDHCP siteList={siteList} />}
             ></Route> */}
             <Route path="validate" element={<Validate />}></Route>
-            <Route path="ping" element={<Ping />} />
-            <Route path="terminallist" element={<TerminalList />} />
-            <Route path="devicesearch" element={<SearchPage />} />
-            <Route path="/device/:name" element={<DevicePage />} />
+            {/* <Route path="ping" element={<Ping />} /> */}
+            {/* <Route path="terminallist" element={<TerminalList />} /> */}
+            {/* <Route path="devicesearch" element={<SearchPage />} /> */}
+            {/* <Route path="/device/:name" element={<DevicePage />} /> */}
             <Route path="demobe" element={<DemobeStepper />} />
             {/* <Route
               path="mistassigntool/:siteCode"
