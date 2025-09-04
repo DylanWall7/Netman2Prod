@@ -1,7 +1,6 @@
 import React from "react";
 import { useEffect, useState } from "react";
 import { useMsal } from "@azure/msal-react";
-import DecryptedText from "./DecryptedTextProps";
 import {
   Input,
   Button,
@@ -15,7 +14,6 @@ import {
 import ProvisionLoading from "./ProvisionLoading";
 import { GizmoRequest } from "../../authConfig";
 import { set, useForm } from "react-hook-form";
-import { body } from "framer-motion/client";
 
 export const ProvAccordian = () => {
   const [dhcpSite, setDHCPSite] = React.useState("");
@@ -39,6 +37,12 @@ export const ProvAccordian = () => {
   const [modelList, setModelList] = React.useState([]);
   const [netboxLoading, setNetboxLoading] = useState(false);
   const [template, setTemplate] = React.useState(new Set([]));
+  const [seletonLoading, setSeletonLoading] = React.useState(false);
+
+  const [dhcpData, setDhcpData] = useState({
+    status: null,
+    logs: {},
+  });
 
   const {
     register: registerDHCP,
@@ -82,6 +86,14 @@ export const ProvAccordian = () => {
     setValidation([]);
     setPostStatus("");
     setDhcpStatus("");
+    setVlan1([]);
+    setVlan5([]);
+    setVlan9([]);
+    setVlan13([]);
+    setDhcpData({
+      status: null,
+      logs: {},
+    });
   }
 
   useEffect(() => {
@@ -104,6 +116,7 @@ export const ProvAccordian = () => {
   const handleAddNetbox = async () => {
     resetforms();
     setNetboxLoading(true);
+    setSeletonLoading(true);
 
     try {
       CreateNetbox({
@@ -115,10 +128,12 @@ export const ProvAccordian = () => {
       console.log({ err });
       setNetboxLoading(false);
       setLoading(false);
+      setSeletonLoading(true);
     }
   };
   const handleValidate = async () => {
     setValidateLoading(true);
+
     try {
       ValidateSite({
         token: await instance.acquireTokenSilent(request).then((response) => {
@@ -133,8 +148,9 @@ export const ProvAccordian = () => {
   const handleDHCP = async () => {
     resetforms();
     setDhcpLoading(true);
+    setSeletonLoading(true);
     try {
-      await CreatDHCPVlan1({
+      await CreatDHCPAllVlan({
         token: await instance.acquireTokenSilent(request).then((response) => {
           return response.accessToken;
         }),
@@ -142,12 +158,14 @@ export const ProvAccordian = () => {
     } catch (err) {
       console.log({ err });
       setDhcpLoading(false);
+      setSeletonLoading(false);
       setLoading(false);
     }
   };
   const handleCreateMist = async () => {
     resetforms();
     setMistLoading(true);
+    setSeletonLoading(true);
     try {
       await CreateMistSite({
         token: await instance.acquireTokenSilent(request).then((response) => {
@@ -158,12 +176,14 @@ export const ProvAccordian = () => {
       console.log({ err });
       setDhcpLoading(false);
       setMistLoading(false);
+      setSeletonLoading(false);
       setLoading(false);
     }
   };
   const handleDeployDevice = async () => {
     resetforms();
     setDeployLoading(true);
+    setSeletonLoading(true);
     try {
       await DeplyDevicetoNetbox({
         token: await instance.acquireTokenSilent(request).then((response) => {
@@ -174,6 +194,7 @@ export const ProvAccordian = () => {
       console.log({ err });
       setDhcpLoading(false);
       setDeployLoading(false);
+      setSeletonLoading(false);
       setLoading(false);
     }
   };
@@ -244,12 +265,14 @@ export const ProvAccordian = () => {
 
         setIsLoading(false);
         setNetboxLoading(false);
+        setSeletonLoading(false);
       })
 
       .catch((error) => {
         console.error("Error:", error);
         setLoading(false);
         setNetboxLoading(false);
+        setSeletonLoading(false);
       });
   }
   async function CreateMistSite({ token }) {
@@ -274,13 +297,14 @@ export const ProvAccordian = () => {
 
         setCreateNetbox(mistPostResponce?.log);
         setPostStatus(mistPostResponce?.status);
-
+        setSeletonLoading(false);
         setMistLoading(false);
       })
 
       .catch((error) => {
         console.error("Error:", error);
         setMistLoading(false);
+        setSeletonLoading(false);
         setLoading(false);
       });
   }
@@ -305,13 +329,14 @@ export const ProvAccordian = () => {
 
         setCreateNetbox(DeployDevicePostResponce?.log);
         setPostStatus(DeployDevicePostResponce?.status);
-
+        setSeletonLoading(false);
         setDeployLoading(false);
       })
 
       .catch((error) => {
         console.error("Error:", error);
         setDeployLoading(false);
+        setSeletonLoading(false);
         setLoading(false);
       });
   }
@@ -344,7 +369,7 @@ export const ProvAccordian = () => {
         setValidateLoading(false);
       });
   }
-  async function CreatDHCPVlan1({ token }) {
+  async function CreatDHCPAllVlan({ token }) {
     const headers = new Headers();
     const bearer = `Bearer ${token}`;
 
@@ -367,23 +392,60 @@ export const ProvAccordian = () => {
       setLoading(false);
     });
 
-    const allData = await Promise.all(
+    const data = await Promise.all(
       allresponses.map((response) => response.json())
     );
-    const [
-      vlan1PostResponce,
-      vlan5PostResponce,
-      vlan9PostResponce,
-      vlan13PostResponce,
-    ] = allData;
-    setVlan1(vlan1PostResponce.log);
-    setVlan5(vlan5PostResponce.log);
-    setVlan9(vlan9PostResponce.log);
-    setVlan13(vlan13PostResponce.log);
-    setDhcpStatus(vlan1PostResponce.status);
+    const vlanKeys = ["vlan1", "vlan5", "vlan9", "vlan13"];
+    const logs = vlanKeys.reduce((acc, key, i) => {
+      acc[key] = data[i].log || [];
+      return acc;
+    }, {});
+
+    setDhcpData({ status: data[0].status, logs });
+
     setDhcpLoading(false);
+    setSeletonLoading(false);
     setLoading(false);
   }
+  // async function CreatDHCPAllVlan({ token }) {
+  //   setLoading(true);
+  //   setSeletonLoading(true);
+
+  //   try {
+  //     const headers = {
+  //       Authorization: `Bearer ${token}`,
+  //       "Content-Type": "application/json",
+  //     };
+
+  //     const options = { method: "POST", headers };
+  //     const urls = [vlan1URL, vlan5URL, vlan9URL, vlan13URL];
+
+  //     // 🚀 All fetches in parallel
+  //     const responses = await Promise.all(
+  //       urls.map((url) => fetch(url, options))
+  //     );
+
+  //     // 🚀 Parse JSON in parallel
+  //     const data = await Promise.all(responses.map((res) => res.json()));
+
+  //     // Build logs object dynamically instead of hardcoding
+  //     const vlanKeys = ["vlan1", "vlan5", "vlan9", "vlan13"];
+  //     const logs = vlanKeys.reduce((acc, key, i) => {
+  //       acc[key] = data[i].log || [];
+  //       return acc;
+  //     }, {});
+
+  //     // Use first status, or combine if you want more advanced handling
+  //     setDhcpData({ status: data[0].status, logs });
+  //   } catch (error) {
+  //     console.error("Error fetching DHCP data:", error);
+  //   } finally {
+  //     setLoading(false);
+  //     setSeletonLoading(false);
+  //     setDhcpLoading(false);
+  //   }
+  // }
+
   const Templates = [
     { key: "V102_SRX3XX_INTERNET", label: "V102_SRX3XX_INTERNET" },
     { key: "V102_SRX3XX_DUAL_INTERNET", label: "V102_SRX3XX_DUAL_INTERNET" },
@@ -872,8 +934,8 @@ export const ProvAccordian = () => {
           </div>
         </div>
 
-        <div className=" p-2 flex justify-end">
-          {dhcpStatus === 0 && (
+        <div className=" mt-3 p-2 flex justify-center">
+          {/* {dhcpStatus === 0 && (
             <div className="flex-col justify-start ml-5">
               {[vlan1, vlan5, vlan9, vlan13].map(
                 (vlanLog, index) =>
@@ -899,8 +961,8 @@ export const ProvAccordian = () => {
                   )
               )}
             </div>
-          )}
-          {dhcpStatus === 1 && (
+          )} */}
+          {/* {dhcpStatus === 1 && (
             <div className="flex-col justify-start ml-5">
               {[vlan1, vlan5, vlan9, vlan13].map(
                 (vlanLog, index) =>
@@ -926,102 +988,95 @@ export const ProvAccordian = () => {
                   )
               )}
             </div>
-          )}
-
-          {postStatus === 0 && (
+          )} */}
+          {(dhcpData.status === 0 || dhcpData.status === 1) && (
             <div
-              style={{
-                backgroundColor: "#011423",
-                color: "#fff",
-                padding: "20px",
-                borderRadius: "8px",
-                borderColor: "#6a7b8d",
-                borderWidth: "2px",
-                borderStyle: "solid",
-                boxSizing: "border-box",
-                boxShadow: "1px 2px 30px 1px rgba(146, 43, 33, 0.6)",
-                maxWidth: "800px",
-                margin: "20px auto",
-                fontFamily: "Arial, sans-serif",
-                textAlign: "left",
-              }}
+              className={`max-w-2xl mx-auto p-6 rounded-2xl shadow-lg border-2 transition-all duration-500 mt-6
+      ${
+        dhcpData.status === 0
+          ? "bg-red-900/20 border-red-700"
+          : "bg-green-900/20 border-green-700"
+      }`}
             >
               <h3
-                style={{
-                  margin: "0 0 10px",
-                  color: "#922b21",
-                  fontSize: "25px",
-                  textAlign: "center",
-                }}
+                className={`text-2xl font-bold text-center mb-4 transition-colors duration-500
+        ${dhcpData.status === 0 ? "text-red-500" : "text-green-400"}`}
               >
-                Error Message
+                {dhcpData.status === 0
+                  ? "DHCP Error Logs"
+                  : "DHCP Success Logs"}
               </h3>
 
-              {Array.isArray(createNetbox) &&
-                createNetbox.map((message, index) => (
-                  <div key={index}>
-                    <li>
-                      <DecryptedText
-                        speed={150}
-                        className="text-md"
-                        maxIterations={20}
-                        text={message.msg}
-                        useOriginalCharsOnly={true}
-                        animateOn="view"
-                        revealDirection="center"
-                      />
-                    </li>
-                  </div>
+              <div className="space-y-4">
+                {Object.entries(dhcpData.logs).map(([vlanName, vlanLog]) =>
+                  Array.isArray(vlanLog) ? (
+                    <ul className="space-y-2">
+                      {vlanLog.map((message, msgIndex) => (
+                        <li
+                          key={msgIndex}
+                          className={`flex items-center gap-2 p-2 rounded-lg transition-all duration-300
+                    ${
+                      dhcpData.status === 0
+                        ? "bg-red-800/30 text-red-200 before:content-['!'] before:text-red-400 before:font-bold before:mr-1 animate-pulse10s"
+                        : "bg-green-800/30 text-green-200 before:content-['✓'] before:text-green-400 before:font-bold before:mr-1 animate-bounceOnce"
+                    }`}
+                        >
+                          <span className="text-md">{message.msg}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null
+                )}
+              </div>
+            </div>
+          )}
+          <div>
+            {seletonLoading && (
+              <div className="flex flex-col gap-2 ml-5 w-80">
+                {[...Array(4)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-4 bg-gray-700 rounded animate-pulse"
+                  ></div>
                 ))}
-            </div>
-          )}
-          {postStatus === 1 && (
-            <div
-              style={{
-                backgroundColor: "#011423",
-                color: "#fff",
-                borderColor: "#6a7b8d",
-                borderWidth: "2px",
-                borderStyle: "solid",
-                boxSizing: "border-box",
-                padding: "20px",
-                borderRadius: "8px",
-                boxShadow: "1px 2px 30px 1px rgba(35, 155, 86, 0.6)",
-                maxWidth: "800px",
-                margin: "20px auto",
-                fontFamily: "Arial, sans-serif",
-                textAlign: "left",
-              }}
-            >
-              <h3
-                style={{
-                  margin: "0 0 10px",
-                  color: "#239b56",
+              </div>
+            )}
 
-                  fontSize: "25px",
-                  textAlign: "center",
-                }}
+            {!seletonLoading && (postStatus === 0 || postStatus === 1) && (
+              <div
+                className={`max-w-2xl mx-auto p-6 rounded-2xl shadow-lg border-2 transition-all duration-5
+            ${
+              postStatus === 0
+                ? "bg-red-900/20 border-red-700"
+                : "bg-green-900/20 border-green-700"
+            }`}
               >
-                Success Message
-              </h3>
-              {createNetbox?.map((message, index) => (
-                <div>
-                  <li>
-                    <DecryptedText
-                      speed={150}
-                      className="text-md"
-                      maxIterations={20}
-                      key={index}
-                      text={message.msg}
-                      useOriginalCharsOnly={true}
-                      animateOn="view"
-                      revealDirection="center"
-                    />
-                  </li>
-                </div>
-              ))}
-            </div>
-          )}
+                <h3
+                  className={`text-2xl font-bold text-center mb-4 transition-colors duration-5
+              ${postStatus === 0 ? "text-red-500" : "text-green-400"}`}
+                >
+                  {postStatus === 0 ? "Error Message" : "Success Message"}
+                </h3>
+
+                <ul className="space-y-2">
+                  {Array.isArray(createNetbox) &&
+                    createNetbox.map((message, index) => (
+                      <li
+                        key={index}
+                        className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-3
+                    ${
+                      postStatus === 0
+                        ? "bg-red-800/30 text-red-200 animate-pulse10s before:content-['!'] before:text-red-400 before:font-bold before:mr-2"
+                        : "bg-green-800/30 text-green-200 animate-bounceOnce before:content-['✓'] before:text-green-400 before:font-bold before:mr-2"
+                    }`}
+                      >
+                        <span className="text-md">{message.msg}</span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </>

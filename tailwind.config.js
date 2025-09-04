@@ -9,6 +9,27 @@ module.exports = {
   ],
   theme: {
     extend: {
+      keyframes: {
+        blink: {
+          "0%, 100%": { opacity: 1 },
+          "50%": { opacity: 0.2 },
+        },
+        bounce: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10%)" },
+        },
+        pulse: {
+          "0%, 100%": { opacity: 1 },
+          "50%": { opacity: 0.5 },
+        },
+      },
+
+      animation: {
+        blink: "blink 10s infinite",
+        bounceOnce: "bounce 1s ease-in-out 4",
+        pulse10s: "pulse 2s ease-in-out 5",
+      },
+
       colors: {
         pink: {
           100: "#081b2a", //Main Background Color

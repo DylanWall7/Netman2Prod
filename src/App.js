@@ -13,6 +13,11 @@ import {
   useMsal,
 } from "@azure/msal-react";
 import { GizmoRequest } from "./authConfig";
+import Ping from "./components/PingTool/Ping";
+import TerminalList from "./components/SerialTerminal/TerminalList";
+import SearchPage from "./components/NetworkSearch/SearchPage";
+import DevicePage from "./components/NetworkSearch/DevicePage";
+import DemobeStepper from "./components/Demobe/DemobeStepper";
 
 function App() {
   const url = `https://${process.env.REACT_APP_API_BASEURL}/api/mist/site/summary`;
@@ -96,6 +101,11 @@ function App() {
               element={<DeployDHCP siteList={siteList} />}
             ></Route> */}
             <Route path="validate" element={<Validate />}></Route>
+            <Route path="ping" element={<Ping />} />
+            <Route path="terminallist" element={<TerminalList />} />
+            <Route path="devicesearch" element={<SearchPage />} />
+            <Route path="/device/:name" element={<DevicePage />} />
+            <Route path="demobe" element={<DemobeStepper />} />
             {/* <Route
               path="mistassigntool/:siteCode"
               element={<MistAssignSiteProv siteList={siteList} />}

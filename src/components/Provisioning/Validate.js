@@ -156,8 +156,9 @@ export const Validate = () => {
 
             <div className="p-2 flex justify-end">
               <Button
+                type="submit"
                 isLoading={validateLoading}
-                onClick={handleValidate}
+                onPress={handleValidate}
                 className="bg-pink-600 "
               >
                 Validate Site
