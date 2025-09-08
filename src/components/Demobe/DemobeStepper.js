@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import { GizmoRequest } from "../../authConfig";
+import ProvisionLoading from "../Provisioning/ProvisionLoading";
+import { Autocomplete, AutocompleteItem, skeleton } from "@nextui-org/react";
 
 export default function DemobeStepper() {
   const [currentStep, setCurrentStep] = useState(0);
@@ -9,6 +11,10 @@ export default function DemobeStepper() {
   const [postStatus, setPostStatus] = useState(null); // null, 0 (error), 1 (success)
   const [createNetbox, setCreateNetbox] = useState([]);
   const [seletonLoading, setSeletonLoading] = useState(false);
+  const [siteList, setSiteList] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const siteurl = `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/snowlocations`;
 
   const { instance, accounts } = useMsal();
   const request = {
@@ -17,6 +23,48 @@ export default function DemobeStepper() {
   };
   function resetforms() {
     setPostStatus("");
+  }
+  useEffect(() => {
+    (async () => {
+      setIsLoading(true);
+      try {
+        GetAllSites({
+          token: await instance.acquireTokenSilent(request).then((response) => {
+            return response.accessToken;
+          }),
+        });
+      } catch (err) {
+        setIsLoading(false);
+        console.log({ err });
+        setLoading(false);
+      }
+    })();
+  }, [accounts.length === 0]);
+
+  async function GetAllSites({ token }) {
+    const headers = new Headers();
+    const bearer = `Bearer ${token}`;
+
+    headers.append("Authorization", bearer);
+    headers.append("Content-Type", "application/json");
+
+    const options = {
+      method: "GET",
+      headers: headers,
+    };
+
+    return fetch(siteurl, options)
+      .then(async (response) => {
+        let text = await response.json();
+
+        setSiteList(text);
+        setIsLoading(false);
+      })
+
+      .catch((error) => {
+        console.error("Error:", error);
+        setLoading(false);
+      });
   }
 
   const steps = [
@@ -28,7 +76,7 @@ export default function DemobeStepper() {
     },
     {
       id: 3,
-      label: "Delete Devices",
+      label: "Delete Mist Devices",
       url: `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/mist/site/${siteCode}/devices`,
     },
     {
@@ -39,7 +87,7 @@ export default function DemobeStepper() {
     {
       id: 5,
       label: "Delete Netbox Site",
-      // url: `https://${process.env.REACT_APP_API_BASEURL}/api/netbox/sites/${siteCode}`,
+      url: `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/netbox/site/${siteCode}`,
     },
   ];
 
@@ -89,151 +137,208 @@ export default function DemobeStepper() {
   };
 
   return (
-    <div className="mt-10 text-white flex flex-col items-center justify-center p-6">
-      {/* Stepper Header */}
-      <div className="flex items-center justify-center space-x-6 mb-10">
-        {steps.map((step, index) => (
-          <div key={step.id} className="flex items-center">
-            <div
-              className={`flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold
-              ${index === currentStep ? "bg-blue-500" : "bg-gray-700"}`}
-            >
-              {index + 1}
+    <>
+      {isLoading && <ProvisionLoading loading={isLoading} />}
+      <div className="mt-8 text-white flex flex-col items-center justify-center p-6">
+        <div className="">
+          <div className="  ml-5">
+            <div className="max-w-3xl mx-auto text-center mt-4">
+              <h1 className="text-3xl font-bold text-gray-900 leading-tight mb-2 pb-4 relative">
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-red-400 to-red-500">
+                  Demobe Wizard
+                </span>
+                <span className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-red-400 to-red-500"></span>
+              </h1>
+              <p className="text-sm text-pink-400 mb-8">
+                Demobe a site with the following steps.
+              </p>
             </div>
-            {index !== steps.length - 1 && (
-              <div className="w-12 h-1 bg-gray-700 mx-2"></div>
-            )}
           </div>
-        ))}
-      </div>
+        </div>
+        {/* Stepper Header */}
+        <div className="flex items-center justify-center space-x-6 mb-10">
+          {steps.map((step, index) => (
+            <div key={step.id} className="flex items-center">
+              <div
+                className={`flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold
+              ${index === currentStep ? "bg-blue-500" : "bg-gray-700"}`}
+              >
+                {index + 1}
+              </div>
+              {index !== steps.length - 1 && (
+                <div className="w-12 h-1 bg-gray-700 mx-2"></div>
+              )}
+            </div>
+          ))}
+        </div>
 
-      <div className="w-full max-w-md bg-gray-800 rounded-2xl shadow-lg p-6 text-center">
-        <h2 className="text-xl font-bold mb-4">{steps[currentStep].label}</h2>
+        <div className="w-full max-w-md bg-gray-800 rounded-2xl shadow-lg p-6 text-center">
+          <h2 className="text-xl font-bold mb-4">{steps[currentStep].label}</h2>
 
-        {currentStep === 0 ? (
-          <input
-            type="text"
-            placeholder="Enter Site Code"
-            value={siteCode}
-            onChange={(e) => setSiteCode(e.target.value)}
-            className="w-full p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        ) : (
-          <div>
-            <p className="text-lg mb-4">
-              Site Code:{" "}
-              <span className="font-mono text-blue-400">
-                {siteCode || "N/A"}
-              </span>
-            </p>
-            <button
-              onClick={() => setShowModal(true)}
-              className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-500 transition"
-            >
-              Delete Step
-            </button>
-          </div>
-        )}
+          {currentStep === 0 ? (
+            <div className=" p-2 ">
+              <div className="dark text-foreground  ">
+                <Autocomplete
+                  size="sm"
+                  label="Site Code (From ServiceNow)"
+                  menuTrigger="input"
+                  placeholder="Site Code"
+                  className="max-w-sm text-pink-400"
+                  variant="bordered"
+                  onInputChange={(value) => {
+                    setSiteCode(value);
+                  }}
+                >
+                  {siteList.data?.map((site) => (
+                    <AutocompleteItem value={site} key={site.id}>
+                      {site ? site : "No Site Code"}
+                    </AutocompleteItem>
+                  ))}
+                </Autocomplete>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-lg mb-4">
+                Site Code:{" "}
+                <span className="font-mono text-blue-400">
+                  {siteCode || "N/A"}
+                </span>
+              </p>
+              <button
+                onClick={() => setShowModal(true)}
+                className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-500 transition"
+              >
+                {steps[currentStep].label}
+              </button>
+            </div>
+          )}
 
-        <div className="flex justify-between mt-6">
-          <button
-            onClick={() => {
-              resetforms();
-              prevStep();
-            }}
-            disabled={currentStep === 0}
-            className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-40"
-          >
-            Back
-          </button>
-          {currentStep < steps.length - 1 && (
+          <div className="flex justify-between mt-6">
             <button
               onClick={() => {
                 resetforms();
-                nextStep();
+                prevStep();
               }}
-              disabled={currentStep === 0 && !siteCode}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40"
+              disabled={currentStep === 0}
+              className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-40"
             >
-              Next
+              Back
             </button>
-          )}
-        </div>
-      </div>
-      <div className="mt-8">
-        {seletonLoading && (
-          <div className="flex flex-col gap-2 ml-5 w-80">
-            {[...Array(4)].map((_, i) => (
-              <div
-                key={i}
-                className="h-4 bg-gray-700 rounded animate-pulse"
-              ></div>
-            ))}
+            {currentStep < steps.length - 1 && (
+              <button
+                onClick={() => {
+                  resetforms();
+                  nextStep();
+                }}
+                disabled={seletonLoading || (currentStep === 0 && !siteCode)}
+                className="px-4 py-2 flex items-center justify-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {seletonLoading ? (
+                  <>
+                    <svg
+                      className="animate-spin h-5 w-5 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                      ></path>
+                    </svg>
+                    <span>Loading...</span>
+                  </>
+                ) : (
+                  "Next"
+                )}
+              </button>
+            )}
           </div>
-        )}
+        </div>
+        <div className="mt-8">
+          {seletonLoading && (
+            <div className="flex flex-col gap-2 ml-5 w-80">
+              {[...Array(4)].map((_, i) => (
+                <div
+                  key={i}
+                  className="h-4 bg-gray-700 rounded animate-pulse"
+                ></div>
+              ))}
+            </div>
+          )}
 
-        {!seletonLoading && (postStatus === 0 || postStatus === 1) && (
-          <div
-            className={`max-w-2xl mx-auto p-6 rounded-2xl shadow-lg border-2 transition-all duration-5
+          {!seletonLoading && (postStatus === 0 || postStatus === 1) && (
+            <div
+              className={`max-w-2xl mx-auto p-6 rounded-2xl shadow-lg border-2 transition-all duration-5
             ${
               postStatus === 0
                 ? "bg-red-900/20 border-red-700"
                 : "bg-green-900/20 border-green-700"
             }`}
-          >
-            <h3
-              className={`text-2xl font-bold text-center mb-4 transition-colors duration-5
-              ${postStatus === 0 ? "text-red-500" : "text-green-400"}`}
             >
-              {postStatus === 0 ? "Error Message" : "Success Message"}
-            </h3>
+              <h3
+                className={`text-2xl font-bold text-center mb-4 transition-colors duration-5
+              ${postStatus === 0 ? "text-red-500" : "text-green-400"}`}
+              >
+                {postStatus === 0 ? "Error Message" : "Success Message"}
+              </h3>
 
-            <ul className="space-y-2">
-              {Array.isArray(createNetbox) &&
-                createNetbox.map((message, index) => (
-                  <li
-                    key={index}
-                    className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-3
+              <ul className="space-y-2">
+                {Array.isArray(createNetbox) &&
+                  createNetbox.map((message, index) => (
+                    <li
+                      key={index}
+                      className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-3
                     ${
                       postStatus === 0
                         ? "bg-red-800/30 text-red-200 animate-pulse10s before:content-['!'] before:text-red-400 before:font-bold before:mr-2"
                         : "bg-green-800/30 text-green-200 animate-bounceOnce before:content-['✓'] before:text-green-400 before:font-bold before:mr-2"
                     }`}
-                  >
-                    <span className="text-md">{message.msg}</span>
-                  </li>
-                ))}
-            </ul>
+                    >
+                      <span className="text-md">{message.msg}</span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {showModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center">
+            <div className="bg-gray-800 rounded-xl p-6 w-96 shadow-xl">
+              <h3 className="text-lg font-bold mb-4">Confirm Deletion</h3>
+              <p className="text-gray-300 mb-6">
+                Are you sure you want to {steps[currentStep].label} for{" "}
+                <span className="font-semibold text-red-400">{siteCode}</span>?
+              </p>
+              <div className="flex justify-end space-x-4">
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center">
-          <div className="bg-gray-800 rounded-xl p-6 w-96 shadow-xl">
-            <h3 className="text-lg font-bold mb-4">Confirm Deletion</h3>
-            <p className="text-gray-300 mb-6">
-              Are you sure you want to {steps[currentStep].label} and
-              decommission site{" "}
-              <span className="font-semibold text-red-400">{siteCode}</span>?
-            </p>
-            <div className="flex justify-end space-x-4">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-500"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500"
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+    </>
   );
 }

@@ -38,6 +38,7 @@ export const ProvAccordian = () => {
   const [netboxLoading, setNetboxLoading] = useState(false);
   const [template, setTemplate] = React.useState(new Set([]));
   const [seletonLoading, setSeletonLoading] = React.useState(false);
+  const [netboxToMistLoading, setNetboxToMistLoading] = React.useState(false);
 
   const [dhcpData, setDhcpData] = useState({
     status: null,
@@ -74,6 +75,7 @@ export const ProvAccordian = () => {
   const vlan13URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/13`;
   const CreateMistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}`;
   const DeployDeviceURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/devices`;
+  const netboxtomistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/devices`;
   const ModelURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/devicetypes`;
 
   const { instance, accounts } = useMsal();
@@ -127,6 +129,24 @@ export const ProvAccordian = () => {
     } catch (err) {
       console.log({ err });
       setNetboxLoading(false);
+      setLoading(false);
+      setSeletonLoading(true);
+    }
+  };
+  const handleNetboxMistPush = async () => {
+    resetforms();
+    setNetboxToMistLoading(true);
+    setSeletonLoading(true);
+
+    try {
+      PushDevicesFromNetboxToMist({
+        token: await instance.acquireTokenSilent(request).then((response) => {
+          return response.accessToken;
+        }),
+      });
+    } catch (err) {
+      console.log({ err });
+      setNetboxToMistLoading(false);
       setLoading(false);
       setSeletonLoading(true);
     }
@@ -407,44 +427,39 @@ export const ProvAccordian = () => {
     setSeletonLoading(false);
     setLoading(false);
   }
-  // async function CreatDHCPAllVlan({ token }) {
-  //   setLoading(true);
-  //   setSeletonLoading(true);
+  async function PushDevicesFromNetboxToMist({ token }) {
+    setPostStatus("");
+    const headers = new Headers();
+    const bearer = `Bearer ${token}`;
 
-  //   try {
-  //     const headers = {
-  //       Authorization: `Bearer ${token}`,
-  //       "Content-Type": "application/json",
-  //     };
+    headers.append("Authorization", bearer);
+    headers.append("Content-Type", "application/json");
 
-  //     const options = { method: "POST", headers };
-  //     const urls = [vlan1URL, vlan5URL, vlan9URL, vlan13URL];
+    const options = {
+      method: "POST",
 
-  //     // 🚀 All fetches in parallel
-  //     const responses = await Promise.all(
-  //       urls.map((url) => fetch(url, options))
-  //     );
+      headers: headers,
+    };
 
-  //     // 🚀 Parse JSON in parallel
-  //     const data = await Promise.all(responses.map((res) => res.json()));
+    return fetch(netboxtomistURL, options)
+      .then(async (response) => {
+        let netboxPostResponce = await response.json();
 
-  //     // Build logs object dynamically instead of hardcoding
-  //     const vlanKeys = ["vlan1", "vlan5", "vlan9", "vlan13"];
-  //     const logs = vlanKeys.reduce((acc, key, i) => {
-  //       acc[key] = data[i].log || [];
-  //       return acc;
-  //     }, {});
+        setCreateNetbox(netboxPostResponce?.log);
+        setPostStatus(netboxPostResponce?.status);
 
-  //     // Use first status, or combine if you want more advanced handling
-  //     setDhcpData({ status: data[0].status, logs });
-  //   } catch (error) {
-  //     console.error("Error fetching DHCP data:", error);
-  //   } finally {
-  //     setLoading(false);
-  //     setSeletonLoading(false);
-  //     setDhcpLoading(false);
-  //   }
-  // }
+        setIsLoading(false);
+        setNetboxToMistLoading(false);
+        setSeletonLoading(false);
+      })
+
+      .catch((error) => {
+        console.error("Error:", error);
+        setLoading(false);
+        setNetboxToMistLoading(false);
+        setSeletonLoading(false);
+      });
+  }
 
   const Templates = [
     { key: "V102_SRX3XX_INTERNET", label: "V102_SRX3XX_INTERNET" },
@@ -452,6 +467,34 @@ export const ProvAccordian = () => {
     { key: "V102_SRX3XX_KPN", label: "V102_SRX3XX_KPN" },
     { key: "V102_SRX3XX_KPN_INET", label: "V102_SRX3XX_KPN_INET" },
   ];
+  const handleImportCSV = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const rows = text
+        .split("\n")
+        .map((row) => row.trim())
+        .filter(Boolean);
+
+      const [header, ...lines] = rows;
+      const headers = header.split(",").map((h) => h.trim());
+
+      const parsedDevices = lines.map((line) => {
+        const values = line.split(",").map((v) => v.trim());
+        const device = {};
+        headers.forEach((h, i) => {
+          device[h] = values[i] || "";
+        });
+        return device;
+      });
+
+      setDevices((prev) => [...prev, ...parsedDevices]);
+    };
+    reader.readAsText(file);
+  };
 
   // React.useEffect(() => {
   //   setTimeout(() => {
@@ -499,7 +542,7 @@ export const ProvAccordian = () => {
   );
 
   const itemClasses = {
-    base: "py-0 w-full border rounded border-pink-200  ",
+    base: "py-0 w-full border rounded border-pink-200",
     title: "font-normal text-medium text-pink-400",
     trigger:
       "px-2 py-0 data-[hover=true]:bg-pink-300 rounded-lg h-14 flex items-center",
@@ -619,7 +662,6 @@ export const ProvAccordian = () => {
                         <div className="p-2 flex justify-end">
                           <Button
                             isLoading={netboxLoading}
-                            // onClick={handleSubmit(onSubmit)}
                             onPress={handleSubmit(handleAddNetbox)}
                             className="bg-pink-600 "
                           >
@@ -663,7 +705,6 @@ export const ProvAccordian = () => {
                             onPressStart={() =>
                               setValue("siteDHCP", siteCodeSelected)
                             }
-                            // onClick={handleSubmitDHCP(onSubmit)}
                             className="bg-pink-600 "
                             isLoading={dhcpLoading}
                           >
@@ -723,7 +764,6 @@ export const ProvAccordian = () => {
                         <div className="p-2 flex justify-end">
                           <Button
                             isLoading={mistLoading}
-                            // onClick={handleSubmit(onSubmit)}
                             onPress={handleSubmit(handleCreateMist)}
                             className="bg-pink-600 "
                           >
@@ -811,7 +851,7 @@ export const ProvAccordian = () => {
                                       label="Model"
                                       menuTrigger="input"
                                       placeholder="Model"
-                                      className="max-w-sm text-pink-400"
+                                      className="w-full  text-pink-400"
                                       variant="bordered"
                                       selectedKey={device.model}
                                       onSelectionChange={(value) => {
@@ -851,6 +891,52 @@ export const ProvAccordian = () => {
                                   >
                                     <RedTrashIcon fill="white" />
                                   </Button>
+                                  <div>
+                                    <input
+                                      type="file"
+                                      accept=".csv"
+                                      id="csvUpload"
+                                      className="hidden"
+                                      onChange={handleImportCSV}
+                                    />
+                                    <Button
+                                      onPress={() =>
+                                        document
+                                          .getElementById("csvUpload")
+                                          .click()
+                                      }
+                                      className="relative flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
+                                    >
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        className="w-5 h-5 animate-bounce-slow"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                        strokeWidth={2}
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          d="M9 17v-6h6v6m-6 0h6m2 4H7a2 2 0 01-2-2V5a2 2 0 
+           012-2h5l2 2h5a2 2 0 012 2v10a2 2 0 01-2 2z"
+                                        />
+                                      </svg>
+                                      Import CSV
+                                      <span className="absolute inset-0 rounded-lg bg-white/10 opacity-0 hover:opacity-100 transition duration-300"></span>
+                                    </Button>
+                                    <Button
+                                      onPress={() => {
+                                        setDevices([]);
+                                        document.getElementById(
+                                          "csvUpload"
+                                        ).value = "";
+                                      }}
+                                      className="bg-orange-500 mt-3 hover:bg-orange-400 text-white shadow-md rounded-lg px-3 py-2 transition-all"
+                                    >
+                                      Clear CSV
+                                    </Button>
+                                  </div>
                                 </div>
                               </div>
                             )}
@@ -861,7 +947,6 @@ export const ProvAccordian = () => {
                           <Button
                             onPress={handleSubmit(handleDeployDevice)}
                             isLoading={deployLoading}
-                            // onClick={handleSubmitDHCP(onSubmit)}
                             className="bg-pink-600 "
                           >
                             Deploy Devices to Netbox
@@ -872,12 +957,52 @@ export const ProvAccordian = () => {
                   </div>
                 </div>
               </AccordionItem>
+              <AccordionItem
+                key="5"
+                aria-label="Accordion 5"
+                title="Step 5: Deploy Devices from Netbox to Mist"
+                isDisabled={siteCodeSelected?.length > 1 ? false : true}
+              >
+                <div className="  text-lg  ">
+                  <div className="  mt-6 ">
+                    <form className="w-Full flex justify-center">
+                      <div className=" border-pink-200 border-large rounded-lg p-5 flex flex-col bg-pink-300 w-3/4 ">
+                        <div className="p-2 dark text-foreground bg-transparent ">
+                          <Input
+                            size="sm"
+                            label="Selected Site"
+                            className="max-w-lg"
+                            placeholder="Site Description"
+                            variant="bordered"
+                            value={siteCodeSelected}
+                            isDisabled={
+                              siteCodeSelected?.length > 1 ? false : true
+                            }
+                          />
+                        </div>
+                        <div className=" p-2 ">
+                          <div className="dark text-foreground bg-background-pink-300 "></div>
+                        </div>
+                        <div className="p-2 flex justify-end">
+                          <Button
+                            isLoading={netboxToMistLoading}
+                            onPress={handleSubmit(handleNetboxMistPush)}
+                            className="bg-pink-600 "
+                          >
+                            Push Devices to Mist
+                          </Button>
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </AccordionItem>
 
               <AccordionItem
                 isDisabled={siteCodeSelected?.length > 1 ? false : true}
-                key="5"
-                aria-label="Accordion 5"
-                title="Step 5: Validate Site"
+                key="6"
+                aria-label="Accordion 6"
+                title="Step 6: Validate Site"
               >
                 <div className="  text-lg  ">
                   <div className=" flex justify-center mt-6 ">
@@ -919,7 +1044,6 @@ export const ProvAccordian = () => {
                           <Button
                             isLoading={validateLoading}
                             onPress={handleSubmitDHCP(handleValidate)}
-                            // onClick={handleSubmitDHCP(onSubmit)}
                             className="bg-pink-600 "
                           >
                             Validate {siteCodeSelected}

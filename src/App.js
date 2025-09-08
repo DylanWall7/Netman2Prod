@@ -13,10 +13,7 @@ import {
   useMsal,
 } from "@azure/msal-react";
 import { GizmoRequest } from "./authConfig";
-import Ping from "./components/PingTool/Ping";
-import TerminalList from "./components/SerialTerminal/TerminalList";
-import SearchPage from "./components/NetworkSearch/SearchPage";
-import DevicePage from "./components/NetworkSearch/DevicePage";
+
 import DemobeStepper from "./components/Demobe/DemobeStepper";
 
 function App() {

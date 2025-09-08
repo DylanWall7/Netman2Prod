@@ -461,6 +461,7 @@ export const PageLayout = (props) => {
               {[
                 { to: "/", label: "Home" },
                 { to: "/provision", label: "Provisioning" },
+                { to: "/demobe", label: "Demobe" },
                 { to: "/validate", label: "Validation" },
               ].map(({ to, label }) => (
                 <Link
