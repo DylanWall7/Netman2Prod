@@ -239,6 +239,7 @@ export const ProvAccordian = () => {
       return await GetAvailableIps({ token });
     } catch (err) {
       console.log({ err });
+      setNextIpLoading(false);
       setLoading(false);
       return [];
     }
@@ -498,12 +499,13 @@ export const ProvAccordian = () => {
       const response = await fetch(nextIPURL, options);
       const nextipList = await response.json();
 
-      setIsLoading(false);
+      setNextIpLoading(false);
       setAvailableIps(nextipList.data);
 
       return nextipList.data;
     } catch (error) {
       console.error("Error:", error);
+      setNextIpLoading(false);
       setLoading(false);
       return [];
     }
@@ -1058,6 +1060,7 @@ export const ProvAccordian = () => {
                                     </div>
                                     <div className="flex gap-3 mt-4">
                                       <Button
+                                        isLoading={nextIpLoading}
                                         onPress={handleFillIPs}
                                         className="relative flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
                                       >
@@ -1323,7 +1326,7 @@ export const ProvAccordian = () => {
                         key={index}
                         className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-3
                     ${
-                      postStatus === 0
+                      message.status === 0
                         ? "bg-red-800/30 text-red-200 animate-pulse10s before:content-['!'] before:text-red-400 before:font-bold before:mr-2"
                         : "bg-green-800/30 text-green-200 animate-bounceOnce before:content-['✓'] before:text-green-400 before:font-bold before:mr-2"
                     }`}
