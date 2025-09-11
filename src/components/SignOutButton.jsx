@@ -7,9 +7,6 @@ function handleLogout(instance) {
   });
 }
 
-/**
- * Renders a button which, when selected, will redirect the page to the logout prompt
- */
 export const SignOutButton = () => {
   const { instance } = useMsal();
 

@@ -15,6 +15,7 @@ import {
 import { GizmoRequest } from "./authConfig";
 
 import DemobeStepper from "./components/Demobe/DemobeStepper";
+import UserProfile from "./components/User/UserProfile";
 
 function App() {
   const url = `https://${process.env.REACT_APP_API_BASEURL}/api/mist/site/summary`;
@@ -103,6 +104,7 @@ function App() {
             {/* <Route path="devicesearch" element={<SearchPage />} /> */}
             {/* <Route path="/device/:name" element={<DevicePage />} /> */}
             <Route path="demobe" element={<DemobeStepper />} />
+            <Route path="profile" element={<UserProfile />} />
             {/* <Route
               path="mistassigntool/:siteCode"
               element={<MistAssignSiteProv siteList={siteList} />}

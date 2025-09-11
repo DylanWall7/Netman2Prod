@@ -14,6 +14,7 @@ import {
 import ProvisionLoading from "./ProvisionLoading";
 import { GizmoRequest } from "../../authConfig";
 import { set, useForm } from "react-hook-form";
+import { use } from "react";
 
 export const ProvAccordian = () => {
   const [dhcpSite, setDHCPSite] = React.useState("");
@@ -39,6 +40,9 @@ export const ProvAccordian = () => {
   const [template, setTemplate] = React.useState(new Set([]));
   const [seletonLoading, setSeletonLoading] = React.useState(false);
   const [netboxToMistLoading, setNetboxToMistLoading] = React.useState(false);
+  const [availableIps, setAvailableIps] = useState([]);
+  const [ipIndex, setIpIndex] = useState(0);
+  const [nextIpLoading, setNextIpLoading] = React.useState(false);
 
   const [dhcpData, setDhcpData] = useState({
     status: null,
@@ -77,6 +81,7 @@ export const ProvAccordian = () => {
   const DeployDeviceURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/devices`;
   const netboxtomistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/devices`;
   const ModelURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/devicetypes`;
+  const nextIPURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/addresses`;
 
   const { instance, accounts } = useMsal();
   const request = {
@@ -218,7 +223,26 @@ export const ProvAccordian = () => {
       setLoading(false);
     }
   };
+  const handleGetAvailableIps = async () => {
+    if (availableIps && availableIps.length > 0) {
+      return availableIps;
+    }
+    setNextIpLoading(true);
 
+    try {
+      const token = await instance
+        .acquireTokenSilent(request)
+        .then((response) => {
+          return response.accessToken;
+        });
+
+      return await GetAvailableIps({ token });
+    } catch (err) {
+      console.log({ err });
+      setLoading(false);
+      return [];
+    }
+  };
   async function GetAllSites({ token }) {
     const headers = new Headers();
     const bearer = `Bearer ${token}`;
@@ -461,6 +485,30 @@ export const ProvAccordian = () => {
       });
   }
 
+  async function GetAvailableIps({ token }) {
+    const headers = new Headers();
+    const bearer = `Bearer ${token}`;
+
+    headers.append("Authorization", bearer);
+    headers.append("Content-Type", "application/json");
+
+    const options = { method: "GET", headers };
+
+    try {
+      const response = await fetch(nextIPURL, options);
+      const nextipList = await response.json();
+
+      setIsLoading(false);
+      setAvailableIps(nextipList.data);
+
+      return nextipList.data;
+    } catch (error) {
+      console.error("Error:", error);
+      setLoading(false);
+      return [];
+    }
+  }
+
   const Templates = [
     { key: "V102_SRX3XX_INTERNET", label: "V102_SRX3XX_INTERNET" },
     { key: "V102_SRX3XX_DUAL_INTERNET", label: "V102_SRX3XX_DUAL_INTERNET" },
@@ -468,6 +516,7 @@ export const ProvAccordian = () => {
     { key: "V102_SRX3XX_KPN_INET", label: "V102_SRX3XX_KPN_INET" },
   ];
   const handleImportCSV = (event) => {
+    setDevices([]);
     const file = event.target.files[0];
     if (!file) return;
 
@@ -501,26 +550,26 @@ export const ProvAccordian = () => {
   //     setPostStatus("");
   //   }, 300000);
   // }, [postStatus]);
-  const RedTrashIcon = ({ fill = "currentColor", size = 24, ...props }) => (
+  const RedTrashIcon = ({ size = 24, ...props }) => (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       width={size}
       height={size}
-      fill="none"
       viewBox="0 0 24 24"
-      stroke={fill}
-      className="transition-colors"
+      fill="none"
+      stroke="red"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="cursor-pointer hover:scale-110 transition-transform duration-200"
       {...props}
     >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M6 18L18 6M6 6l12 12"
-      />
+      <path d="M3 6h18" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
     </svg>
   );
-
   const GreenPlusIcon = ({ fill = "currentColor", size = 24, ...props }) => (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -551,7 +600,7 @@ export const ProvAccordian = () => {
   };
 
   const [devices, setDevices] = React.useState([
-    { serial: "", name: "", model: "" },
+    { serial: "", name: "", model: "", ip: "" },
   ]);
 
   const handleInputChange = (index, event) => {
@@ -559,14 +608,59 @@ export const ProvAccordian = () => {
     values[index][event.target.name] = event.target.value;
     setDevices(values);
   };
+  // const handleAddDevice = () => {
+  //   setDevices((prev) => {
+  //     let ipToAssign = "";
+
+  //
+  //     if (availableIps.length > 0) {
+  //       ipToAssign = availableIps[0];
+  //       setAvailableIps((prevIps) => prevIps.slice(1));
+  //     }
+
+  //     return [...prev, { serial: "", name: "", model: "", ip: ipToAssign }];
+  //   });
+  // };
+  const handleFillIPs = async () => {
+    const ips = await handleGetAvailableIps();
+
+    setDevices((prevDevices) => {
+      const usedIps = prevDevices.map((d) => d.ip).filter(Boolean);
+
+      let freeIps = ips.filter((ip) => !usedIps.includes(ip));
+
+      const updated = prevDevices.map((device) => {
+        if (
+          device.model?.startsWith("EX") &&
+          !/_\d+$/.test(device.name ?? "") &&
+          !device.ip
+        ) {
+          const ip = freeIps.shift();
+          return ip ? { ...device, ip } : device;
+        }
+        return device;
+      });
+
+      setAvailableIps(freeIps);
+      return updated;
+    });
+  };
+  const handleClearIPs = () => {
+    setDevices((prevDevices) => {
+      const usedIps = prevDevices.map((d) => d.ip).filter(Boolean);
+      setAvailableIps((prevIps) => [...prevIps, ...usedIps]);
+      return prevDevices.map((d) => ({ ...d, ip: "" }));
+    });
+  };
 
   const handleAddDevice = () => {
-    setDevices([...devices, { serial: "", name: "", model: "" }]);
+    setDevices([...devices, { serial: "", name: "", model: "", ip: "" }]);
   };
 
-  const removeDevice = () => {
-    setDevices(devices.slice(0, -1));
+  const handleRemoveDevice = (index) => {
+    setDevices((prev) => prev.filter((_, i) => i !== index));
   };
+
   const validateGoodIcon = (
     <svg
       xmlns="http://www.w3.org/
@@ -870,6 +964,37 @@ export const ProvAccordian = () => {
                                       ))}
                                     </Autocomplete>
                                   </div>
+                                  <Input
+                                    classNames={{
+                                      label: "text-pink-400",
+                                      input: ["placeholder:text-pink-400"],
+                                      innerWrapper: "bg-transparent",
+                                      inputWrapper: [
+                                        "bg-pink-300",
+                                        "border-zinc-600",
+                                        "rounded-lg",
+                                        "border",
+                                        "border-2",
+                                        "border-opacity-70",
+                                        "hover:border-zinc-500",
+                                        "h-full",
+                                      ],
+                                    }}
+                                    type="text"
+                                    name="ip"
+                                    value={device.ip}
+                                    onChange={(event) =>
+                                      handleInputChange(index, event)
+                                    }
+                                    placeholder="IP Address"
+                                  />
+                                  <Button
+                                    onPress={() => handleRemoveDevice(index)}
+                                    isIconOnly
+                                    variant="light"
+                                  >
+                                    <RedTrashIcon />
+                                  </Button>
                                 </div>
                               ))}
                             </div>
@@ -884,58 +1009,67 @@ export const ProvAccordian = () => {
                                     <GreenPlusIcon fill="white" />
                                   </Button>
 
-                                  <Button
-                                    onPress={removeDevice}
-                                    isIconOnly
-                                    className="bg-red-500 hover:bg-red-400 active:scale-95 text-white shadow-md rounded-full p-3 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-300"
-                                  >
-                                    <RedTrashIcon fill="white" />
-                                  </Button>
                                   <div>
-                                    <input
-                                      type="file"
-                                      accept=".csv"
-                                      id="csvUpload"
-                                      className="hidden"
-                                      onChange={handleImportCSV}
-                                    />
-                                    <Button
-                                      onPress={() =>
-                                        document
-                                          .getElementById("csvUpload")
-                                          .click()
-                                      }
-                                      className="relative flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
-                                    >
-                                      <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        className="w-5 h-5 animate-bounce-slow"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                        strokeWidth={2}
+                                    <div className="flex gap-3 ">
+                                      <input
+                                        type="file"
+                                        accept=".csv"
+                                        id="csvUpload"
+                                        className="hidden"
+                                        onChange={handleImportCSV}
+                                      />
+                                      <Button
+                                        onPress={() =>
+                                          document
+                                            .getElementById("csvUpload")
+                                            .click()
+                                        }
+                                        className=" relative flex items-center bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
                                       >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          d="M9 17v-6h6v6m-6 0h6m2 4H7a2 2 0 01-2-2V5a2 2 0 
-           012-2h5l2 2h5a2 2 0 012 2v10a2 2 0 01-2 2z"
-                                        />
-                                      </svg>
-                                      Import CSV
-                                      <span className="absolute inset-0 rounded-lg bg-white/10 opacity-0 hover:opacity-100 transition duration-300"></span>
-                                    </Button>
-                                    <Button
-                                      onPress={() => {
-                                        setDevices([]);
-                                        document.getElementById(
-                                          "csvUpload"
-                                        ).value = "";
-                                      }}
-                                      className="bg-orange-500 mt-3 hover:bg-orange-400 text-white shadow-md rounded-lg px-3 py-2 transition-all"
-                                    >
-                                      Clear CSV
-                                    </Button>
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          className="w-5 h-5 animate-bounce-slow"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                          strokeWidth={2}
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d="M9 17v-6h6v6m-6 0h6m2 4H7a2 2 0 01-2-2V5a2 2 0 012-2h5l2 2h5a2 2 0 012 2v10a2 2 0 01-2 2z"
+                                          />
+                                        </svg>
+                                        Import CSV
+                                        <span className="  inset-0 rounded-lg bg-white/10 opacity-0 hover:opacity-100 transition duration-300"></span>
+                                      </Button>
+
+                                      <Button
+                                        onPress={() => {
+                                          setDevices([]);
+                                          document.getElementById(
+                                            "csvUpload"
+                                          ).value = "";
+                                        }}
+                                        className="relative flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-500 hover:to-orange-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
+                                      >
+                                        Clear CSV
+                                      </Button>
+                                    </div>
+                                    <div className="flex gap-3 mt-4">
+                                      <Button
+                                        onPress={handleFillIPs}
+                                        className="relative flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
+                                      >
+                                        Fill IPs
+                                      </Button>
+                                      <Button
+                                        onPress={handleClearIPs}
+                                        className="relative flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-500 hover:to-orange-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
+                                      >
+                                        Clear IPs
+                                      </Button>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
