@@ -542,7 +542,9 @@ export const ProvAccordian = () => {
         return device;
       });
 
-      setDevices((prev) => [...prev, ...parsedDevices]);
+      const limitedDevices = parsedDevices.slice(0, 20);
+
+      setDevices((prev) => [...prev, ...limitedDevices]);
     };
     reader.readAsText(file);
   };
@@ -633,8 +635,8 @@ export const ProvAccordian = () => {
 
       const updated = prevDevices.map((device) => {
         if (
-          device.model?.startsWith("EX") &&
-          !/_\d+$/.test(device.name ?? "") &&
+          (/^.*_0$/.test(device.name ?? "") ||
+            !/_\d+$/.test(device.name ?? "")) &&
           !device.ip
         ) {
           const ip = freeIps.shift();
@@ -653,9 +655,11 @@ export const ProvAccordian = () => {
       setAvailableIps((prevIps) => [...prevIps, ...usedIps]);
       return prevDevices.map((d) => ({ ...d, ip: "" }));
     });
+    setAvailableIps([]);
   };
 
   const handleAddDevice = () => {
+    if (devices?.length >= 20) return;
     setDevices([...devices, { serial: "", name: "", model: "", ip: "" }]);
   };
 
@@ -1196,60 +1200,6 @@ export const ProvAccordian = () => {
         </div>
 
         <div className=" mt-3 p-2 flex justify-center">
-          {/* {dhcpStatus === 0 && (
-            <div className="flex-col justify-start ml-5">
-              {[vlan1, vlan5, vlan9, vlan13].map(
-                (vlanLog, index) =>
-                  vlanLog && (
-                    <div>
-                      {Array.isArray(vlanLog) &&
-                        vlanLog.map((message, msgIndex) => (
-                          <div key={msgIndex}>
-                            <li>
-                              <DecryptedText
-                                speed={150}
-                                className="text-md text-white"
-                                maxIterations={20}
-                                text={message.msg}
-                                useOriginalCharsOnly={true}
-                                animateOn="view"
-                                revealDirection="center"
-                              />
-                            </li>
-                          </div>
-                        ))}
-                    </div>
-                  )
-              )}
-            </div>
-          )} */}
-          {/* {dhcpStatus === 1 && (
-            <div className="flex-col justify-start ml-5">
-              {[vlan1, vlan5, vlan9, vlan13].map(
-                (vlanLog, index) =>
-                  vlanLog && (
-                    <div>
-                      {Array.isArray(vlanLog) &&
-                        vlanLog.map((message, msgIndex) => (
-                          <div key={msgIndex}>
-                            <li>
-                              <DecryptedText
-                                speed={150}
-                                className="text-md text-white"
-                                maxIterations={20}
-                                text={message.msg}
-                                useOriginalCharsOnly={true}
-                                animateOn="view"
-                                revealDirection="center"
-                              />
-                            </li>
-                          </div>
-                        ))}
-                    </div>
-                  )
-              )}
-            </div>
-          )} */}
           {(dhcpData.status === 0 || dhcpData.status === 1) && (
             <div
               className={`max-w-2xl mx-auto p-6 rounded-2xl shadow-lg border-2 transition-all duration-500 mt-6
