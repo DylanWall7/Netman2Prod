@@ -19,8 +19,6 @@ const mockLogs = [
 ];
 
 function parseLog(logLine) {
-  // Example log format:
-  // [2025-09-16 19:48:46] local.INFO: User1 : deployMistDevices: MESSAGE
   const regex = /^\[(.*?)\]\s.*?:\s(.*?)\s:\s(.*?):\s(.*)$/;
   const match = logLine.match(regex);
 
