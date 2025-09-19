@@ -148,6 +148,46 @@ export const HomeLayout = () => {
               </div>
             </div>
           </Link>
+          <Link to="/workbench" className="col-span-1 row-span-1 group">
+            <div
+              className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
+               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
+               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
+               group-hover:border-pink-400"
+            >
+              <div className="flex-1">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
+                  Workbench Info
+                </h4>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
+                  List of workbenches and their details.
+                </p>
+              </div>
+              <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
+                <svg
+                  fill="#000000"
+                  height="70px"
+                  width="70px"
+                  version="1.2"
+                  baseProfile="tiny"
+                  id="Layer_1"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="-351 153 256 256"
+                >
+                  <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                  <g
+                    id="SVGRepo_tracerCarrier"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  ></g>
+                  <g id="SVGRepo_iconCarrier">
+                    {" "}
+                    <path d="M-139.1,345.7c-6.5-5.9-14.1-8.6-23-8.3c-3,0-5.9,0.7-8.9,1.7l-44.6-40.8l28.7-33.9l45.6,40.2l40.3-45.9l-114.1-100.4 l-40.3,45.9l44.4,39.1l-29.7,32.1l-40.6-37.2c0.7-3,1-5.9,0.7-8.9c-0.3-8.9-3.8-16.5-10.3-22.3c-6.5-5.9-14.1-8.6-23-8.3 c-3,0-6.2,0.7-8.9,1.7l25.8,23.4l-22.8,25l-25.8-23.4c-0.7,3-1,6.2-0.7,8.9c0.3,8.9,3.8,16.1,10.3,22c6.5,5.9,14.1,8.6,23,8.3 c3,0,6.5-0.7,9.6-2.1l39.4,36.1l-65.2,67.6c-4.5,3.8-6.8,9.2-6.8,15.1c0,11,8.9,19.9,19.9,19.9c6.8,0,12.7-3.5,16.5-8.6l62.8-69.2 l37.1,33.9l6.2,5.9c-0.7,3-1,6.5-1,9.6c0.3,8.9,3.8,16.1,10.3,22.3c6.5,5.9,14.1,8.6,23,8.3c3,0,5.9-0.7,8.9-1.7l-25.8-23.4l23-25.1 l25.5,23.5c0.7-3,1-6.2,0.7-8.9C-129.1,358.7-132.6,351.5-139.1,345.7z"></path>{" "}
+                  </g>
+                </svg>
+              </div>
+            </div>
+          </Link>
           <Link
             to="https://dhcp.kiewitplaza.com"
             target="_blank"
