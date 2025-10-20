@@ -97,7 +97,7 @@ export default function MobeBenchTable() {
                           <div className="flex items-center gap-2">
                             <span className="text-green-400">{p.ssh}</span>
                             <a
-                              href={`ssh://${bench.console_ip}:${p.ssh}`}
+                              href={`ssh://telecom@${bench.console_ip}:${p.ssh}`}
                               className="text-blue-400 hover:underline"
                             >
                               SSH

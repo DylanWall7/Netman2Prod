@@ -60,7 +60,7 @@ export default function LogsPage() {
   );
 
   return (
-    <div className="p-6 bg-gray-900 min-h-screen text-white">
+    <div className="p-6 bg-gray-900 text-white">
       <h1 className="text-2xl font-bold mb-4">System Logs</h1>
       <Table
         aria-label="Logs table"

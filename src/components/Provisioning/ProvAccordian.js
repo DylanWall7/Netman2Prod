@@ -14,7 +14,6 @@ import {
 import ProvisionLoading from "./ProvisionLoading";
 import { GizmoRequest } from "../../authConfig";
 import { set, useForm } from "react-hook-form";
-import { use } from "react";
 
 export const ProvAccordian = () => {
   const [dhcpSite, setDHCPSite] = React.useState("");
@@ -500,6 +499,7 @@ export const ProvAccordian = () => {
       const nextipList = await response.json();
 
       setNextIpLoading(false);
+
       setAvailableIps(nextipList.data);
 
       return nextipList.data;
