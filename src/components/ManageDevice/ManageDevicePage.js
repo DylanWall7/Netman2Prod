@@ -98,7 +98,6 @@ export const ManageDevicePage = () => {
         ? response.data
         : [];
       setGetDeviceData(dataArray);
-      console.log("Fetched devices:", dataArray);
     } catch (err) {
       console.error("Error getting devices:", err);
     } finally {
