@@ -18,6 +18,7 @@ import DemobeStepper from "./components/Demobe/DemobeStepper";
 import UserProfile from "./components/User/UserProfile";
 import LogsPage from "./components/LogPage/LogFile";
 import MobeBenchTable from "./components/Workbench/WorkbenchList";
+import { ManageDevicePage } from "./components/ManageDevice/ManageDevicePage";
 
 function App() {
   const url = `https://${process.env.REACT_APP_API_BASEURL}/api/mist/site/summary`;
@@ -31,20 +32,25 @@ function App() {
   };
 
   useEffect(() => {
-    (async () => {
+    const fetchSites = async () => {
+      if (accounts.length === 0) return;
+
       setIsLoading(true);
       try {
-        GetAllMistSites({
-          token: await instance.acquireTokenSilent(request).then((response) => {
-            return response.accessToken;
-          }),
-        });
+        const response = await instance.acquireTokenSilent(request);
+        const token = response.accessToken;
+
+        await GetAllMistSites({ token });
       } catch (err) {
-        console.log({ err });
-        setLoading(false);
+        console.error(err);
+      } finally {
+        setIsLoading(false);
       }
-    })();
-  }, [accounts.length === 0]);
+    };
+
+    fetchSites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts]);
 
   async function GetAllMistSites({ token }) {
     const headers = new Headers();
@@ -107,8 +113,9 @@ function App() {
             {/* <Route path="/device/:name" element={<DevicePage />} /> */}
             <Route path="demobe" element={<DemobeStepper />} />
             <Route path="profile" element={<UserProfile />} />
-            <Route path="logs" element={<LogsPage />} />
+            {/* <Route path="logs" element={<LogsPage />} /> */}
             <Route path="workbench" element={<MobeBenchTable />} />
+            <Route path="managedevices" element={<ManageDevicePage />}></Route>
             {/* <Route path="ogtemplate" element={<OgTemplate />} /> */}
             {/* <Route
               path="mistassigntool/:siteCode"
