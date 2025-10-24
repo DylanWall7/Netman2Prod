@@ -9,7 +9,11 @@ import {
   AutocompleteItem,
   Spinner,
 } from "@nextui-org/react";
-import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
+import {
+  CheckCircleIcon,
+  XCircleIcon,
+  ClipboardIcon,
+} from "@heroicons/react/24/solid";
 import { useMsal } from "@azure/msal-react";
 import { set } from "react-hook-form";
 
@@ -104,6 +108,9 @@ export const ManageDevicePage = () => {
       setNetboxLoading(false);
     }
   };
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text);
+  }
 
   return (
     <>
@@ -259,18 +266,46 @@ export const ManageDevicePage = () => {
                                 </td>
                                 <td className="px-4 py-3">
                                   {wrongSite ? (
-                                    <div className="relative group inline-block">
-                                      <span className="text-yellow-400 cursor-pointer">
-                                        {device.serial || "—"}
-                                      </span>
+                                    <div>
+                                      <div className="relative group inline-block">
+                                        <span className="text-yellow-400 cursor-pointer pr-3">
+                                          {device.serial || "—"}
+                                        </span>
 
-                                      <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 w-max rounded-md bg-gray-800 text-yellow-400 text-md px-3 py-1 opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-lg border border-gray-700">
-                                        Device is assigned to the the wrong site
-                                        in Mist!
+                                        <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 w-max rounded-md bg-gray-800 text-yellow-400 text-md px-3 py-1 opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-lg border border-gray-700">
+                                          <span>
+                                            Device is assigned to the the wrong
+                                            site in Mist!
+                                          </span>
+                                        </div>
                                       </div>
+                                      <Button
+                                        isIconOnly
+                                        size="sm"
+                                        onPress={() =>
+                                          copyToClipboard(device.serial)
+                                        }
+                                        className="bg-gray-700 text-white "
+                                      >
+                                        <ClipboardIcon className="w-4 h-4" />
+                                      </Button>
                                     </div>
                                   ) : (
-                                    <span>{device.serial || "—"}</span>
+                                    <div>
+                                      <span className="pr-3">
+                                        {device.serial || "—"}
+                                      </span>
+                                      <Button
+                                        isIconOnly
+                                        size="sm"
+                                        onPress={() =>
+                                          copyToClipboard(device.serial)
+                                        }
+                                        className="bg-gray-700 text-white "
+                                      >
+                                        <ClipboardIcon className="w-4 h-4" />
+                                      </Button>
+                                    </div>
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
