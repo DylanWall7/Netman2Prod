@@ -173,6 +173,7 @@ export const ManageDevicePage = () => {
             const mist = siteItem.data?.mistsite;
             const devices = siteItem.data?.devices || [];
 
+            console.log({ site, mist, devices });
             return (
               <div
                 key={index}
@@ -239,6 +240,10 @@ export const ManageDevicePage = () => {
                             const inMist =
                               !!device.custom?.mistdevice &&
                               device.custom?.mistdevicesite === mist?.id;
+                            const wrongSite =
+                              device.custom?.mistdevicesite !== mist?.id &&
+                              device.role?.name !== "POWER_UPS";
+
                             return (
                               <tr
                                 key={idx}
@@ -254,21 +259,19 @@ export const ManageDevicePage = () => {
                                   {device.device_type?.display || "—"}
                                 </td>
                                 <td className="px-4 py-3">
-                                  {device.custom?.mistdevicesite ===
-                                  mist?.id ? (
-                                    device.serial
-                                  ) : (
+                                  {wrongSite ? (
                                     <div className="relative group inline-block">
                                       <span className="text-yellow-400 cursor-pointer">
                                         {device.serial || "—"}
                                       </span>
 
-                                      {/* Tooltip */}
                                       <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 w-max rounded-md bg-gray-800 text-yellow-400 text-md px-3 py-1 opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-lg border border-gray-700">
                                         Device is assigned to the the wrong site
                                         in Mist!
                                       </div>
                                     </div>
+                                  ) : (
+                                    <span>{device.serial || "—"}</span>
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
