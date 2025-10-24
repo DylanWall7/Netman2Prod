@@ -173,7 +173,6 @@ export const ManageDevicePage = () => {
             const mist = siteItem.data?.mistsite;
             const devices = siteItem.data?.devices || [];
 
-            console.log({ site, mist, devices });
             return (
               <div
                 key={index}
