@@ -248,7 +248,8 @@ export const ManageDevicePage = () => {
                               device.custom?.mistdevicesite === mist?.id;
                             const wrongSite =
                               device.custom?.mistdevicesite !== mist?.id &&
-                              device.role?.name !== "POWER_UPS";
+                              device.device_type.manufacturer?.name ===
+                                "Juniper";
 
                             return (
                               <tr
@@ -317,7 +318,6 @@ export const ManageDevicePage = () => {
                                     : device.custom_fields?.POLLING === false
                                     ? "Disabled"
                                     : "—"}
-                                  {device.custom_fields?.POLLING || "—"}{" "}
                                 </td>
 
                                 <td className="px-4 py-3 text-center">
