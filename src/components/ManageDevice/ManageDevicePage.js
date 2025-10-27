@@ -1,24 +1,21 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { GizmoRequest } from "../../authConfig";
 import ProvisionLoading from "../Provisioning/ProvisionLoading";
-import { InteractionRequiredAuthError } from "@azure/msal-browser";
-
 import {
-  Button,
-  Autocomplete,
-  AutocompleteItem,
-  Spinner,
-} from "@nextui-org/react";
+  InteractionRequiredAuthError,
+  InteractionStatus,
+} from "@azure/msal-browser";
+
+import { Button, Autocomplete, AutocompleteItem } from "@nextui-org/react";
 import {
   CheckCircleIcon,
   XCircleIcon,
   ClipboardIcon,
 } from "@heroicons/react/24/solid";
 import { useMsal } from "@azure/msal-react";
-import { set } from "react-hook-form";
 
 export const ManageDevicePage = () => {
-  const { instance, accounts } = useMsal();
+  const { instance, accounts, inProgress } = useMsal();
   const request = {
     ...GizmoRequest,
     account: accounts[0],
@@ -51,10 +48,18 @@ export const ManageDevicePage = () => {
       setIsLoading(false);
     }
   }
+  useEffect(() => {
+    if (inProgress === InteractionStatus.None && accounts.length === 0) {
+      instance.ssoSilent(request).catch(() => {
+        instance.loginRedirect(request);
+      });
+    }
+  }, [inProgress, accounts, instance]);
 
   useEffect(() => {
     (async () => {
       setIsLoading(true);
+
       try {
         const token = await instance
           .acquireTokenSilent(request)
