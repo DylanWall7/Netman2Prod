@@ -76,7 +76,7 @@ export default function DemobeStepper() {
     },
     {
       id: 3,
-      label: "Delete Mist Devices",
+      label: "Unassign Mist Devices",
       url: `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/mist/site/${siteCode}/devices`,
     },
     {
