@@ -156,6 +156,8 @@ export const ProvAccordian = () => {
   };
   const handleValidate = async () => {
     setValidateLoading(true);
+    setPostStatus([]);
+    setDhcpStatus([]);
 
     try {
       ValidateSite({
