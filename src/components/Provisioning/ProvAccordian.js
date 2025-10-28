@@ -80,7 +80,6 @@ export const ProvAccordian = () => {
   const DeployDeviceURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/devices`;
   const netboxtomistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/devices`;
   const ModelURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/devicetypes`;
-  const nextIPURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/addresses`;
 
   const { instance, accounts } = useMsal();
   const request = {
@@ -669,6 +668,7 @@ export const ProvAccordian = () => {
   const handleRemoveDevice = (index) => {
     setDevices((prev) => prev.filter((_, i) => i !== index));
   };
+  const nextIPURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/addresses/${devices?.length}`;
 
   const validateGoodIcon = (
     <svg
@@ -992,6 +992,7 @@ export const ProvAccordian = () => {
                                     type="text"
                                     name="ip"
                                     value={device.ip}
+                                    disabled={device.model?.startsWith("SRX")}
                                     onChange={(event) =>
                                       handleInputChange(index, event)
                                     }
