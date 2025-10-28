@@ -994,7 +994,10 @@ export const ProvAccordian = () => {
                                     type="text"
                                     name="ip"
                                     value={device.ip}
-                                    disabled={device.model?.startsWith("SRX")}
+                                    disabled={
+                                      device.model?.startsWith("SRX") ||
+                                      device.model?.startsWith("AP")
+                                    }
                                     onChange={(event) =>
                                       handleInputChange(index, event)
                                     }
