@@ -130,7 +130,7 @@ export const ManageDevicePage = () => {
             <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-32 h-1 rounded-full bg-gradient-to-r from-pink-400 to-pink-500"></span>
           </h1>
           <p className="text-sm text-pink-400 mb-8">
-            Manage individual devices across Netbox and Mist.
+            Manage individual devices in Netbox.
           </p>
         </div>
 

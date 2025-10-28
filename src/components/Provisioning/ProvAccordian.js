@@ -631,12 +631,15 @@ export const ProvAccordian = () => {
     setDevices((prevDevices) => {
       const usedIps = prevDevices.map((d) => d.ip).filter(Boolean);
 
-      let freeIps = ips.filter((ip) => !usedIps.includes(ip));
+      let freeIps = ips?.filter((ip) => !usedIps.includes(ip));
 
       const updated = prevDevices.map((device) => {
         if (
           (/^.*_0$/.test(device.name ?? "") ||
             !/_\d+$/.test(device.name ?? "")) &&
+          !(
+            device.model?.startsWith("SRX") || device.model?.startsWith("AP")
+          ) &&
           !device.ip
         ) {
           const ip = freeIps.shift();
@@ -651,7 +654,7 @@ export const ProvAccordian = () => {
   };
   const handleClearIPs = () => {
     setDevices((prevDevices) => {
-      const usedIps = prevDevices.map((d) => d.ip).filter(Boolean);
+      const usedIps = prevDevices.map((d) => d?.ip).filter(Boolean);
       setAvailableIps((prevIps) => [...prevIps, ...usedIps]);
       return prevDevices.map((d) => ({ ...d, ip: "" }));
     });
@@ -1229,7 +1232,7 @@ export const ProvAccordian = () => {
                     ${
                       dhcpData.status === 0
                         ? "bg-red-800/30 text-red-200 before:content-['!'] before:text-red-400 before:font-bold before:mr-1 animate-pulse10s"
-                        : "bg-green-800/30 text-green-200 before:content-['✓'] before:text-green-400 before:font-bold before:mr-1 animate-bounceOnce"
+                        : "bg-green-800/30 text-green-200 before:content-['✓'] before:text-green-4 00 before:font-bold before:mr-1 animate-bounceOnce"
                     }`}
                         >
                           <span className="text-md">{message.msg}</span>
