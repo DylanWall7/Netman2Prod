@@ -13,12 +13,14 @@ import {
   useMsal,
 } from "@azure/msal-react";
 import { GizmoRequest } from "./authConfig";
+import { InteractionRequiredAuthError } from "@azure/msal-browser";
 
 import DemobeStepper from "./components/Demobe/DemobeStepper";
 import UserProfile from "./components/User/UserProfile";
 import LogsPage from "./components/LogPage/LogFile";
 import MobeBenchTable from "./components/Workbench/WorkbenchList";
 import { ManageDevicePage } from "./components/ManageDevice/ManageDevicePage";
+import { loginRequest } from "./authConfig";
 
 function App() {
   const url = `https://${process.env.REACT_APP_API_BASEURL}/api/mist/site/summary`;
@@ -30,6 +32,30 @@ function App() {
     ...GizmoRequest,
     account: accounts[0],
   };
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (accounts.length === 0) {
+          await instance.loginRedirect(loginRequest);
+          return;
+        }
+
+        const response = await instance.acquireTokenSilent({
+          ...loginRequest,
+          account: accounts[0],
+        });
+      } catch (error) {
+        if (error instanceof InteractionRequiredAuthError) {
+          await instance.loginRedirect(loginRequest);
+        } else {
+          console.error("error:", error);
+        }
+      }
+    };
+
+    initAuth();
+  }, [instance, accounts]);
 
   useEffect(() => {
     const fetchSites = async () => {

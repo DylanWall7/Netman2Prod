@@ -231,8 +231,8 @@ export const ManageDevicePage = () => {
                         <th className="px-4 py-3 font-semibold">IP Address</th>
                         <th className="px-4 py-3 font-semibold">Model</th>
                         <th className="px-4 py-3 font-semibold">Serial</th>
-                        <th className="px-4 py-3 font-semibold">Alert</th>
                         <th className="px-4 py-3 font-semibold">Polling</th>
+                        <th className="px-4 py-3 font-semibold">Alert</th>
 
                         <th className="px-4 py-3 font-semibold text-center">
                           Mist Status
@@ -315,14 +315,14 @@ export const ManageDevicePage = () => {
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
-                                  {device.custom_fields?.ALERT || "—"}
-                                </td>
-                                <td className="px-4 py-3">
                                   {device.custom_fields?.POLLING === true
                                     ? "Enabled"
                                     : device.custom_fields?.POLLING === false
                                     ? "Disabled"
                                     : "—"}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {device.custom_fields?.ALERT || "—"}
                                 </td>
 
                                 <td className="px-4 py-3 text-center">
