@@ -353,6 +353,60 @@ export const HomeLayout = () => {
               </div>
             </div>
           </Link>
+          <Link to="/opengear" className="col-span-1 row-span-1 group">
+            <div
+              className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
+               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
+               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
+               group-hover:border-pink-400"
+            >
+              <div className="flex-1">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
+                  Opengear Report
+                </h4>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
+                  View Opengear device status.
+                </p>
+              </div>
+              <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
+                <svg
+                  width="70"
+                  height="70"
+                  viewBox="0 0 48 48"
+                  enable-background="new 0 0 48 48"
+                  id="Layer_3"
+                  version="1.1"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="#000000"
+                >
+                  <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                  <g
+                    id="SVGRepo_tracerCarrier"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  ></g>
+                  <g id="SVGRepo_iconCarrier">
+                    <path
+                      d="M18.979,4.661c-2.212,0.573-4.284,1.494-6.129,2.735L9.857,4.402l-5.656,5.657l3.042,3.042 c-1.163,1.784-2.036,3.766-2.583,5.883H0v10.031h4.66c0.56,2.165,1.458,4.193,2.66,6.009l-3.118,3.118l5.656,5.656l3.119-3.118 c1.819,1.205,3.853,2.104,6.023,2.664V48h4.062v-8.047C14.665,39.465,8,32.52,8,24c0-8.521,6.665-15.465,15.062-15.953V0h-4.083 V4.661z"
+                      fill="#241F20"
+                    ></path>
+                    <path
+                      d="M15,24c0,4.654,3.532,8.482,8.062,8.951v-4.046C20.75,28.466,19,26.44,19,24c0-2.44,1.75-4.466,4.062-4.905 v-4.046C18.532,15.518,15,19.346,15,24z"
+                      fill="#241F20"
+                    ></path>
+                    <polygon
+                      fill="#241F20"
+                      points="36.957,2.026 36.957,0 26,0 26,8 36.957,8 36.957,6 43.936,6 43.936,40 26,40 26,42 26,43.334 26,48 47.936,48 47.936,2.026 "
+                    ></polygon>
+                    <polygon
+                      fill="#241F20"
+                      points="40.427,18.644 35.845,23.225 35.854,23.231 29.607,29.478 26,25.869 26,29.351 28.653,32.003 28.646,32.011 29.59,32.951 29.597,32.946 29.603,32.951 30.023,32.533 30.026,32.535 37.593,24.971 42.172,20.39 "
+                    ></polygon>
+                  </g>
+                </svg>
+              </div>
+            </div>
+          </Link>
         </div>
       </main>
     </div>

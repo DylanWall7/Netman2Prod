@@ -21,6 +21,8 @@ import LogsPage from "./components/LogPage/LogFile";
 import MobeBenchTable from "./components/Workbench/WorkbenchList";
 import { ManageDevicePage } from "./components/ManageDevice/ManageDevicePage";
 import { loginRequest } from "./authConfig";
+import DHCPManager from "./components/ManageDHCP/DHCPManager";
+import OpengearReports from "./components/Reports/OpengearReports";
 
 function App() {
   const url = `https://${process.env.REACT_APP_API_BASEURL}/api/mist/site/summary`;
@@ -142,6 +144,8 @@ function App() {
             {/* <Route path="logs" element={<LogsPage />} /> */}
             <Route path="workbench" element={<MobeBenchTable />} />
             <Route path="managedevices" element={<ManageDevicePage />}></Route>
+            <Route path="opengear" element={<OpengearReports />}></Route>
+            {/* <Route path="dhcpmanager" element={<DHCPManager />}></Route> */}
             {/* <Route path="ogtemplate" element={<OgTemplate />} /> */}
             {/* <Route
               path="mistassigntool/:siteCode"
