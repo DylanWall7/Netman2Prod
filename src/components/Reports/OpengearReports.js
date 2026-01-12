@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import { GizmoRequest } from "../../authConfig";
-import { Input, Button, Checkbox } from "@nextui-org/react";
+import {
+  Input,
+  Button,
+  Checkbox,
+  Pagination,
+  Select,
+  SelectItem,
+} from "@nextui-org/react";
 
 export default function OpengearReports() {
   const OGReportURL = `https://${process.env.REACT_APP_API_BASEURL}/api/reports/opengear/status`;
@@ -12,6 +19,8 @@ export default function OpengearReports() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterActive, setFilterActive] = useState(false);
   const [filterNotConfigured, setFilterNotConfigured] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
 
   const request = {
     ...GizmoRequest,
@@ -60,21 +69,34 @@ export default function OpengearReports() {
   }, [accounts.length]);
 
   const filteredOpengears = opengearList.filter((og) => {
-    // Search filter
     const matchesSearch = og.name
       ?.toLowerCase()
       .includes(searchTerm.toLowerCase());
 
-    // Active filter - both connections must be active
     const isActive = og.icmp?.status === 1 && og.snmp?.status === 1;
     const matchesActiveFilter = !filterActive || isActive;
 
-    // Not configured filter - at least one connection is not configured
     const hasNotConfigured = !og.icmp || !og.snmp;
     const matchesNotConfiguredFilter = !filterNotConfigured || hasNotConfigured;
 
     return matchesSearch && matchesActiveFilter && matchesNotConfiguredFilter;
   });
+
+  const totalPages = Math.ceil(filteredOpengears.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentItems = filteredOpengears.slice(startIndex, endIndex);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterActive, filterNotConfigured, itemsPerPage]);
+
+  const itemsPerPageOptions = [
+    { key: "50", label: "50" },
+    { key: "100", label: "100" },
+    { key: "500", label: "500" },
+    { key: "1000", label: "1000" },
+  ];
 
   const exportToCSV = () => {
     const headers = [
@@ -176,6 +198,21 @@ export default function OpengearReports() {
               <span className="text-gray-300 text-sm">Show Not Configured</span>
             </Checkbox>
 
+            <Select
+              label="Items per page"
+              size="sm"
+              selectedKeys={[String(itemsPerPage)]}
+              onChange={(e) => setItemsPerPage(Number(e.target.value))}
+              className="dark max-w-xs"
+              variant="bordered"
+            >
+              {itemsPerPageOptions.map((option) => (
+                <SelectItem key={option.key} value={option.key}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </Select>
+
             <Button
               color="secondary"
               size="sm"
@@ -190,21 +227,30 @@ export default function OpengearReports() {
         {!isLoading && opengearList.length > 0 && (
           <div className="text-center mb-4">
             <p className="text-sm text-gray-400">
-              {searchTerm ? (
+              {searchTerm || filterActive || filterNotConfigured ? (
                 <>
                   Showing{" "}
                   <span className="text-pink-400 font-semibold">
-                    {filteredOpengears.length}
+                    {startIndex + 1}-
+                    {Math.min(endIndex, filteredOpengears.length)}
                   </span>{" "}
                   of{" "}
                   <span className="text-pink-400 font-semibold">
+                    {filteredOpengears.length}
+                  </span>{" "}
+                  filtered devices (
+                  <span className="text-pink-400 font-semibold">
                     {opengearList.length}
                   </span>{" "}
-                  devices
+                  total)
                 </>
               ) : (
                 <>
-                  Total:{" "}
+                  Showing{" "}
+                  <span className="text-pink-400 font-semibold">
+                    {startIndex + 1}-{Math.min(endIndex, opengearList.length)}
+                  </span>{" "}
+                  of{" "}
                   <span className="text-pink-400 font-semibold">
                     {opengearList.length}
                   </span>{" "}
@@ -229,109 +275,126 @@ export default function OpengearReports() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOpengears.map((opengear, index) => (
-              <div
-                key={index}
-                className="bg-gray-900 border border-gray-800 rounded-xl shadow-lg p-6 transition-all duration-300"
-              >
-                <h3 className="text-lg font-semibold text-pink-400 mb-4 truncate">
-                  {opengear.name || "Unknown Opengear"}
-                </h3>
+          <div className="border-pink-200 border-large rounded-lg overflow-hidden">
+            <div className="bg-pink-300 px-6 py-3 border-b border-pink-200">
+              <div className="grid grid-cols-10 gap-1 text-xs font-semibold text-pink-400 uppercase tracking-wider">
+                <div className="col-span-3">Device Name</div>
+                <div className="col-span-2">4G Connection</div>
+                <div className="col-span-2">4G IP Address</div>
+                <div className="col-span-2">Wired Connection</div>
+                <div className="col-span-1">Wired IP</div>
+              </div>
+            </div>
 
-                <div className="space-y-4">
-                  <div className="border border-gray-700 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-gray-300 text-sm font-medium">
-                        4G Connection
-                      </span>
+            <div className="divide-y divide-pink-200">
+              {currentItems.map((opengear, index) => (
+                <div
+                  key={index}
+                  className="bg-pink-300 px-6 py-4 hover:bg-pink-700 transition-colors duration-150"
+                >
+                  <div className="grid grid-cols-10 gap-2 items-center">
+                    <div className="col-span-3">
+                      <h3 className="text-base font-semibold text-pink-400 truncate">
+                        {opengear.name || "Unknown Opengear"}
+                      </h3>
+                    </div>
+
+                    <div className="col-span-2">
                       <div className="flex items-center gap-2">
                         {opengear.icmp ? (
                           <>
                             <StatusDot status={opengear.icmp.status} />
-                            <span className="text-sm">
+                            <span className="text-sm text-pink-400">
                               {opengear.icmp.status === 1
                                 ? "Active"
                                 : "Inactive"}
                             </span>
                           </>
                         ) : (
-                          <span className="text-yellow-400 text-xs">
+                          <span className="text-yellow-400 text-sm">
                             Not Configured
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className="text-xs text-gray-400">
-                      IP:{" "}
+
+                    <div className="col-span-2">
                       {opengear.icmp?.ip ? (
                         opengear.icmp.status === 1 ? (
                           <a
                             href={`https://${opengear.icmp.ip}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                            className="text-blue-400 hover:text-blue-300 underline text-sm"
                           >
                             {opengear.icmp.ip}
                           </a>
                         ) : (
-                          <span className="text-gray-200">
+                          <span className="text-pink-400 text-sm">
                             {opengear.icmp.ip}
                           </span>
                         )
                       ) : (
-                        <span className="text-red-400">No IP</span>
+                        <span className="text-red-400 text-sm">No IP</span>
                       )}
                     </div>
-                  </div>
 
-                  <div className="border border-gray-700 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-gray-300 text-sm font-medium">
-                        Wired Connection
-                      </span>
+                    <div className="col-span-2">
                       <div className="flex items-center gap-2">
                         {opengear.snmp ? (
                           <>
                             <StatusDot status={opengear.snmp.status} />
-                            <span className="text-sm">
+                            <span className="text-sm text-pink-400">
                               {opengear.snmp.status === 1
                                 ? "Active"
                                 : "Inactive"}
                             </span>
                           </>
                         ) : (
-                          <span className="text-yellow-400 text-xs">
+                          <span className="text-yellow-400 text-sm">
                             Not Configured
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className="text-xs text-gray-400">
-                      IP:{" "}
+
+                    <div className="col-span-1">
                       {opengear.snmp?.ip ? (
                         opengear.snmp.status === 1 ? (
                           <a
                             href={`https://${opengear.snmp.ip}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                            className="text-blue-400 hover:text-blue-300 underline text-sm"
                           >
                             {opengear.snmp.ip}
                           </a>
                         ) : (
-                          <span className="text-gray-200">
+                          <span className="text-pink-400 text-sm">
                             {opengear.snmp.ip}
                           </span>
                         )
                       ) : (
-                        <span className="text-red-400">No IP</span>
+                        <span className="text-red-400 text-sm">No IP</span>
                       )}
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!isLoading && filteredOpengears.length > 0 && totalPages > 1 && (
+          <div className="flex justify-center mt-6">
+            <Pagination
+              total={totalPages}
+              page={currentPage}
+              onChange={setCurrentPage}
+              showControls
+              color="secondary"
+              size="lg"
+            />
           </div>
         )}
       </div>

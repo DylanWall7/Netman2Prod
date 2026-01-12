@@ -34,11 +34,11 @@ export const HomeLayout = () => {
                   width="70"
                   height="70"
                 >
-                  <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                  <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
                   <g
                     id="SVGRepo_tracerCarrier"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   ></g>
                   <g id="SVGRepo_iconCarrier">
                     {" "}
@@ -96,11 +96,11 @@ export const HomeLayout = () => {
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 512 512"
                 >
-                  <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                  <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
                   <g
                     id="SVGRepo_tracerCarrier"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   ></g>
                   <g id="SVGRepo_iconCarrier">
                     {" "}
@@ -172,11 +172,11 @@ export const HomeLayout = () => {
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 128 128"
                 >
-                  <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                  <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
                   <g
                     id="SVGRepo_tracerCarrier"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   ></g>
                   <g id="SVGRepo_iconCarrier">
                     <g id="_x31_"> </g>
@@ -219,11 +219,11 @@ export const HomeLayout = () => {
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="-351 153 256 256"
                 >
-                  <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                  <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
                   <g
                     id="SVGRepo_tracerCarrier"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   ></g>
                   <g id="SVGRepo_iconCarrier">
                     {" "}
@@ -263,11 +263,11 @@ export const HomeLayout = () => {
                   xmlns="http://www.w3.org/2000/svg"
                   fill="#000000"
                 >
-                  <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                  <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
                   <g
                     id="SVGRepo_tracerCarrier"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   ></g>
                   <g id="SVGRepo_iconCarrier">
                     <path
@@ -316,16 +316,16 @@ export const HomeLayout = () => {
                   width="70"
                   height="70"
                   viewBox="0 0 1024 1024"
-                  class="icon"
+                  className="icon"
                   version="1.1"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="#000000"
                 >
-                  <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                  <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
                   <g
                     id="SVGRepo_tracerCarrier"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   ></g>
                   <g id="SVGRepo_iconCarrier">
                     <path
@@ -362,7 +362,7 @@ export const HomeLayout = () => {
             >
               <div className="flex-1">
                 <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
-                  Opengear Report
+                  Opengear List
                 </h4>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
                   View Opengear device status.
@@ -370,38 +370,87 @@ export const HomeLayout = () => {
               </div>
               <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
                 <svg
-                  width="70"
-                  height="70"
-                  viewBox="0 0 48 48"
-                  enable-background="new 0 0 48 48"
-                  id="Layer_3"
-                  version="1.1"
-                  xmlns="http://www.w3.org/2000/svg"
                   fill="#000000"
+                  height="70px"
+                  width="70px"
+                  version="1.1"
+                  id="Layer_1"
+                  xmlns="http://www.w3.org/2000/svg"
+                  xmlnsXlink="http://www.w3.org/1999/xlink"
+                  viewBox="0 0 512 512"
+                  xmlSpace="preserve"
                 >
-                  <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                  <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
                   <g
                     id="SVGRepo_tracerCarrier"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   ></g>
                   <g id="SVGRepo_iconCarrier">
-                    <path
-                      d="M18.979,4.661c-2.212,0.573-4.284,1.494-6.129,2.735L9.857,4.402l-5.656,5.657l3.042,3.042 c-1.163,1.784-2.036,3.766-2.583,5.883H0v10.031h4.66c0.56,2.165,1.458,4.193,2.66,6.009l-3.118,3.118l5.656,5.656l3.119-3.118 c1.819,1.205,3.853,2.104,6.023,2.664V48h4.062v-8.047C14.665,39.465,8,32.52,8,24c0-8.521,6.665-15.465,15.062-15.953V0h-4.083 V4.661z"
-                      fill="#241F20"
-                    ></path>
-                    <path
-                      d="M15,24c0,4.654,3.532,8.482,8.062,8.951v-4.046C20.75,28.466,19,26.44,19,24c0-2.44,1.75-4.466,4.062-4.905 v-4.046C18.532,15.518,15,19.346,15,24z"
-                      fill="#241F20"
-                    ></path>
-                    <polygon
-                      fill="#241F20"
-                      points="36.957,2.026 36.957,0 26,0 26,8 36.957,8 36.957,6 43.936,6 43.936,40 26,40 26,42 26,43.334 26,48 47.936,48 47.936,2.026 "
-                    ></polygon>
-                    <polygon
-                      fill="#241F20"
-                      points="40.427,18.644 35.845,23.225 35.854,23.231 29.607,29.478 26,25.869 26,29.351 28.653,32.003 28.646,32.011 29.59,32.951 29.597,32.946 29.603,32.951 30.023,32.533 30.026,32.535 37.593,24.971 42.172,20.39 "
-                    ></polygon>
+                    {" "}
+                    <g>
+                      {" "}
+                      <g>
+                        {" "}
+                        <g>
+                          {" "}
+                          <path d="M512,256c0-130.994-98.398-238.995-225.308-254.162c-0.046-0.005-0.091-0.01-0.137-0.016 c-1.916-0.228-3.836-0.438-5.765-0.624c-0.348-0.034-0.698-0.061-1.046-0.093c-1.656-0.152-3.314-0.298-4.979-0.418 c-0.674-0.049-1.352-0.084-2.027-0.128c-1.37-0.088-2.739-0.18-4.114-0.247c-1.084-0.053-2.171-0.084-3.258-0.124 c-1-0.036-1.998-0.083-3.001-0.108C260.248,0.028,258.126,0,256,0s-4.248,0.028-6.365,0.081c-1.003,0.024-2,0.072-3.001,0.108 c-1.086,0.039-2.174,0.071-3.258,0.124c-1.376,0.067-2.744,0.158-4.114,0.247c-0.676,0.044-1.353,0.079-2.027,0.128 c-1.665,0.121-3.323,0.266-4.979,0.418c-0.349,0.032-0.698,0.059-1.046,0.093c-1.928,0.185-3.849,0.396-5.765,0.624 c-0.046,0.005-0.091,0.01-0.137,0.016C98.398,17.005,0,125.006,0,256c0,73.026,30.581,138.908,79.632,185.547 C119.15,485.493,184.636,512,256,512c20.143,0,40.204-2.531,60.175-7.389C330.808,509.4,346.432,512,362.667,512 C445.147,512,512,445.147,512,362.667c0-16.234-2.6-31.859-7.389-46.492C509.469,296.204,512,276.143,512,256z M469.321,258.153 c-27.103-27.655-64.87-44.819-106.654-44.819c-0.116,0-0.23,0.004-0.346,0.004c-0.71-21.795-2.506-42.48-5.328-61.77 c22.445-9.098,42.673-21.23,59.646-35.935c32.808,37.515,52.694,86.616,52.694,140.366 C469.333,256.718,469.329,257.435,469.321,258.153z M43.726,277.333h105.95c0.869,27.43,3.416,53.989,7.508,78.83 c-20.368,8.997-39.827,22.387-61.14,40.974C67.251,364.529,48.266,323.059,43.726,277.333z M95.361,115.634 c17.613,15.26,38.739,27.74,62.204,36.942c-4.319,25.479-7.01,53.117-7.897,82.091H43.726 C48.23,189.302,66.948,148.123,95.361,115.634z M256.004,42.675c19.798,0,39.656,29.689,51.885,79.64 C291.433,126.016,273.987,128,256,128c-16.675,0-32.886-1.707-48.274-4.904C220.49,74.006,239.082,42.675,256.004,42.675z M166.783,110.249c-14.881-6.441-28.346-14.469-39.888-23.838c18.593-14.22,39.28-25.24,61.319-32.666 C179.805,69.746,172.613,88.814,166.783,110.249z M328.832,55.513c20.153,7.364,39.105,17.769,56.272,30.898 c-10.691,8.679-23.034,16.208-36.622,22.391C343.259,88.604,336.67,70.685,328.832,55.513z M127.523,426.308 c30.611-26.112,55.088-38.181,87.462-41.395c4.907,32.857,20.518,62.208,43.168,84.407c-0.718,0.008-1.435,0.012-2.153,0.012 C207.757,469.333,163.26,453.311,127.523,426.308z M214.75,342.097c-5.599,0.442-11.022,1.082-16.294,1.932 c-3.238-21.069-5.303-43.51-6.087-66.697h47.741C226.948,296.201,218.035,318.249,214.75,342.097z M283.974,235.735 c-2.092-0.685-4.32-1.068-6.641-1.068h-84.952c0.873-24.79,3.234-48.29,6.685-69.799c18.263,3.795,37.375,5.799,56.933,5.799 c20.521,0,40.552-2.201,59.625-6.369c2.239,17.044,3.695,35.545,4.189,55.285C307.068,223.395,295.039,228.861,283.974,235.735z M362.667,469.333c-12.541,0-24.573-2.171-35.75-6.145c-0.631-0.307-1.28-0.597-1.962-0.856 c-37.297-14.128-63.6-47.797-68.226-87.2c-0.005-0.046-0.01-0.092-0.016-0.138c-0.298-2.568-0.499-5.162-0.61-7.775 c-0.011-0.266-0.021-0.532-0.03-0.799c-0.044-1.247-0.073-2.497-0.073-3.753C256,303.75,303.75,256,362.667,256 c1.256,0,2.506,0.029,3.753,0.073c0.266,0.009,0.533,0.019,0.799,0.03c2.613,0.111,5.207,0.312,7.775,0.61 c0.046,0.005,0.092,0.01,0.138,0.016c39.404,4.625,73.072,30.929,87.2,68.226c0.258,0.682,0.548,1.332,0.856,1.962 c3.974,11.177,6.145,23.209,6.145,35.75C469.333,421.583,421.583,469.333,362.667,469.333z"></path>{" "}
+                          <path d="M341.333,298.667C329.551,298.667,320,308.218,320,320s9.551,21.333,21.333,21.333C364.901,341.333,384,360.433,384,384 c0,11.782,9.551,21.333,21.333,21.333c11.782,0,21.333-9.551,21.333-21.333C426.667,336.869,388.465,298.667,341.333,298.667z"></path>{" "}
+                          <path d="M341.333,362.667C329.557,362.667,320,372.224,320,384s9.557,21.333,21.333,21.333c11.776,0,21.333-9.557,21.333-21.333 S353.109,362.667,341.333,362.667z"></path>{" "}
+                        </g>{" "}
+                      </g>{" "}
+                    </g>{" "}
+                  </g>
+                </svg>
+              </div>
+            </div>
+          </Link>
+          <Link to="/Reports" className="col-span-1 row-span-1 group">
+            <div
+              className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
+               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
+               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
+               group-hover:border-pink-400"
+            >
+              <div className="flex-1">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
+                  Network Reports
+                </h4>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
+                  View Network Reports
+                </p>
+              </div>
+              <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
+                <svg
+                  fill="#000000"
+                  viewBox="0 0 32 32"
+                  id="icon"
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="70"
+                  height="70"
+                >
+                  <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
+                  <g
+                    id="SVGRepo_tracerCarrier"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  ></g>
+                  <g id="SVGRepo_iconCarrier">
+                    <defs>
+                      <style>{`.cls-1{fill:none;}`}</style>
+                    </defs>
+                    <title>report</title>
+                    <rect x="15" y="20" width="2" height="4"></rect>
+                    <rect x="20" y="18" width="2" height="6"></rect>
+                    <rect x="10" y="14" width="2" height="10"></rect>
+                    <path d="M25,5H22V4a2,2,0,0,0-2-2H12a2,2,0,0,0-2,2V5H7A2,2,0,0,0,5,7V28a2,2,0,0,0,2,2H25a2,2,0,0,0,2-2V7A2,2,0,0,0,25,5ZM12,4h8V8H12ZM25,28H7V7h3v3H22V7h3Z"></path>
+                    <rect
+                      id="_Transparent_Rectangle_"
+                      data-name="&lt;Transparent Rectangle&gt;"
+                      className="cls-1"
+                      width="32"
+                      height="32"
+                    ></rect>
                   </g>
                 </svg>
               </div>
