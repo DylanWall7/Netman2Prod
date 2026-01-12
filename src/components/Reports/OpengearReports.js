@@ -386,7 +386,7 @@ export default function OpengearReports() {
         )}
 
         {!isLoading && filteredOpengears.length > 0 && totalPages > 1 && (
-          <div className="flex justify-center mt-6">
+          <div className="flex justify-center mt-6 dark">
             <Pagination
               total={totalPages}
               page={currentPage}
@@ -394,6 +394,9 @@ export default function OpengearReports() {
               showControls
               color="secondary"
               size="lg"
+              classNames={{
+                cursor: "bg-pink-500 text-white",
+              }}
             />
           </div>
         )}
