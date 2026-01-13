@@ -2,9 +2,16 @@ import React, { useState, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import { GizmoRequest } from "../../authConfig";
 import ProvisionLoading from "../Provisioning/ProvisionLoading";
-import { Autocomplete, AutocompleteItem, skeleton } from "@nextui-org/react";
+import {
+  Autocomplete,
+  AutocompleteItem,
+  Select,
+  SelectItem,
+} from "@nextui-org/react";
+import { useSearchParams } from "react-router-dom";
 
 export default function DemobeStepper() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [currentStep, setCurrentStep] = useState(0);
   const [siteCode, setSiteCode] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -14,16 +21,36 @@ export default function DemobeStepper() {
   const [siteList, setSiteList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const siteurl = `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/snowlocations`;
+  const [selectedDays, setSelectedDays] = useState(() => {
+    const daysParam = searchParams.get("days");
+    return daysParam ? parseInt(daysParam, 10) : 90;
+  });
+
+  const siteurl = `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/snowlocations/${selectedDays}`;
 
   const { instance, accounts } = useMsal();
   const request = {
     ...GizmoRequest,
     account: accounts[0],
   };
+
+  const daysOptions = [
+    { key: "30", label: "30 Days" },
+    { key: "60", label: "60 Days" },
+    { key: "90", label: "90 Days" },
+    { key: "180", label: "180 Days" },
+    { key: "365", label: "365 Days" },
+  ];
   function resetforms() {
     setPostStatus("");
   }
+
+  const handleDaysChange = (e) => {
+    const newDays = Number(e.target.value);
+    setSelectedDays(newDays);
+    setSearchParams({ days: newDays.toString() });
+  };
+
   useEffect(() => {
     (async () => {
       setIsLoading(true);
@@ -39,7 +66,7 @@ export default function DemobeStepper() {
         setLoading(false);
       }
     })();
-  }, [accounts.length === 0]);
+  }, [accounts.length === 0, selectedDays]);
 
   async function GetAllSites({ token }) {
     const headers = new Headers();
@@ -176,25 +203,42 @@ export default function DemobeStepper() {
           <h2 className="text-xl font-bold mb-4">{steps[currentStep].label}</h2>
 
           {currentStep === 0 ? (
-            <div className=" p-2 ">
-              <div className="dark text-foreground  ">
-                <Autocomplete
-                  size="sm"
-                  label="Site Code (From ServiceNow)"
-                  menuTrigger="input"
-                  placeholder="Site Code"
-                  className="max-w-sm text-pink-400"
-                  variant="bordered"
-                  onInputChange={(value) => {
-                    setSiteCode(value);
-                  }}
-                >
-                  {siteList.data?.map((site) => (
-                    <AutocompleteItem value={site} key={site.id}>
-                      {site ? site : "No Site Code"}
-                    </AutocompleteItem>
-                  ))}
-                </Autocomplete>
+            <div className="p-2">
+              <div className="dark text-foreground flex gap-3 items-start">
+                <div className="flex-shrink-0" style={{ width: "140px" }}>
+                  <Select
+                    label="Closed in Last"
+                    size="sm"
+                    selectedKeys={[String(selectedDays)]}
+                    onChange={handleDaysChange}
+                    variant="bordered"
+                  >
+                    {daysOptions.map((option) => (
+                      <SelectItem key={option.key} value={option.key}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <Autocomplete
+                    size="sm"
+                    label="Site Code (From ServiceNow)"
+                    menuTrigger="input"
+                    placeholder="Site Code"
+                    className="text-pink-400"
+                    variant="bordered"
+                    onInputChange={(value) => {
+                      setSiteCode(value);
+                    }}
+                  >
+                    {siteList.data?.map((site) => (
+                      <AutocompleteItem value={site} key={site.id}>
+                        {site ? site : "No Site Code"}
+                      </AutocompleteItem>
+                    ))}
+                  </Autocomplete>
+                </div>
               </div>
             </div>
           ) : (
