@@ -10,6 +10,7 @@ export default function NetworkSearch() {
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [lastSearchedTerm, setLastSearchedTerm] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
   const [expandedOutputs, setExpandedOutputs] = useState({});
 
@@ -53,6 +54,7 @@ export default function NetworkSearch() {
     setIsLoading(true);
     setHasSearched(false);
     setExpandedOutputs({});
+    setLastSearchedTerm(searchTerm);
     try {
       const token = await instance
         .acquireTokenSilent(request)
@@ -102,7 +104,7 @@ export default function NetworkSearch() {
     <div className="p-6 text-gray-100">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold leading-tight mb-2 pb-4 relative">
+          <h1 className="text-3xl font-bold text-gray-900 leading-tight mb-2 pb-4 relative">
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-pink-500">
               Network Search
             </span>
@@ -173,7 +175,7 @@ export default function NetworkSearch() {
         ) : hasSearched && searchResults.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
             <p className="text-gray-400 text-sm max-w-sm">
-              No results found for "{searchTerm}"
+              No results found for "{lastSearchedTerm}"
             </p>
           </div>
         ) : hasSearched && searchResults.length > 0 ? (
@@ -233,7 +235,7 @@ export default function NetworkSearch() {
                   </div>
                   <div>
                     <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">
-                      Device ID
+                      Netbox ID
                     </div>
                     <div className="text-sm font-mono text-gray-200">
                       {highlightText(String(result.id), searchTerm)}
