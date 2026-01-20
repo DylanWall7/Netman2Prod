@@ -1,4 +1,5 @@
 /** @type {import('tailwindcss').Config} */
+
 const { nextui } = require("@nextui-org/react");
 const { color } = require("framer-motion");
 

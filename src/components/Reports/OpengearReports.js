@@ -16,6 +16,7 @@ export default function OpengearReports() {
   const { instance, accounts } = useMsal();
   const [opengearList, setOpengearList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterActive, setFilterActive] = useState(false);
   const [filterNotConfigured, setFilterNotConfigured] = useState(false);
@@ -25,6 +26,22 @@ export default function OpengearReports() {
   const request = {
     ...GizmoRequest,
     account: accounts[0],
+  };
+
+  const getAccessToken = async () => {
+    try {
+      const response = await instance.acquireTokenSilent(request);
+      return response.accessToken;
+    } catch (silentError) {
+      console.warn("Silent token acquisition failed, trying interactive:", silentError);
+      try {
+        const response = await instance.acquireTokenPopup(request);
+        return response.accessToken;
+      } catch (interactiveError) {
+        console.error("Interactive token acquisition failed:", interactiveError);
+        throw new Error("Unable to authenticate. Please try logging out and back in.");
+      }
+    }
   };
 
   const fetchOpengearReports = async ({ token }) => {
@@ -39,30 +56,32 @@ export default function OpengearReports() {
       headers: headers,
     };
 
-    return fetch(OGReportURL, options)
-      .then(async (response) => {
-        let data = await response.json();
-        setOpengearList(data);
-        setIsLoading(false);
-      })
-      .catch((error) => {
-        console.error("Error:", error);
-        setIsLoading(false);
-      });
+    const response = await fetch(OGReportURL, options);
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error("Session expired. Please refresh or log in again.");
+      }
+      throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    setOpengearList(data);
   };
 
   const handleRefresh = async () => {
     if (accounts.length === 0) return;
 
     setIsLoading(true);
+    setError(null);
     try {
-      const token = await instance
-        .acquireTokenSilent(request)
-        .then((response) => response.accessToken);
+      const token = await getAccessToken();
       await fetchOpengearReports({ token });
     } catch (err) {
+      console.error("Error refreshing:", err);
+      setError(err.message || "Failed to load data. Please try again.");
+    } finally {
       setIsLoading(false);
-      console.error({ err });
     }
   };
 
@@ -71,14 +90,15 @@ export default function OpengearReports() {
       if (accounts.length === 0) return;
 
       setIsLoading(true);
+      setError(null);
       try {
-        const token = await instance
-          .acquireTokenSilent(request)
-          .then((response) => response.accessToken);
+        const token = await getAccessToken();
         await fetchOpengearReports({ token });
       } catch (err) {
+        console.error("Error loading:", err);
+        setError(err.message || "Failed to load data. Please try again.");
+      } finally {
         setIsLoading(false);
-        console.error({ err });
       }
     })();
   }, [accounts.length]);
@@ -301,7 +321,49 @@ export default function OpengearReports() {
 
         {isLoading ? (
           <div className="flex justify-center items-center py-20">
-            <div className="text-pink-400 text-lg">Loading...</div>
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <style>{`.spinner_S1WN{animation:spinner_MGfb .8s linear infinite;animation-delay:-.8s}.spinner_Km9P{animation-delay:-.65s}.spinner_JApP{animation-delay:-.5s}@keyframes spinner_MGfb{93.75%,100%{opacity:.2}}`}</style>
+              <circle
+                className="spinner_S1WN"
+                cx="4"
+                cy="12"
+                r="3"
+                fill="#3bd6ce"
+              />
+              <circle
+                className="spinner_S1WN spinner_Km9P"
+                cx="12"
+                cy="12"
+                r="3"
+                fill="#3bd6ce"
+              />
+              <circle
+                className="spinner_S1WN spinner_JApP"
+                cx="20"
+                cy="12"
+                r="3"
+                fill="#3bd6ce"
+              />
+            </svg>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+            <div className="text-6xl">⚠️</div>
+            <p className="text-red-400 text-sm max-w-sm font-semibold">
+              {error}
+            </p>
+            <Button
+              color="primary"
+              size="sm"
+              onPress={handleRefresh}
+            >
+              Try Again
+            </Button>
           </div>
         ) : filteredOpengears.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">

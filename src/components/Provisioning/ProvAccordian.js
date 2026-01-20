@@ -605,7 +605,7 @@ export const ProvAccordian = () => {
   };
 
   const [devices, setDevices] = React.useState([
-    { serial: "", name: "", model: "", ip: "" },
+    { serial: "", name: "", model: "", ip: "", oob_ip: "" },
   ]);
 
   const handleInputChange = (index, event) => {
@@ -657,14 +657,14 @@ export const ProvAccordian = () => {
     setDevices((prevDevices) => {
       const usedIps = prevDevices.map((d) => d?.ip).filter(Boolean);
       setAvailableIps((prevIps) => [...prevIps, ...usedIps]);
-      return prevDevices.map((d) => ({ ...d, ip: "" }));
+      return prevDevices.map((d) => ({ ...d, ip: "", oob_ip: "" }));
     });
     setAvailableIps([]);
   };
 
   const handleAddDevice = () => {
     if (devices?.length >= 20) return;
-    setDevices([...devices, { serial: "", name: "", model: "", ip: "" }]);
+    setDevices([...devices, { serial: "", name: "", model: "", ip: "", oob_ip: "" }]);
   };
 
   const handleRemoveDevice = (index) => {
@@ -1003,6 +1003,32 @@ export const ProvAccordian = () => {
                                     }
                                     placeholder="IP Address"
                                   />
+                                  {device.model?.startsWith("ACM") && (
+                                    <Input
+                                      classNames={{
+                                        label: "text-pink-400",
+                                        input: ["placeholder:text-pink-400"],
+                                        innerWrapper: "bg-transparent",
+                                        inputWrapper: [
+                                          "bg-pink-300",
+                                          "border-zinc-600",
+                                          "rounded-lg",
+                                          "border",
+                                          "border-2",
+                                          "border-opacity-70",
+                                          "hover:border-zinc-500",
+                                          "h-full",
+                                        ],
+                                      }}
+                                      type="text"
+                                      name="oob_ip"
+                                      value={device.oob_ip}
+                                      onChange={(event) =>
+                                        handleInputChange(index, event)
+                                      }
+                                      placeholder="4G OOB IP"
+                                    />
+                                  )}
                                   <Button
                                     onPress={() => handleRemoveDevice(index)}
                                     isIconOnly
@@ -1234,13 +1260,42 @@ export const ProvAccordian = () => {
                       {vlanLog.map((message, msgIndex) => (
                         <li
                           key={msgIndex}
-                          className={`flex items-center gap-2 p-2 rounded-lg transition-all duration-300
+                          className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-300
                     ${
                       dhcpData.status === 0
-                        ? "bg-red-800/30 text-red-200 before:content-['!'] before:text-red-400 before:font-bold before:mr-1 animate-pulse10s"
-                        : "bg-green-800/30 text-green-200 before:content-['✓'] before:text-green-4 00 before:font-bold before:mr-1 animate-bounceOnce"
+                        ? "bg-red-800/30 text-red-200 animate-pulse10s"
+                        : "bg-green-800/30 text-green-200 animate-bounceOnce"
                     }`}
                         >
+                          {dhcpData.status === 0 ? (
+                            <svg
+                              className="w-5 h-5 text-red-400 flex-shrink-0 font-bold"
+                              fill="currentColor"
+                              viewBox="0 0 24 24"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M12 4a1.5 1.5 0 011.5 1.5v9a1.5 1.5 0 01-3 0v-9A1.5 1.5 0 0112 4zm0 14.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              className="w-5 h-5 text-green-400 flex-shrink-0"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                          )}
                           <span className="text-md">{message.msg}</span>
                         </li>
                       ))}
@@ -1286,10 +1341,39 @@ export const ProvAccordian = () => {
                         className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-3
                     ${
                       message.status === 0
-                        ? "bg-red-800/30 text-red-200 animate-pulse10s before:content-['!'] before:text-red-400 before:font-bold before:mr-2"
-                        : "bg-green-800/30 text-green-200 animate-bounceOnce before:content-['✓'] before:text-green-400 before:font-bold before:mr-2"
+                        ? "bg-red-800/30 text-red-200 animate-pulse10s"
+                        : "bg-green-800/30 text-green-200 animate-bounceOnce"
                     }`}
                       >
+                        {message.status === 0 ? (
+                          <svg
+                            className="w-5 h-5 text-red-400 flex-shrink-0 font-bold"
+                            fill="currentColor"
+                            viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M12 4a1.5 1.5 0 011.5 1.5v9a1.5 1.5 0 01-3 0v-9A1.5 1.5 0 0112 4zm0 14.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="w-5 h-5 text-green-400 flex-shrink-0"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        )}
                         <span className="text-md">{message.msg}</span>
                       </li>
                     ))}
