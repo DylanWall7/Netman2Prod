@@ -47,6 +47,10 @@ export const ProvAccordian = () => {
     status: null,
     logs: {},
   });
+  const [fillIpData, setFillIpData] = useState({
+    status: null,
+    log: [],
+  });
 
   const {
     register: registerDHCP,
@@ -438,7 +442,7 @@ export const ProvAccordian = () => {
     });
 
     const data = await Promise.all(
-      allresponses.map((response) => response.json())
+      allresponses.map((response) => response.json()),
     );
     const vlanKeys = ["vlan1", "vlan5", "vlan9", "vlan13"];
     const logs = vlanKeys.reduce((acc, key, i) => {
@@ -501,14 +505,18 @@ export const ProvAccordian = () => {
 
       setNextIpLoading(false);
 
-      setAvailableIps(nextipList.data);
+      setAvailableIps(nextipList.data?.switches || []);
 
-      return nextipList.data;
+      return nextipList;
     } catch (error) {
       console.error("Error:", error);
       setNextIpLoading(false);
       setLoading(false);
-      return [];
+      return {
+        status: 0,
+        log: [{ msg: "Failed to fetch available IPs" }],
+        data: { routers: [], switches: [] },
+      };
     }
   }
 
@@ -627,29 +635,47 @@ export const ProvAccordian = () => {
   //   });
   // };
   const handleFillIPs = async () => {
-    const ips = await handleGetAvailableIps();
+    resetforms();
+    setFillIpData({ status: null, log: [] });
+    const response = await handleGetAvailableIps();
+
+    if (response?.status === 0) {
+      setCreateNetbox(response?.log);
+      setPostStatus(response?.status);
+      return;
+    }
+
+    const ipData = response?.data;
+    setFillIpData({ status: response?.status, log: response?.log || [] });
 
     setDevices((prevDevices) => {
       const usedIps = prevDevices.map((d) => d.ip).filter(Boolean);
 
-      let freeIps = ips?.filter((ip) => !usedIps.includes(ip));
+      let routerIps =
+        ipData?.routers?.filter((ip) => !usedIps.includes(ip)) || [];
+      let switchIps =
+        ipData?.switches?.filter((ip) => !usedIps.includes(ip)) || [];
 
       const updated = prevDevices.map((device) => {
-        if (
-          (/^.*_0$/.test(device.name ?? "") ||
-            !/_\d+$/.test(device.name ?? "")) &&
-          !(
-            device.model?.startsWith("SRX") || device.model?.startsWith("AP")
-          ) &&
-          !device.ip
-        ) {
-          const ip = freeIps.shift();
-          return ip ? { ...device, ip } : device;
+        if (!device.ip) {
+          if (device.model?.startsWith("SRX")) {
+            const ip = routerIps.shift();
+            return ip ? { ...device, ip } : device;
+          }
+
+          if (
+            (/^.*_0$/.test(device.name ?? "") ||
+              !/_\d+$/.test(device.name ?? "")) &&
+            !device.model?.startsWith("AP")
+          ) {
+            const ip = switchIps.shift();
+            return ip ? { ...device, ip } : device;
+          }
         }
         return device;
       });
 
-      setAvailableIps(freeIps);
+      setAvailableIps(switchIps);
       return updated;
     });
   };
@@ -664,7 +690,10 @@ export const ProvAccordian = () => {
 
   const handleAddDevice = () => {
     if (devices?.length >= 20) return;
-    setDevices([...devices, { serial: "", name: "", model: "", ip: "", oob_ip: "" }]);
+    setDevices([
+      ...devices,
+      { serial: "", name: "", model: "", ip: "", oob_ip: "" },
+    ]);
   };
 
   const handleRemoveDevice = (index) => {
@@ -994,10 +1023,7 @@ export const ProvAccordian = () => {
                                     type="text"
                                     name="ip"
                                     value={device.ip}
-                                    disabled={
-                                      device.model?.startsWith("SRX") ||
-                                      device.model?.startsWith("AP")
-                                    }
+                                    disabled={device.model?.startsWith("AP")}
                                     onChange={(event) =>
                                       handleInputChange(index, event)
                                     }
@@ -1089,7 +1115,7 @@ export const ProvAccordian = () => {
                                         onPress={() => {
                                           setDevices([]);
                                           document.getElementById(
-                                            "csvUpload"
+                                            "csvUpload",
                                           ).value = "";
                                         }}
                                         className="relative flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-500 hover:to-orange-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
@@ -1300,7 +1326,7 @@ export const ProvAccordian = () => {
                         </li>
                       ))}
                     </ul>
-                  ) : null
+                  ) : null,
                 )}
               </div>
             </div>
