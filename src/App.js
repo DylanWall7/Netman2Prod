@@ -24,6 +24,56 @@ import OpengearReports from "./components/Reports/OpengearReports";
 import ReportLandingPage from "./components/Reports/ReportLandingPage";
 import NetworkSearch from "./components/NetworkSearch/NetworkSearch";
 
+const Unauthorized = () => {
+  return (
+    <div className="pt-40 grid place-items-center px-4">
+      <div className="text-center space-y-6">
+        <div className="flex justify-center">
+          <svg
+            className="w-16 h-16 text-red-500"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+            />
+          </svg>
+        </div>
+        <h1 className="text-3xl sm:text-4xl font-bold text-gray-100">
+          Access Denied
+        </h1>
+        <p className="text-gray-400">
+          You are not authorized to access this page.
+        </p>
+        <a
+          href="/"
+          className="inline-block mt-4 px-6 py-2 bg-pink-600 text-black rounded-lg hover:bg-pink-700 hover:text-pink-600 transition-colors"
+        >
+          Return to Home
+        </a>
+      </div>
+    </div>
+  );
+};
+
+const ProtectedRoute = ({ children, allowedRoles, allowNoRoles = false }) => {
+  const { accounts } = useMsal();
+  const roles = accounts[0]?.idTokenClaims?.roles || [];
+
+  const hasRole = allowedRoles.some((role) => roles.includes(role));
+  const hasNoRoles = roles.length === 0 && allowNoRoles;
+
+  if (!hasRole && !hasNoRoles) {
+    return <Unauthorized />;
+  }
+
+  return children;
+};
+
 function App() {
   const url = `https://${process.env.REACT_APP_API_BASEURL}/api/mist/site/summary`;
   const [siteList, setSiteList] = useState([]);
@@ -94,7 +144,17 @@ function App() {
           </div> */}
 
           <Routes>
-            <Route path="/" element={<HomeLayout />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute
+                  allowedRoles={["Engineer", "FieldServices"]}
+                  allowNoRoles={true}
+                >
+                  <HomeLayout />
+                </ProtectedRoute>
+              }
+            />
 
             {/* <Route path="mistassigntool" element={<MainAssign />}></Route> */}
 
@@ -104,25 +164,88 @@ function App() {
             ></Route> */}
             <Route
               path="provision"
-              element={<ProvAccordian siteList={siteList} />}
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <ProvAccordian siteList={siteList} />
+                </ProtectedRoute>
+              }
             ></Route>
             {/* <Route
               path="step2"
               element={<DeployDHCP siteList={siteList} />}
             ></Route> */}
-            <Route path="validate" element={<Validate />}></Route>
+            <Route
+              path="validate"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <Validate />
+                </ProtectedRoute>
+              }
+            ></Route>
             {/* <Route path="ping" element={<Ping />} /> */}
             {/* <Route path="terminallist" element={<TerminalList />} /> */}
             {/* <Route path="devicesearch" element={<SearchPage />} /> */}
             {/* <Route path="/device/:name" element={<DevicePage />} /> */}
-            <Route path="demobe" element={<DemobeStepper />} />
-            <Route path="profile" element={<UserProfile />} />
+            <Route
+              path="demobe"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <DemobeStepper />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="profile"
+              element={
+                <ProtectedRoute
+                  allowedRoles={["Engineer", "FieldServices"]}
+                  allowNoRoles={true}
+                >
+                  <UserProfile />
+                </ProtectedRoute>
+              }
+            />
             {/* <Route path="logs" element={<LogsPage />} /> */}
-            <Route path="workbench" element={<MobeBenchTable />} />
-            <Route path="managedevices" element={<ManageDevicePage />}></Route>
-            <Route path="opengear" element={<OpengearReports />}></Route>
-            <Route path="reports" element={<ReportLandingPage />}></Route>
-            <Route path="networksearch" element={<NetworkSearch />}></Route>
+            <Route
+              path="workbench"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <MobeBenchTable />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="managedevices"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <ManageDevicePage />
+                </ProtectedRoute>
+              }
+            ></Route>
+            <Route
+              path="opengear"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer", "FieldServices"]}>
+                  <OpengearReports />
+                </ProtectedRoute>
+              }
+            ></Route>
+            <Route
+              path="reports"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <ReportLandingPage />
+                </ProtectedRoute>
+              }
+            ></Route>
+            <Route
+              path="networksearch"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <NetworkSearch />
+                </ProtectedRoute>
+              }
+            ></Route>
             {/* <Route path="dhcpmanager" element={<DHCPManager />}></Route> */}
             {/* <Route path="ogtemplate" element={<OgTemplate />} /> */}
             {/* <Route
@@ -156,7 +279,6 @@ function App() {
           <div className="pt-40 grid place-items-center  px-4">
             <div className="text-center space-y-6">
               <div className="flex justify-center">
-                {/* Warning/Caution Icon */}
                 <svg
                   className="w-16 h-16 text-yellow-500 animate-pulse"
                   fill="none"
