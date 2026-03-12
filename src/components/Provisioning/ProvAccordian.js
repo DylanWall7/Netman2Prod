@@ -10,6 +10,11 @@ import {
   AccordionItem,
   Select,
   SelectItem,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
 } from "@nextui-org/react";
 import ProvisionLoading from "./ProvisionLoading";
 import { GizmoRequest } from "../../authConfig";
@@ -27,6 +32,10 @@ export const ProvAccordian = () => {
   const [validation, setValidation] = useState([]);
   const [validateLoading, setValidateLoading] = React.useState(false);
   const [dhcpLoading, setDhcpLoading] = React.useState("");
+  const [dhcpJsonModal, setDhcpJsonModal] = React.useState(false);
+  const [dhcpJsonData, setDhcpJsonData] = React.useState(null);
+  const [dhcpJsonLoading, setDhcpJsonLoading] = React.useState(false);
+  const [dhcpCopied, setDhcpCopied] = React.useState(false);
   const [mistLoading, setMistLoading] = React.useState("");
   const [vlan1, setVlan1] = React.useState([]);
   const [vlan5, setVlan5] = React.useState([]);
@@ -43,10 +52,7 @@ export const ProvAccordian = () => {
   const [ipIndex, setIpIndex] = useState(0);
   const [nextIpLoading, setNextIpLoading] = React.useState(false);
 
-  const [dhcpData, setDhcpData] = useState({
-    status: null,
-    logs: {},
-  });
+  // const [dhcpData, setDhcpData] = useState({ status: null, logs: {} }); // re-enable with deploy
   const [fillIpData, setFillIpData] = useState({
     status: null,
     log: [],
@@ -76,10 +82,11 @@ export const ProvAccordian = () => {
   const url = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/snowlocations`;
   const NetboxURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}`;
   const ValidateURL = `https://${process.env.REACT_APP_API_BASEURL}/api/validation/netboxsite/${siteCodeSelected}`;
-  const vlan1URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/1`;
-  const vlan5URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/5`;
-  const vlan9URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/9`;
-  const vlan13URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/13`;
+  // const vlan1URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/1`;
+  // const vlan5URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/5`;
+  // const vlan9URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/9`;
+  // const vlan13URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/13`;
+  const dhcpGenerateURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/generate/${siteCodeSelected}`;
   const CreateMistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}`;
   const DeployDeviceURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/devices`;
   const netboxtomistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/devices`;
@@ -99,10 +106,7 @@ export const ProvAccordian = () => {
     setVlan5([]);
     setVlan9([]);
     setVlan13([]);
-    setDhcpData({
-      status: null,
-      logs: {},
-    });
+    // setDhcpData({ status: null, logs: {} }); // re-enable with deploy
   }
 
   useEffect(() => {
@@ -174,21 +178,34 @@ export const ProvAccordian = () => {
       setLoading(false);
     }
   };
-  const handleDHCP = async () => {
-    resetforms();
-    setDhcpLoading(true);
-    setSeletonLoading(true);
+  // const handleDHCP = async () => {
+  //   resetforms();
+  //   setDhcpLoading(true);
+  //   setSeletonLoading(true);
+  //   try {
+  //     await CreatDHCPAllVlan({
+  //       token: await instance.acquireTokenSilent(request).then((response) => {
+  //         return response.accessToken;
+  //       }),
+  //     });
+  //   } catch (err) {
+  //     console.log({ err });
+  //     setDhcpLoading(false);
+  //     setSeletonLoading(false);
+  //     setLoading(false);
+  //   }
+  // };
+
+  const handleGenerateDHCP = async () => {
+    setDhcpJsonLoading(true);
     try {
-      await CreatDHCPAllVlan({
-        token: await instance.acquireTokenSilent(request).then((response) => {
-          return response.accessToken;
-        }),
-      });
+      const token = await instance
+        .acquireTokenSilent(request)
+        .then((res) => res.accessToken);
+      await GenerateDHCPJson({ token });
     } catch (err) {
       console.log({ err });
-      setDhcpLoading(false);
-      setSeletonLoading(false);
-      setLoading(false);
+      setDhcpJsonLoading(false);
     }
   };
   const handleCreateMist = async () => {
@@ -418,43 +435,46 @@ export const ProvAccordian = () => {
         setValidateLoading(false);
       });
   }
-  async function CreatDHCPAllVlan({ token }) {
-    const headers = new Headers();
-    const bearer = `Bearer ${token}`;
+  // async function CreatDHCPAllVlan({ token }) {
+  //   const headers = new Headers();
+  //   const bearer = `Bearer ${token}`;
+  //   headers.append("Authorization", bearer);
+  //   headers.append("Content-Type", "application/json");
+  //   const options = { method: "POST", headers: headers };
+  //   const allresponses = await Promise.all([
+  //     fetch(vlan1URL, options),
+  //     fetch(vlan5URL, options),
+  //     fetch(vlan9URL, options),
+  //     fetch(vlan13URL, options),
+  //   ]).catch((error) => { console.error("Error:", error); setLoading(false); });
+  //   const data = await Promise.all(allresponses.map((response) => response.json()));
+  //   const vlanKeys = ["vlan1", "vlan5", "vlan9", "vlan13"];
+  //   const logs = vlanKeys.reduce((acc, key, i) => { acc[key] = data[i].log || []; return acc; }, {});
+  //   setDhcpData({ status: data[0].status, logs });
+  //   setDhcpLoading(false);
+  //   setSeletonLoading(false);
+  //   setLoading(false);
+  // }
 
-    headers.append("Authorization", bearer);
+  async function GenerateDHCPJson({ token }) {
+    const headers = new Headers();
+    headers.append("Authorization", `Bearer ${token}`);
     headers.append("Content-Type", "application/json");
 
-    const options = {
-      method: "POST",
-
-      headers: headers,
-    };
-
-    const allresponses = await Promise.all([
-      fetch(vlan1URL, options),
-      fetch(vlan5URL, options),
-      fetch(vlan9URL, options),
-      fetch(vlan13URL, options),
-    ]).catch((error) => {
+    const response = await fetch(dhcpGenerateURL, {
+      method: "GET",
+      headers,
+    }).catch((error) => {
       console.error("Error:", error);
-      setLoading(false);
+      setDhcpJsonLoading(false);
     });
 
-    const data = await Promise.all(
-      allresponses.map((response) => response.json()),
-    );
-    const vlanKeys = ["vlan1", "vlan5", "vlan9", "vlan13"];
-    const logs = vlanKeys.reduce((acc, key, i) => {
-      acc[key] = data[i].log || [];
-      return acc;
-    }, {});
-
-    setDhcpData({ status: data[0].status, logs });
-
-    setDhcpLoading(false);
-    setSeletonLoading(false);
-    setLoading(false);
+    const { status, log, ...dhcpConfig } = await response.json();
+    setPostStatus(status);
+    setCreateNetbox(log);
+    setDhcpJsonData(dhcpConfig);
+    setDhcpJsonLoading(false);
+    setDhcpJsonModal(true);
   }
   async function PushDevicesFromNetboxToMist({ token }) {
     setPostStatus("");
@@ -810,7 +830,7 @@ export const ProvAccordian = () => {
               <AccordionItem
                 key="2"
                 aria-label="Accordion 2"
-                title="Step 2: Deploy DHCP"
+                title="Step 2: Generate DHCP JSON"
                 isDisabled={siteCodeSelected?.length > 1 ? false : true}
               >
                 <div className="  text-lg  ">
@@ -830,19 +850,24 @@ export const ProvAccordian = () => {
                             }
                           />
                         </div>
+
                         <div className=" p-2 ">
                           <div className="dark text-foreground bg-background-pink-300 "></div>
                         </div>
                         <div className="p-2 flex justify-end">
+                          {/* <Button onPress={handleDHCP} onPressStart={() => setValue("siteDHCP", siteCodeSelected)} className="bg-pink-600 " isLoading={dhcpLoading}>Deploy DHCP</Button> */}
                           <Button
-                            onPress={handleDHCP}
-                            onPressStart={() =>
-                              setValue("siteDHCP", siteCodeSelected)
+                            onPress={
+                              dhcpJsonData
+                                ? () => setDhcpJsonModal(true)
+                                : handleGenerateDHCP
                             }
-                            className="bg-pink-600 "
-                            isLoading={dhcpLoading}
+                            className="bg-pink-600"
+                            isLoading={dhcpJsonLoading}
                           >
-                            Deploy DHCP
+                            {dhcpJsonData
+                              ? "Show DHCP JSON"
+                              : "Generate DHCP JSON"}
                           </Button>
                         </div>
                       </div>
@@ -1261,76 +1286,7 @@ export const ProvAccordian = () => {
         </div>
 
         <div className=" mt-3 p-2 flex justify-center">
-          {(dhcpData.status === 0 || dhcpData.status === 1) && (
-            <div
-              className={`max-w-2xl mx-auto p-6 rounded-2xl shadow-lg border-2 transition-all duration-500 mt-6
-      ${
-        dhcpData.status === 0
-          ? "bg-red-900/20 border-red-700"
-          : "bg-green-900/20 border-green-700"
-      }`}
-            >
-              <h3
-                className={`text-2xl font-bold text-center mb-4 transition-colors duration-500
-        ${dhcpData.status === 0 ? "text-red-500" : "text-green-400"}`}
-              >
-                {dhcpData.status === 0
-                  ? "DHCP Error Logs"
-                  : "DHCP Success Logs"}
-              </h3>
-
-              <div className="space-y-4">
-                {Object.entries(dhcpData.logs).map(([vlanName, vlanLog]) =>
-                  Array.isArray(vlanLog) ? (
-                    <ul className="space-y-2">
-                      {vlanLog.map((message, msgIndex) => (
-                        <li
-                          key={msgIndex}
-                          className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-300
-                    ${
-                      dhcpData.status === 0
-                        ? "bg-red-800/30 text-red-200 animate-pulse10s"
-                        : "bg-green-800/30 text-green-200 animate-bounceOnce"
-                    }`}
-                        >
-                          {dhcpData.status === 0 ? (
-                            <svg
-                              className="w-5 h-5 text-red-400 flex-shrink-0 font-bold"
-                              fill="currentColor"
-                              viewBox="0 0 24 24"
-                              xmlns="http://www.w3.org/2000/svg"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M12 4a1.5 1.5 0 011.5 1.5v9a1.5 1.5 0 01-3 0v-9A1.5 1.5 0 0112 4zm0 14.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          ) : (
-                            <svg
-                              className="w-5 h-5 text-green-400 flex-shrink-0"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                              strokeWidth="3"
-                              xmlns="http://www.w3.org/2000/svg"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          )}
-                          <span className="text-md">{message.msg}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null,
-                )}
-              </div>
-            </div>
-          )}
+          {/* {(dhcpData.status === 0 || dhcpData.status === 1) && ( ... )} */}
           <div>
             {seletonLoading && (
               <div className="flex flex-col gap-2 ml-5 w-80">
@@ -1409,6 +1365,52 @@ export const ProvAccordian = () => {
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={dhcpJsonModal}
+        onOpenChange={setDhcpJsonModal}
+        size="3xl"
+        scrollBehavior="inside"
+        classNames={{ base: "dark text-foreground" }}
+      >
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1 text-pink-400">
+                DHCP JSON — {siteCodeSelected}
+              </ModalHeader>
+              <ModalBody>
+                <pre className="bg-zinc-900 text-green-300 text-sm rounded-lg p-4 overflow-auto whitespace-pre-wrap break-all">
+                  {dhcpJsonData?.data
+                    ? Object.values(dhcpJsonData.data)
+                        .map((scopeValue) => JSON.stringify(scopeValue, null, 2))
+                        .join("\n\n")
+                    : "No data returned."}
+                </pre>
+              </ModalBody>
+              <ModalFooter>
+                <Button className="bg-zinc-700 text-white" onPress={onClose}>
+                  Close
+                </Button>
+                <Button
+                  className={dhcpCopied ? "bg-green-600" : "bg-pink-600 text-black"}
+                  onPress={() => {
+                    navigator.clipboard.writeText(
+                      Object.values(dhcpJsonData?.data || {})
+                          .map((scopeValue) => JSON.stringify(scopeValue, null, 2))
+                          .join("\n\n"),
+                    );
+                    setDhcpCopied(true);
+                    setTimeout(() => setDhcpCopied(false), 2000);
+                  }}
+                >
+                  {dhcpCopied ? "Copied!" : "Copy JSON"}
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
     </>
   );
 };
