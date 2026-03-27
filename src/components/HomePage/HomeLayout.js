@@ -641,6 +641,48 @@ export const HomeLayout = () => {
               </div>
             </Link>
           )}
+          {isEngineer && (
+            <Link to="/topology" className="col-span-1 row-span-1 group">
+              <div
+                className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
+               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
+               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
+               group-hover:border-pink-400"
+              >
+                <div className="flex-1">
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
+                    Network Topology
+                  </h4>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
+                    View Network Topologies
+                  </p>
+                </div>
+                <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="70"
+                    height="70"
+                  >
+                    <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
+                    <g
+                      id="SVGRepo_tracerCarrier"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    ></g>
+                    <g id="SVGRepo_iconCarrier">
+                      <path d="M5.46997 9C7.40297 9 8.96997 7.433 8.96997 5.5C8.96997 3.567 7.40297 2 5.46997 2C3.53697 2 1.96997 3.567 1.96997 5.5C1.96997 7.433 3.53697 9 5.46997 9Z" stroke="#000000" strokeWidth="1.5"></path>
+                      <path d="M16.97 15H19.97C21.07 15 21.97 15.9 21.97 17V20C21.97 21.1 21.07 22 19.97 22H16.97C15.87 22 14.97 21.1 14.97 20V17C14.97 15.9 15.87 15 16.97 15Z" stroke="#000000" strokeWidth="1.5"></path>
+                      <path d="M11.9999 5H14.6799C16.5299 5 17.3899 7.29 15.9999 8.51L8.00995 15.5C6.61995 16.71 7.47994 19 9.31994 19H11.9999" stroke="#000000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"></path>
+                      <path d="M5.48622 5.5H5.49777" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
+                      <path d="M18.4862 18.5H18.4978" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
+                    </g>
+                  </svg>
+                </div>
+              </div>
+            </Link>
+          )}
         </div>
       </main>
     </div>

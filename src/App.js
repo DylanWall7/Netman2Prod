@@ -23,6 +23,7 @@ import DHCPManager from "./components/ManageDHCP/DHCPManager";
 import OpengearReports from "./components/Reports/OpengearReports";
 import ReportLandingPage from "./components/Reports/ReportLandingPage";
 import NetworkSearch from "./components/NetworkSearch/NetworkSearch";
+import TopologyView from "./components/Topology/topologyView";
 
 const Unauthorized = () => {
   return (
@@ -243,6 +244,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <NetworkSearch />
+                </ProtectedRoute>
+              }
+            ></Route>
+            <Route
+              path="topology"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <TopologyView />
                 </ProtectedRoute>
               }
             ></Route>
