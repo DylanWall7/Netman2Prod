@@ -225,11 +225,11 @@ function HoverEdge({ id, sourceX, sourceY, targetX, targetY,
 
 const edgeTypes = { hoverEdge: HoverEdge };
 
-// node card component - red for routers, blue for switches
+// node card component - red for routers, orange for agg switches, blue for regular switches
 
-function DeviceNode({ data, isGateway }) {
+function DeviceNode({ data, accentColor = "#3b82f6" }) {
   const isOnline = data.status === "connected";
-  const accent   = isGateway ? "#ef4444" : "#3b82f6";
+  const accent   = accentColor;
   const handles  = data.sourceHandles ?? [];
   const nw       = data.nodeWidth ?? NODE_W;
 
@@ -289,14 +289,17 @@ function DeviceNode({ data, isGateway }) {
   );
 }
 
-const RouterNode = ({ data }) => <DeviceNode data={data} isGateway />;
-const SwitchNode = ({ data }) => <DeviceNode data={data} isGateway={false} />;
-const nodeTypes  = { routerNode: RouterNode, switchNode: SwitchNode };
+const RouterNode = ({ data }) => <DeviceNode data={data} accentColor="#ef4444" />;
+const AggNode    = ({ data }) => <DeviceNode data={data} accentColor="#f97316" />;
+const SwitchNode = ({ data }) => <DeviceNode data={data} accentColor="#3b82f6" />;
+const nodeTypes  = { routerNode: RouterNode, aggNode: AggNode, switchNode: SwitchNode };
 
 // takes raw device list + detail map and returns nodes/edges ready for react flow
 
 function buildTopology(devices, detailsMap) {
   const isRouter = (d) => d.type === "gateway" || d.type === "router";
+  // AGG and SWD switches sit just below the router and act as aggregation/distro points
+  const isAgg    = (d) => /agg\d*$/i.test(d.name ?? "") || /swd\d+$/i.test(d.name ?? "");
 
   const deviceByMac = {};
   devices.forEach((d) => {
@@ -350,7 +353,8 @@ function buildTopology(devices, detailsMap) {
     adjacency[e.peerId]?.push(e.devId);
   });
 
-  const rootIds = devices.filter(isRouter).map((d) => d.id);
+  // routers and AGG switches are both treated as tree roots
+  const rootIds = devices.filter((d) => isRouter(d) || isAgg(d)).map((d) => d.id);
   if (rootIds.length === 0 && devices.length > 0) {
     const sorted = [...devices].sort(
       (a, b) => (adjacency[b.id]?.length ?? 0) - (adjacency[a.id]?.length ?? 0));
@@ -439,7 +443,7 @@ function buildTopology(devices, detailsMap) {
   // put it all together into react flow node objects
   const nodes = linkedDevices.map((d) => ({
     id: d.id,
-    type: isRouter(d) ? "routerNode" : "switchNode",
+    type: isRouter(d) ? "routerNode" : isAgg(d) ? "aggNode" : "switchNode",
     position: positions[d.id] ?? { x: 0, y: 0 },
     data: {
       name: d.name, model: d.model, ip: d.ip,
@@ -573,17 +577,8 @@ export default function TopologyView() {
           const { nodes: n, edges: e, offlineIsolated: ol, childrenMap: cm } =
             buildTopology(devices, detailsMap);
 
-          const initCollapsed = new Set();
-          if (devices.length > 30) {
-            n.forEach((node) => {
-              if ((cm[node.id] ?? []).length > 0 && node.type !== "routerNode") {
-                initCollapsed.add(node.id);
-              }
-            });
-          }
-
           setOfflineIsolated(ol);
-          setCollapsedIds(initCollapsed);
+          setCollapsedIds(new Set());
           setRawData({ nodes: n, edges: e, childrenMap: cm });
         }
       } catch (err) {
@@ -598,8 +593,7 @@ export default function TopologyView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSiteId]);
 
-  const totalDevices = rawData.nodes.length + offlineIsolated.length;
-  const isCollapsible = totalDevices > 30;
+  const isCollapsible = rawData.nodes.some((n) => (rawData.childrenMap[n.id] ?? []).length > 0);
 
   const handleSearch = useCallback((text) => {
     if (!rfInstance || !text.trim()) return;
@@ -641,7 +635,7 @@ export default function TopologyView() {
   const collapseAll = useCallback(() => {
     const next = new Set();
     rawData.nodes.forEach((n) => {
-      if ((rawData.childrenMap[n.id] ?? []).length > 0 && n.type !== "routerNode") {
+      if ((rawData.childrenMap[n.id] ?? []).length > 0 && n.type !== "routerNode" && n.type !== "aggNode") {
         next.add(n.id);
       }
     });
@@ -758,7 +752,7 @@ export default function TopologyView() {
                          proOptions={{ hideAttribution: true }}>
                 <Background color="#374151" gap={20} />
                 <Controls />
-                <MiniMap nodeColor={(n) => n.type === "routerNode" ? "#ef4444" : "#3b82f6"}
+                <MiniMap nodeColor={(n) => n.type === "routerNode" ? "#ef4444" : n.type === "aggNode" ? "#f97316" : "#3b82f6"}
                          maskColor="rgba(17,24,39,0.8)"
                          className="!bg-gray-900 !border-gray-700" />
               </ReactFlow>
@@ -766,8 +760,10 @@ export default function TopologyView() {
             <p className="text-center text-xs text-gray-600 mt-3">
               Hover any link for port info &nbsp;|&nbsp; Nodes are draggable
               {isCollapsible && <> &nbsp;|&nbsp; Click a node to collapse/expand its children</>}
-              &nbsp;|&nbsp; <span className="text-blue-400">Blue = copper</span>
-              &nbsp;|&nbsp; <span className="text-amber-400">Yellow = fiber</span>
+              &nbsp;|&nbsp; <span className="text-red-400">Red = router</span>
+              &nbsp;|&nbsp; <span className="text-orange-400">Orange = AGG/SWD</span>
+              &nbsp;|&nbsp; <span className="text-blue-400">Blue link = copper</span>
+              &nbsp;|&nbsp; <span className="text-amber-400">Yellow link = fiber</span>
             </p>
 
             {offlineIsolated.length > 0 && (

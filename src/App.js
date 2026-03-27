@@ -206,7 +206,15 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            {/* <Route path="logs" element={<LogsPage />} /> */}
+            <Route
+              path="logs"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <LogsPage />
+                </ProtectedRoute>
+              }
+            />
+
             <Route
               path="workbench"
               element={
