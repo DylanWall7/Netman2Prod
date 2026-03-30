@@ -15,12 +15,21 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   getBezierPath,
+  useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
 // helpers
 
 const normMac = (mac) => (mac ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
+
+// Ubiquiti OUI prefixes — Nanobeams use CDP (not LLDP), so neighbor_system_name is empty
+// but neighbor_mac still has the Ubiquiti OUI from the CDP frame
+const UBIQUITI_OUIS = new Set([
+  "24a43c", "788a20", "dc9fdb", "18e829", "44d9e7",
+  "70a741", "e063da", "802aa8", "f09fc2", "b4fbe4",
+  "68722d", "00272d", "04180d",
+]);
 
 function formatUptime(seconds) {
   const d = Math.floor(seconds / 86400);
@@ -79,21 +88,26 @@ const NODE_H = 150;
 const H_GAP  = 60;
 const V_GAP  = 120;
 
-function treeLayout(deviceIds, rootIds, adjacency, portOnParent, nodeWidths = {}) {
+function treeLayout(deviceIds, rootIds, adjacency, portOnParent, nodeWidths = {}, preRanks = null) {
   const rank = {};
-  const queue = [...rootIds];
-  rootIds.forEach((id) => (rank[id] = 0));
-  let head = 0;
-  while (head < queue.length) {
-    const cur = queue[head++];
-    (adjacency[cur] ?? []).forEach((nb) => {
-      if (rank[nb] === undefined) {
-        rank[nb] = rank[cur] + 1;
-        queue.push(nb);
-      }
-    });
+  if (preRanks) {
+    // use the caller's pre-computed ranks directly — no BFS needed
+    deviceIds.forEach((id) => { rank[id] = preRanks[id] ?? 0; });
+  } else {
+    const queue = [...rootIds];
+    rootIds.forEach((id) => (rank[id] = 0));
+    let head = 0;
+    while (head < queue.length) {
+      const cur = queue[head++];
+      (adjacency[cur] ?? []).forEach((nb) => {
+        if (rank[nb] === undefined) {
+          rank[nb] = rank[cur] + 1;
+          queue.push(nb);
+        }
+      });
+    }
+    deviceIds.forEach((id) => { if (rank[id] === undefined) rank[id] = 0; });
   }
-  deviceIds.forEach((id) => { if (rank[id] === undefined) rank[id] = 0; });
 
   const rows = {};
   deviceIds.forEach((id) => {
@@ -181,7 +195,9 @@ function computeVisible(allNodes, allEdges, collapsedIds, childrenMap) {
 
 function HoverEdge({ id, sourceX, sourceY, targetX, targetY,
                      sourcePosition, targetPosition, style, data, markerEnd }) {
-  const [hovered, setHovered] = useState(false);
+  const { screenToFlowPosition } = useReactFlow();
+  const [hovered, setHovered]   = useState(false);
+  const [tipPos, setTipPos]     = useState(null);
 
   const [path, lx, ly] = getBezierPath({
     sourceX, sourceY,
@@ -189,18 +205,27 @@ function HoverEdge({ id, sourceX, sourceY, targetX, targetY,
     sourcePosition, targetPosition,
   });
 
+  const activeStyle = hovered
+    ? { ...style, strokeWidth: 3, filter: `drop-shadow(0 0 5px ${style?.stroke ?? "#3b82f6"})` }
+    : style;
+
+  // use mouse-tracked flow position when available, fall back to edge midpoint
+  const tx = tipPos?.x ?? lx;
+  const ty = tipPos?.y ?? ly;
+
   return (
     <>
-      <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} />
+      <BaseEdge id={id} path={path} style={activeStyle} markerEnd={markerEnd} />
       <path d={path} fill="none" strokeWidth={20} stroke="transparent"
             style={{ cursor: "pointer" }}
             onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)} />
+            onMouseLeave={() => { setHovered(false); setTipPos(null); }}
+            onMouseMove={(e) => setTipPos(screenToFlowPosition({ x: e.clientX, y: e.clientY }))} />
       {hovered && (
         <EdgeLabelRenderer>
           <div style={{
             position: "absolute",
-            transform: `translate(-50%,-50%) translate(${lx}px,${ly}px)`,
+            transform: `translate(${tx + 8}px, ${ty - 20}px)`,
             pointerEvents: "none",
             zIndex: 1000,
           }} className="bg-gray-950 border border-gray-600 text-[11px] font-mono px-3 py-2 rounded shadow-xl space-y-1">
@@ -223,9 +248,52 @@ function HoverEdge({ id, sourceX, sourceY, targetX, targetY,
   );
 }
 
-const edgeTypes = { hoverEdge: HoverEdge };
+// Wireless (Nanobeam) edge — dashed cyan, tooltip says "Wireless Bridge"
+function WirelessEdge({ id, sourceX, sourceY, targetX, targetY,
+                        sourcePosition, targetPosition, markerEnd }) {
+  const { screenToFlowPosition } = useReactFlow();
+  const [hovered, setHovered] = useState(false);
+  const [tipPos, setTipPos]   = useState(null);
 
-// node card component - red for routers, orange for agg switches, blue for regular switches
+  const style = { stroke: "#06b6d4", strokeWidth: 2, strokeDasharray: "8 4" };
+  const activeStyle = hovered
+    ? { ...style, strokeWidth: 3, filter: "drop-shadow(0 0 6px #06b6d4)" }
+    : style;
+
+  const [path, lx, ly] = getBezierPath({
+    sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
+  });
+  const tx = tipPos?.x ?? lx;
+  const ty = tipPos?.y ?? ly;
+
+  return (
+    <>
+      <BaseEdge id={id} path={path} style={activeStyle} markerEnd={markerEnd} />
+      <path d={path} fill="none" strokeWidth={20} stroke="transparent"
+            style={{ cursor: "pointer" }}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => { setHovered(false); setTipPos(null); }}
+            onMouseMove={(e) => setTipPos(screenToFlowPosition({ x: e.clientX, y: e.clientY }))} />
+      {hovered && (
+        <EdgeLabelRenderer>
+          <div style={{
+            position: "absolute",
+            transform: `translate(${tx + 8}px, ${ty - 20}px)`,
+            pointerEvents: "none",
+            zIndex: 1000,
+          }} className="bg-gray-950 border border-cyan-700 text-[11px] font-mono px-3 py-2 rounded shadow-xl space-y-1">
+            <div className="text-cyan-400 font-semibold text-[10px] uppercase tracking-wide">Wireless Bridge</div>
+            <div className="text-gray-400 text-[10px]">Ubiquiti Nanobeam (CDP)</div>
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+}
+
+const edgeTypes = { hoverEdge: HoverEdge, wirelessEdge: WirelessEdge };
+
+// node card - red = router (RWA), purple = distribution (SWD), orange = aggregation (AGG), blue = access switch
 
 function DeviceNode({ data, accentColor = "#3b82f6" }) {
   const isOnline = data.status === "connected";
@@ -233,11 +301,16 @@ function DeviceNode({ data, accentColor = "#3b82f6" }) {
   const handles  = data.sourceHandles ?? [];
   const nw       = data.nodeWidth ?? NODE_W;
 
+  const glow = data.highlighted
+    ? `0 0 0 2px ${accent}, 0 0 16px ${accent}88, 0 4px 20px rgba(0,0,0,.5)`
+    : "0 4px 20px rgba(0,0,0,.5)";
+
   return (
     <div style={{
       border: `2px solid ${accent}`, background: "#111827", borderRadius: 8,
-      padding: "10px 12px", minWidth: nw, width: nw, boxShadow: "0 4px 20px rgba(0,0,0,.5)",
+      padding: "10px 12px", minWidth: nw, width: nw, boxShadow: glow,
       position: "relative", cursor: data.hasChildren ? "pointer" : "default",
+      transition: "box-shadow 0.15s ease",
     }}>
       <Handle type="target" position={Position.Top}
               style={{ background: accent, width: 8, height: 8 }} />
@@ -290,22 +363,67 @@ function DeviceNode({ data, accentColor = "#3b82f6" }) {
 }
 
 const RouterNode = ({ data }) => <DeviceNode data={data} accentColor="#ef4444" />;
+const SwdNode    = ({ data }) => <DeviceNode data={data} accentColor="#a855f7" />;
 const AggNode    = ({ data }) => <DeviceNode data={data} accentColor="#f97316" />;
 const SwitchNode = ({ data }) => <DeviceNode data={data} accentColor="#3b82f6" />;
-const nodeTypes  = { routerNode: RouterNode, aggNode: AggNode, switchNode: SwitchNode };
+
+function WirelessNode() {
+  return (
+    <div style={{
+      border: "2px dashed #06b6d4", background: "#0c1a1f", borderRadius: 8,
+      padding: "10px 14px", width: 160, textAlign: "center",
+      boxShadow: "0 0 14px #06b6d444, 0 4px 20px rgba(0,0,0,.5)",
+    }}>
+      <Handle type="source" position={Position.Bottom}
+              style={{ background: "#06b6d4", width: 8, height: 8 }} />
+      {/* wifi / signal icon */}
+      <svg width="26" height="22" viewBox="0 0 24 20" fill="none" stroke="#06b6d4" strokeWidth="2"
+           strokeLinecap="round" style={{ margin: "0 auto 6px", display: "block" }}>
+        <path d="M1 5.5a15.5 15.5 0 0 1 22 0" />
+        <path d="M4.5 9.5a11 11 0 0 1 15 0" />
+        <path d="M8 13.5a6 6 0 0 1 8 0" />
+        <circle cx="12" cy="17" r="1.2" fill="#06b6d4" stroke="none" />
+      </svg>
+      <div style={{ color: "#06b6d4", fontWeight: 700, fontSize: 11, lineHeight: 1.3 }}>
+        Wireless Bridge
+      </div>
+      <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 2 }}>Nanobeam</div>
+    </div>
+  );
+}
+
+const nodeTypes = {
+  routerNode: RouterNode, swdNode: SwdNode, aggNode: AggNode,
+  switchNode: SwitchNode, wirelessNode: WirelessNode,
+};
 
 // takes raw device list + detail map and returns nodes/edges ready for react flow
 
 function buildTopology(devices, detailsMap) {
   const isRouter = (d) => d.type === "gateway" || d.type === "router";
-  // AGG and SWD switches sit just below the router and act as aggregation/distro points
-  const isAgg    = (d) => /agg\d*$/i.test(d.name ?? "") || /swd\d+$/i.test(d.name ?? "");
+  // SWD = distribution tier (sits directly under the router)
+  const isSwd    = (d) => /swd\d+$/i.test(d.name ?? "");
+  // AGG = aggregation tier (sits under SWD)
+  const isAgg    = (d) => /agg\d*$/i.test(d.name ?? "");
 
   const deviceByMac = {};
   devices.forEach((d) => {
     if (d.mac)         deviceByMac[normMac(d.mac)]         = d;
     if (d.chassis_mac) deviceByMac[normMac(d.chassis_mac)] = d;
     if (d._id)         deviceByMac[normMac(d._id)]         = d;
+  });
+
+  // Juniper switches often advertise a per-port MAC in LLDP rather than the chassis MAC.
+  // Add every port_mac from detail data so those LLDP advertisements can be resolved.
+  devices.forEach((d) => {
+    const detail = detailsMap[d.id];
+    for (const member of detail?.custom?.vc_members ?? []) {
+      for (const pic of member.pics ?? []) {
+        for (const port of pic.ports ?? []) {
+          if (port.port_mac) deviceByMac[normMac(port.port_mac)] = d;
+        }
+      }
+    }
   });
 
   // find physical connections using LLDP neighbor data
@@ -324,7 +442,7 @@ function buildTopology(devices, detailsMap) {
       if (seen.has(edgeKey)) return;
       seen.add(edgeKey);
 
-      const localPort  = c.port_ids?.[0] ?? "?";
+      const localPort  = c.port_ids?.[0] ?? c.port_id ?? "?";
       const peerDetail = detailsMap[peer.id];
       const peerClient =
         peerDetail?.clients?.find((pc) =>
@@ -333,7 +451,7 @@ function buildTopology(devices, detailsMap) {
           deviceByMac[normMac(pc.mac)]?.id === dev.id);
 
       const peerPort =
-        peerClient?.port_ids?.[0] ??
+        peerClient?.port_ids?.[0] ?? peerClient?.port_id ??
         resolvePortFromPortDetails(detail, localPort) ?? "?";
 
       const ifKey    = `${localPort}.0`;
@@ -353,17 +471,44 @@ function buildTopology(devices, detailsMap) {
     adjacency[e.peerId]?.push(e.devId);
   });
 
-  // routers and AGG switches are both treated as tree roots
-  const rootIds = devices.filter((d) => isRouter(d) || isAgg(d)).map((d) => d.id);
-  if (rootIds.length === 0 && devices.length > 0) {
-    const sorted = [...devices].sort(
-      (a, b) => (adjacency[b.id]?.length ?? 0) - (adjacency[a.id]?.length ?? 0));
-    rootIds.push(sorted[0].id);
+  // BFS starts from routers only so SWD/AGG get their correct rank from LLDP connections.
+  // Fallback chain if no router: use SWD, then AGG, then most-connected device.
+  const rootIds = devices.filter(isRouter).map((d) => d.id);
+  if (rootIds.length === 0) {
+    const swds = devices.filter(isSwd);
+    if (swds.length > 0) {
+      swds.forEach((d) => rootIds.push(d.id));
+    } else {
+      const aggs = devices.filter(isAgg);
+      if (aggs.length > 0) {
+        aggs.forEach((d) => rootIds.push(d.id));
+      } else if (devices.length > 0) {
+        const sorted = [...devices].sort(
+          (a, b) => (adjacency[b.id]?.length ?? 0) - (adjacency[a.id]?.length ?? 0));
+        rootIds.push(sorted[0].id);
+      }
+    }
   }
 
+  // assign ranks by naming tier first so the hierarchy is always correct,
+  // even when LLDP data is partial or asymmetric
+  const hasRouter = devices.some(isRouter);
+  const hasSwd    = devices.some(isSwd);
+
+  const swdRank = hasRouter ? 1 : 0;
+  const aggRank = hasSwd ? swdRank + 1 : swdRank;
+
   const rankPre = {};
-  const q0 = [...rootIds];
-  rootIds.forEach((id) => (rankPre[id] = 0));
+  devices.forEach((d) => {
+    if (isRouter(d))   rankPre[d.id] = 0;
+    else if (isSwd(d)) rankPre[d.id] = swdRank;
+    else if (isAgg(d)) rankPre[d.id] = aggRank;
+    // regular switches get their rank from BFS below
+  });
+
+  // BFS outward from all tier-ranked devices to rank regular access switches by hop count
+  const tieredIds = devices.filter((d) => rankPre[d.id] !== undefined).map((d) => d.id);
+  const q0 = [...tieredIds];
   let h0 = 0;
   while (h0 < q0.length) {
     const cur = q0[h0++];
@@ -371,7 +516,8 @@ function buildTopology(devices, detailsMap) {
       if (rankPre[nb] === undefined) { rankPre[nb] = rankPre[cur] + 1; q0.push(nb); }
     });
   }
-  devices.forEach((d) => { if (rankPre[d.id] === undefined) rankPre[d.id] = 0; });
+  // anything still unranked (no LLDP path at all) lands at the bottom of its tier
+  devices.forEach((d) => { if (rankPre[d.id] === undefined) rankPre[d.id] = aggRank + 1; });
 
   // make sure every edge points from upstream (parent) down to downstream (child)
   const deviceById   = Object.fromEntries(devices.map((d) => [d.id, d]));
@@ -414,7 +560,7 @@ function buildTopology(devices, detailsMap) {
 
   // run the layout now that we know each node's actual width
   const { positions } = treeLayout(
-    devices.map((d) => d.id), rootIds, adjacency, portOnParent, nodeWidths,
+    devices.map((d) => d.id), rootIds, adjacency, portOnParent, nodeWidths, rankPre,
   );
 
   // assign handles spread left to right, sorted by where the child landed in the layout
@@ -437,13 +583,38 @@ function buildTopology(devices, detailsMap) {
   const connectedIds = new Set();
   edgeList.forEach((e) => { connectedIds.add(e.source); connectedIds.add(e.target); });
 
-  const offlineIsolated = devices.filter((d) => !connectedIds.has(d.id));
+  // Detect Nanobeam (or any non-LLDP uplink) across ALL devices, including isolated ones.
+  // Signal: uplink port that is active (uplink===true), has a neighbor MAC, but no LLDP system
+  // name — Nanobeams use CDP so Juniper never receives an LLDP system-name from them.
+  const nanobeamDeviceIds = new Set();
+  devices.forEach((dev) => {
+    for (const member of detailsMap[dev.id]?.custom?.vc_members ?? []) {
+      for (const pic of member.pics ?? []) {
+        for (const port of pic.ports ?? []) {
+          if (
+            port.port_usage === "uplink" &&
+            port.uplink === true &&
+            !port.neighbor_system_name &&
+            normMac(port.neighbor_mac ?? "").length === 12
+          ) {
+            nanobeamDeviceIds.add(dev.id);
+          }
+        }
+      }
+    }
+  });
+
+  // Devices whose ONLY upstream path is through a Nanobeam — no Mist LLDP peers at all.
+  // These must be shown in the topology (not offlineIsolated) connected to the wireless cloud.
+  const nanobeamOnlyIds = new Set([...nanobeamDeviceIds].filter((id) => !connectedIds.has(id)));
+
+  const offlineIsolated = devices.filter((d) => !connectedIds.has(d.id) && !nanobeamOnlyIds.has(d.id));
   const linkedDevices   = devices.filter((d) =>  connectedIds.has(d.id));
 
   // put it all together into react flow node objects
   const nodes = linkedDevices.map((d) => ({
     id: d.id,
-    type: isRouter(d) ? "routerNode" : isAgg(d) ? "aggNode" : "switchNode",
+    type: isRouter(d) ? "routerNode" : isSwd(d) ? "swdNode" : isAgg(d) ? "aggNode" : "switchNode",
     position: positions[d.id] ?? { x: 0, y: 0 },
     data: {
       name: d.name, model: d.model, ip: d.ip,
@@ -452,6 +623,56 @@ function buildTopology(devices, detailsMap) {
       nodeWidth: nodeWidths[d.id] ?? NODE_W,
     },
   }));
+
+  if (nanobeamDeviceIds.size > 0) {
+    // Base cloud position on devices that already have treeLayout positions
+    const positionedNano = [...nanobeamDeviceIds].filter((id) => positions[id]);
+    const avgX = positionedNano.length > 0
+      ? positionedNano.reduce((s, id) => s + positions[id].x, 0) / positionedNano.length
+      : (nodes.length > 0 ? nodes.reduce((s, n) => s + n.position.x, 0) / nodes.length : 0);
+    const refY = positionedNano.length > 0
+      ? Math.min(...positionedNano.map((id) => positions[id].y))
+      : (nodes.length > 0 ? Math.min(...nodes.map((n) => n.position.y)) : NODE_H + V_GAP);
+
+    const wirelessId = "wireless-cloud";
+    const cloudX = avgX - 80;
+    const cloudY = refY - NODE_H - V_GAP;
+
+    nodes.push({
+      id: wirelessId,
+      type: "wirelessNode",
+      position: { x: cloudX, y: cloudY },
+      data: { name: "Wireless Bridge" },
+    });
+
+    // Nanobeam-only isolated devices: add them as nodes in a row below the wireless cloud
+    [...nanobeamOnlyIds].forEach((devId, idx) => {
+      const dev = devices.find((d) => d.id === devId);
+      if (!dev) return;
+      nodes.push({
+        id: devId,
+        type: isRouter(dev) ? "routerNode" : isSwd(dev) ? "swdNode" : isAgg(dev) ? "aggNode" : "switchNode",
+        position: { x: cloudX - 80 + idx * (NODE_W + H_GAP), y: cloudY + NODE_H + V_GAP },
+        data: {
+          name: dev.name, model: dev.model, ip: dev.ip,
+          status: dev.status, version: dev.version, uptime: dev.uptime,
+          sourceHandles: [], nodeWidth: nodeWidths[devId] ?? NODE_W,
+        },
+      });
+    });
+
+    // Wireless edges for all Nanobeam devices (connected + isolated)
+    nanobeamDeviceIds.forEach((devId) => {
+      edgeList.push({
+        id: `e-wireless-${devId}`,
+        source: wirelessId,
+        target: devId,
+        type: "wirelessEdge",
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#06b6d4" },
+        data: {},
+      });
+    });
+  }
 
   return { nodes, edges: edgeList, offlineIsolated, childrenMap };
 }
@@ -509,6 +730,20 @@ export default function TopologyView() {
     setEdges(visibleEdges);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawData, collapsedIds]);
+
+  const onEdgeMouseEnter = useCallback((_, edge) => {
+    setNodes((prev) => prev.map((n) => ({
+      ...n,
+      data: { ...n.data, highlighted: n.id === edge.source || n.id === edge.target },
+    })));
+  }, [setNodes]);
+
+  const onEdgeMouseLeave = useCallback(() => {
+    setNodes((prev) => prev.map((n) => ({
+      ...n,
+      data: { ...n.data, highlighted: false },
+    })));
+  }, [setNodes]);
 
   const onNodeClick = useCallback((_, node) => {
     if (!(rawData.childrenMap[node.id] ?? []).length) return;
@@ -635,7 +870,7 @@ export default function TopologyView() {
   const collapseAll = useCallback(() => {
     const next = new Set();
     rawData.nodes.forEach((n) => {
-      if ((rawData.childrenMap[n.id] ?? []).length > 0 && n.type !== "routerNode" && n.type !== "aggNode") {
+      if ((rawData.childrenMap[n.id] ?? []).length > 0 && n.type !== "routerNode" && n.type !== "swdNode" && n.type !== "aggNode") {
         next.add(n.id);
       }
     });
@@ -746,13 +981,15 @@ export default function TopologyView() {
               <ReactFlow nodes={nodes} edges={edges}
                          onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
                          onNodeClick={onNodeClick}
+                         onEdgeMouseEnter={onEdgeMouseEnter}
+                         onEdgeMouseLeave={onEdgeMouseLeave}
                          onInit={setRfInstance}
                          nodeTypes={nodeTypes} edgeTypes={edgeTypes}
                          fitView fitViewOptions={{ padding: 0.15 }} minZoom={0.1}
                          proOptions={{ hideAttribution: true }}>
                 <Background color="#374151" gap={20} />
                 <Controls />
-                <MiniMap nodeColor={(n) => n.type === "routerNode" ? "#ef4444" : n.type === "aggNode" ? "#f97316" : "#3b82f6"}
+                <MiniMap nodeColor={(n) => n.type === "routerNode" ? "#ef4444" : n.type === "swdNode" ? "#a855f7" : n.type === "aggNode" ? "#f97316" : "#3b82f6"}
                          maskColor="rgba(17,24,39,0.8)"
                          className="!bg-gray-900 !border-gray-700" />
               </ReactFlow>
@@ -761,9 +998,11 @@ export default function TopologyView() {
               Hover any link for port info &nbsp;|&nbsp; Nodes are draggable
               {isCollapsible && <> &nbsp;|&nbsp; Click a node to collapse/expand its children</>}
               &nbsp;|&nbsp; <span className="text-red-400">Red = router</span>
-              &nbsp;|&nbsp; <span className="text-orange-400">Orange = AGG/SWD</span>
+              &nbsp;|&nbsp; <span className="text-purple-400">Purple = SWD</span>
+              &nbsp;|&nbsp; <span className="text-orange-400">Orange = AGG</span>
               &nbsp;|&nbsp; <span className="text-blue-400">Blue link = copper</span>
               &nbsp;|&nbsp; <span className="text-amber-400">Yellow link = fiber</span>
+              &nbsp;|&nbsp; <span className="text-cyan-400">Cyan dashed = wireless (Nanobeam)</span>
             </p>
 
             {offlineIsolated.length > 0 && (

@@ -9,6 +9,14 @@ export default function ReportLandingPage() {
       path: "/opengear",
       category: "Infrastructure",
     },
+    {
+      id: 2,
+      title: "System Logs",
+      description:
+        "View provisioning and system activity logs with time range filtering and search",
+      path: "/logs",
+      category: "Logs",
+    },
   ];
 
   return (
@@ -22,7 +30,7 @@ export default function ReportLandingPage() {
             <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-1 rounded-full bg-gradient-to-r from-pink-400 to-pink-500"></span>
           </h1>
           <p className="text-sm text-pink-400">
-            List of Netwoork Services reports
+            List of Network Services reports
           </p>
         </div>
 

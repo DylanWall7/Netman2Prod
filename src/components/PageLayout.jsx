@@ -20,9 +20,9 @@ export const PageLayout = (props) => {
       <nav className="w-full bg-pink-700 text-pink-400 shadow-md">
         <div className=" mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center h-16">
-            <div className="flex-shrink-0 text-md sm:text-xl font-bold">
+            <Link to="/" className="flex-shrink-0 text-md sm:text-xl font-bold hover:text-white transition-colors">
               Netman 2: Network Engineering Tools
-            </div>
+            </Link>
 
             <div className=" flex items-center space-x-4 ml-auto sm:flex ">
               {[
