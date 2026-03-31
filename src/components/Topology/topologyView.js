@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useMsal } from "@azure/msal-react";
 import { GizmoRequest } from "../../authConfig";
 import { Autocomplete, AutocompleteItem } from "@nextui-org/react";
@@ -24,6 +24,8 @@ import "@xyflow/react/dist/style.css";
 // helpers
 
 const normMac = (mac) => (mac ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
+
+const PortLabelsCtx = React.createContext(false);
 
 // Ubiquiti OUI prefixes — Nanobeams use CDP (not LLDP), so neighbor_system_name is empty
 // but neighbor_mac still has a Ubiquiti OUI from the CDP frame
@@ -116,6 +118,8 @@ function treeLayout(
   portOnParent,
   nodeWidths = {},
   preRanks = null,
+  hGap = H_GAP,
+  vGap = V_GAP,
 ) {
   const rank = {};
   if (preRanks) {
@@ -161,18 +165,18 @@ function treeLayout(
 
   const rowTotalW = (ids) =>
     ids.reduce((sum, id) => sum + nodeW(id), 0) +
-    Math.max(0, ids.length - 1) * H_GAP;
+    Math.max(0, ids.length - 1) * hGap;
 
   const maxRowW = Math.max(...Object.values(rows).map(rowTotalW));
 
   const positions = {};
   Object.entries(rows).forEach(([row, ids]) => {
-    const y = Number(row) * (NODE_H + V_GAP);
+    const y = Number(row) * (NODE_H + vGap);
     const rowW = rowTotalW(ids);
     let x = (maxRowW - rowW) / 2;
     ids.forEach((id) => {
       positions[id] = { x, y };
-      x += nodeW(id) + H_GAP;
+      x += nodeW(id) + hGap;
     });
   });
 
@@ -242,6 +246,7 @@ function HoverEdge({
   markerEnd,
 }) {
   const { screenToFlowPosition } = useReactFlow();
+  const showPortLabels = React.useContext(PortLabelsCtx);
   const [hovered, setHovered] = useState(false);
   const [tipPos, setTipPos] = useState(null);
 
@@ -284,8 +289,34 @@ function HoverEdge({
           setTipPos(screenToFlowPosition({ x: e.clientX, y: e.clientY }))
         }
       />
-      {hovered && (
-        <EdgeLabelRenderer>
+      <EdgeLabelRenderer>
+        {showPortLabels && (
+          <>
+            {/* upstream port — near source end */}
+            <div
+              style={{
+                position: "absolute",
+                transform: `translate(-50%, 4px) translate(${sourceX}px, ${sourceY}px)`,
+                pointerEvents: "none",
+              }}
+              className="text-[9px] font-mono text-blue-300 bg-gray-950/80 px-1 rounded"
+            >
+              {data.parentPort}
+            </div>
+            {/* downstream port — near target end */}
+            <div
+              style={{
+                position: "absolute",
+                transform: `translate(-50%, -100%) translate(${targetX}px, ${targetY - 4}px)`,
+                pointerEvents: "none",
+              }}
+              className="text-[9px] font-mono text-emerald-300 bg-gray-950/80 px-1 rounded"
+            >
+              {data.childPort}
+            </div>
+          </>
+        )}
+        {hovered && (
           <div
             style={{
               position: "absolute",
@@ -318,8 +349,8 @@ function HoverEdge({
               </div>
             </div>
           </div>
-        </EdgeLabelRenderer>
-      )}
+        )}
+      </EdgeLabelRenderer>
     </>
   );
 }
@@ -610,7 +641,7 @@ const nodeTypes = {
 
 // takes raw device list + detail map and returns nodes/edges ready for react flow
 
-function buildTopology(devices, detailsMap, siteId) {
+function buildTopology(devices, detailsMap, siteId, { hGap = H_GAP, handleSpacing = 24 } = {}) {
   const isRouter = (d) => d.type === "gateway" || d.type === "router";
   // SWD = distribution tier (sits directly under the router)
   const isSwd = (d) => /swd\d+$/i.test(d.name ?? "");
@@ -645,6 +676,13 @@ function buildTopology(devices, detailsMap, siteId) {
     }
   });
 
+  // Name-based device index — fallback when LLDP advertises a virtual MAC (RETH, LAG)
+  // that isn't tracked in deviceByMac. Strips _nodeN suffix before inserting.
+  const deviceByName = {};
+  devices.forEach((d) => {
+    if (d.name) deviceByName[d.name.toLowerCase()] = d;
+  });
+
   // find physical connections using LLDP neighbor data
   const rawEdges = [];
   const seen = new Set();
@@ -654,16 +692,31 @@ function buildTopology(devices, detailsMap, siteId) {
     if (!detail?.clients) return;
 
     detail.clients
-      .filter((c) => {
-        // Always accept lldp entries. Also accept entries with no source when the MAC
-        // resolves to a known Mist device — SRX gateways report downstream switches
-        // without a source tag (RETH/HA bonded uplinks).
-        if (c.source === "lldp") return true;
-        if (!c.source && deviceByMac[normMac(c.mac)]) return true;
-        return false;
-      })
+      .filter((c) => c.source === "lldp")
       .forEach((c) => {
-        const peer = deviceByMac[normMac(c.mac)];
+        let peer = deviceByMac[normMac(c.mac)];
+
+        // Fallback: LLDP entry whose MAC is a virtual/RETH address not in deviceByMac.
+        // Scan this device's vc_members for a port matching one of the client port_ids
+        // that has a neighbor_system_name we can resolve by name.
+        if (!peer && c.source === "lldp") {
+          const clientPorts = new Set(c.port_ids ?? []);
+          outer: for (const member of detail?.custom?.vc_members ?? []) {
+            for (const pic of member.pics ?? []) {
+              for (const port of pic.ports ?? []) {
+                if (!clientPorts.has(port.port_id)) continue;
+                const sn = (port.neighbor_system_name ?? "")
+                  .replace(/_node\d+$/i, "")
+                  .toLowerCase();
+                if (sn && deviceByName[sn]) {
+                  peer = deviceByName[sn];
+                  break outer;
+                }
+              }
+            }
+          }
+        }
+
         if (!peer || peer.id === dev.id) return;
 
         const edgeKey = [dev.id, peer.id].sort().join("|");
@@ -835,18 +888,13 @@ function buildTopology(devices, detailsMap, siteId) {
     (edgesByParent[e.source] ??= []).push(e);
   });
 
-  // handles sit between 15% and 85% of the node width, so 24px min gap per handle
-  const MIN_HANDLE_SPACING = 24;
+  // widen the card so handles stay inside at handleSpacing px min gap
   const nodeWidths = {};
   devices.forEach((d) => {
     const n = (edgesByParent[d.id] ?? []).length;
-    nodeWidths[d.id] =
-      n <= 1
-        ? NODE_W
-        : Math.max(
-            NODE_W,
-            Math.ceil(((n - 1) * MIN_HANDLE_SPACING) / 0.7) + 40,
-          );
+    nodeWidths[d.id] = n <= 1
+      ? NODE_W
+      : Math.max(NODE_W, Math.ceil(((n - 1) * handleSpacing) / 0.7) + 40);
   });
 
   // run the layout now that we know each node's actual width
@@ -857,6 +905,7 @@ function buildTopology(devices, detailsMap, siteId) {
     portOnParent,
     nodeWidths,
     rankPre,
+    hGap,
   );
 
   // assign handles spread left to right, sorted by where the child landed in the layout
@@ -949,7 +998,7 @@ function buildTopology(devices, detailsMap, siteId) {
       nodes.push({
         id: devId,
         type: isRouter(dev) ? "routerNode" : isSwd(dev) ? "swdNode" : isAgg(dev) ? "aggNode" : "switchNode",
-        position: { x: cloudX - 80 + idx * (NODE_W + H_GAP), y: cloudY + NODE_H + V_GAP },
+        position: { x: cloudX - 80 + idx * (NODE_W + hGap), y: cloudY + NODE_H + V_GAP },
         data: {
           name: dev.name, model: dev.model, ip: dev.ip,
           status: dev.status, version: dev.version, uptime: dev.uptime,
@@ -999,6 +1048,19 @@ export default function TopologyView() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [showPortLabels, setShowPortLabels] = useState(false);
+  const rawInputRef = useRef(null);
+
+  // Re-layout when port label toggle changes — wider nodes + gaps when on
+  useEffect(() => {
+    const ri = rawInputRef.current;
+    if (!ri) return;
+    const opts = showPortLabels ? { hGap: H_GAP * 3, handleSpacing: 64 } : {};
+    const { nodes: n, edges: e, offlineIsolated: ol, childrenMap: cm } =
+      buildTopology(ri.devices, ri.detailsMap, ri.siteId, opts);
+    setOfflineIsolated(ol);
+    setRawData({ nodes: n, edges: e, childrenMap: cm });
+  }, [showPortLabels]);
 
   const getToken = useCallback(async () => {
     const r = await instance.acquireTokenSilent(request);
@@ -1099,6 +1161,8 @@ export default function TopologyView() {
     setRawData(EMPTY_RAW);
     setCollapsedIds(new Set());
     setOfflineIsolated([]);
+    setShowPortLabels(false);
+    rawInputRef.current = null;
 
     (async () => {
       try {
@@ -1120,20 +1184,20 @@ export default function TopologyView() {
         const BATCH_SIZE = 60;
         const BATCH_DELAY_MS = 1000;
         const detailsMap = {};
+        let fetchedCount = 0;
+        const total = devices.length;
+        setLoadingStatus(`0/${total}`);
 
         for (let i = 0; i < devices.length; i += BATCH_SIZE) {
           if (cancelled) return;
           const batch = devices.slice(i, i + BATCH_SIZE);
-          const fetched = Math.min(i + BATCH_SIZE, devices.length);
-          setLoadingStatus(
-            `Fetching device details… ${fetched}/${devices.length}`,
-          );
 
+          // eslint-disable-next-line no-loop-func
           const results = await Promise.allSettled(
             batch.map((d) =>
-              authFetch(
-                `${BASE}/mist/site/${selectedSiteId}/device/${d.id}/details`,
-              ),
+              authFetch(`${BASE}/mist/site/${selectedSiteId}/device/${d.id}/details`)
+                .then((r) => { fetchedCount++; if (!cancelled) setLoadingStatus(`${fetchedCount}/${total}`); return r; })
+                .catch((e) => { fetchedCount++; if (!cancelled) setLoadingStatus(`${fetchedCount}/${total}`); throw e; }),
             ),
           );
           batch.forEach((d, j) => {
@@ -1154,6 +1218,7 @@ export default function TopologyView() {
             childrenMap: cm,
           } = buildTopology(devices, detailsMap, selectedSiteId);
 
+          rawInputRef.current = { devices, detailsMap, siteId: selectedSiteId };
           setOfflineIsolated(ol);
           setCollapsedIds(new Set());
           setRawData({ nodes: n, edges: e, childrenMap: cm });
@@ -1224,12 +1289,7 @@ export default function TopologyView() {
   const collapseAll = useCallback(() => {
     const next = new Set();
     rawData.nodes.forEach((n) => {
-      if (
-        (rawData.childrenMap[n.id] ?? []).length > 0 &&
-        n.type !== "routerNode" &&
-        n.type !== "swdNode" &&
-        n.type !== "aggNode"
-      ) {
+      if ((rawData.childrenMap[n.id] ?? []).length > 0) {
         next.add(n.id);
       }
     });
@@ -1272,16 +1332,39 @@ export default function TopologyView() {
         </div>
 
         {isLoadingTopo ? (
-          <div className="flex flex-col justify-center items-center py-32 gap-4">
-            <svg width="48" height="48" viewBox="0 0 24 24">
-              <style>{`.sp{animation:spinner_MGfb .8s linear infinite;animation-delay:-.8s}.sp2{animation-delay:-.65s}.sp3{animation-delay:-.5s}@keyframes spinner_MGfb{93.75%,100%{opacity:.2}}`}</style>
-              <circle className="sp" cx="4" cy="12" r="3" fill="#3b82f6" />
-              <circle className="sp sp2" cx="12" cy="12" r="3" fill="#3b82f6" />
-              <circle className="sp sp3" cx="20" cy="12" r="3" fill="#3b82f6" />
-            </svg>
-            {loadingStatus && (
-              <p className="text-sm text-gray-400">{loadingStatus}</p>
-            )}
+          <div className="flex flex-col justify-center items-center py-32 gap-3">
+            {(() => {
+              const match = loadingStatus?.match(/(\d+)\/(\d+)/);
+              const done  = match ? parseInt(match[1]) : 0;
+              const total = match ? parseInt(match[2]) : 0;
+              const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+              return (
+                <div className="flex flex-col items-center gap-3 w-56">
+                  {total === 0 ? (
+                    <>
+                      <svg className="animate-spin w-6 h-6 text-pink-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                      </svg>
+                      <p className="text-sm text-gray-400">Loading devices…</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-gray-400">Loading device details…</p>
+                      <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-pink-400 to-pink-500 transition-all duration-300"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        <span className="text-white font-medium">{done}</span> / {total} devices ({pct}%)
+                      </p>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ) : error ? (
           <div className="flex justify-center items-center py-32">
@@ -1360,6 +1443,7 @@ export default function TopologyView() {
               style={{ height: "75vh" }}
               className="rounded-xl border border-gray-700"
             >
+              <PortLabelsCtx.Provider value={showPortLabels}>
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -1415,7 +1499,20 @@ export default function TopologyView() {
                     <span className="text-cyan-400">Cyan dashed = wireless</span>
                   </div>
                 </Panel>
+                <Panel position="top-right">
+                  <button
+                    onClick={() => setShowPortLabels((v) => !v)}
+                    className={`text-[10px] px-2 py-1 rounded border transition-colors font-mono ${
+                      showPortLabels
+                        ? "bg-pink-500/20 border-pink-500 text-pink-300"
+                        : "bg-gray-900/80 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white"
+                    }`}
+                  >
+                    {showPortLabels ? "Hide ports" : "Show ports"}
+                  </button>
+                </Panel>
               </ReactFlow>
+              </PortLabelsCtx.Provider>
             </div>
 
             {offlineIsolated.length > 0 && (
