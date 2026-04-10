@@ -30,9 +30,19 @@ const PortLabelsCtx = React.createContext(false);
 // Ubiquiti OUI prefixes — Nanobeams use CDP (not LLDP), so neighbor_system_name is empty
 // but neighbor_mac still has a Ubiquiti OUI from the CDP frame
 const UBIQUITI_OUIS = new Set([
-  "24a43c", "788a20", "dc9fdb", "18e829", "44d9e7",
-  "70a741", "e063da", "802aa8", "f09fc2", "b4fbe4",
-  "68722d", "00272d", "04180d",
+  "24a43c",
+  "788a20",
+  "dc9fdb",
+  "18e829",
+  "44d9e7",
+  "70a741",
+  "e063da",
+  "802aa8",
+  "f09fc2",
+  "b4fbe4",
+  "68722d",
+  "00272d",
+  "04180d",
 ]);
 
 function formatUptime(seconds) {
@@ -66,7 +76,9 @@ function resolvePortByNeighborName(detail, neighborName) {
   for (const member of detail?.custom?.vc_members ?? []) {
     for (const pic of member.pics ?? []) {
       for (const port of pic.ports ?? []) {
-        const sn = (port.neighbor_system_name ?? "").replace(/_node\d+$/i, "").toLowerCase();
+        const sn = (port.neighbor_system_name ?? "")
+          .replace(/_node\d+$/i, "")
+          .toLowerCase();
         if (sn && sn === stripped) return port.port_id;
       }
     }
@@ -418,9 +430,7 @@ function WirelessEdge({
             <div className="text-cyan-400 font-semibold text-[10px] uppercase tracking-wide">
               Wireless Bridge
             </div>
-            <div className="text-gray-400 text-[10px]">
-              Ubiquiti Nanobeam (CDP)
-            </div>
+            <div className="text-gray-400 text-[10px]">Ubiquiti Nanobeam</div>
           </div>
         </EdgeLabelRenderer>
       )}
@@ -432,7 +442,13 @@ const edgeTypes = { hoverEdge: HoverEdge, wirelessEdge: WirelessEdge };
 
 // node card - red = router (RWA), purple = distribution (SWD), orange = aggregation (AGG), blue = access switch
 
-function DeviceNode({ data, selected, id, accentColor = "#3b82f6", isGateway = false }) {
+function DeviceNode({
+  data,
+  selected,
+  id,
+  accentColor = "#3b82f6",
+  isGateway = false,
+}) {
   const isOnline = data.status === "connected";
   const accent = accentColor;
   const handles = data.sourceHandles ?? [];
@@ -469,133 +485,139 @@ function DeviceNode({ data, selected, id, accentColor = "#3b82f6", isGateway = f
         </div>
       </NodeToolbar>
       <div
-      style={{
-        border: `2px solid ${accent}`,
-        background: "#111827",
-        borderRadius: 8,
-        padding: "10px 12px",
-        minWidth: nw,
-        width: nw,
-        boxShadow: glow,
-        position: "relative",
-        cursor: data.hasChildren ? "pointer" : "default",
-        transition: "box-shadow 0.15s ease",
-      }}
-    >
-      <Handle
-        type="target"
-        position={Position.Top}
-        style={{ background: accent, width: 8, height: 8 }}
-      />
+        style={{
+          border: `2px solid ${accent}`,
+          background: "#111827",
+          borderRadius: 8,
+          padding: "10px 12px",
+          minWidth: nw,
+          width: nw,
+          boxShadow: glow,
+          position: "relative",
+          cursor: data.hasChildren ? "pointer" : "default",
+          transition: "box-shadow 0.15s ease",
+        }}
+      >
+        <Handle
+          type="target"
+          position={Position.Top}
+          style={{ background: accent, width: 8, height: 8 }}
+        />
 
-      {/* hide source handles when collapsed since those edges aren't visible anyway */}
-      {!data.isCollapsed && handles.length > 0 ? (
-        handles.map((h) => (
+        {/* hide source handles when collapsed since those edges aren't visible anyway */}
+        {!data.isCollapsed && handles.length > 0 ? (
+          handles.map((h) => (
+            <Handle
+              key={h.id}
+              id={h.id}
+              type="source"
+              position={Position.Bottom}
+              style={{
+                left: `${h.leftPct}%`,
+                background: accent,
+                width: 8,
+                height: 8,
+              }}
+            />
+          ))
+        ) : (
           <Handle
-            key={h.id}
-            id={h.id}
             type="source"
             position={Position.Bottom}
-            style={{
-              left: `${h.leftPct}%`,
-              background: accent,
-              width: 8,
-              height: 8,
-            }}
+            style={{ opacity: 0, pointerEvents: "none" }}
           />
-        ))
-      ) : (
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          style={{ opacity: 0, pointerEvents: "none" }}
-        />
-      )}
+        )}
 
-      <div
-        style={{
-          color: accent,
-          fontWeight: 700,
-          fontSize: 11,
-          lineHeight: 1.3,
-        }}
-      >
-        {data.name}
-      </div>
-      <div style={{ color: "#9ca3af", fontSize: 10, marginBottom: 6 }}>
-        {data.model}
-      </div>
-
-      <div
-        style={{
-          borderTop: "1px solid #374151",
-          paddingTop: 6,
-          display: "flex",
-          flexDirection: "column",
-          gap: 2,
-        }}
-      >
-        {[
-          [
-            "Status",
-            isOnline ? "Online" : "Offline",
-            isOnline ? "#4ade80" : "#f87171",
-          ],
-          ["IP", data.ip || "—", "#d1d5db"],
-          ["Version", data.version || "—", "#d1d5db"],
-          ...(data.uptime
-            ? [["Uptime", formatUptime(data.uptime), "#d1d5db"]]
-            : []),
-        ].map(([label, value, color]) => (
-          <div
-            key={label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 10,
-              gap: 8,
-            }}
-          >
-            <span style={{ color: "#6b7280" }}>{label}</span>
-            <span
-              style={{
-                color,
-                fontWeight: label === "Status" ? 600 : 400,
-                fontFamily: label === "IP" ? "monospace" : undefined,
-              }}
-            >
-              {value}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* expand/collapse hint at the bottom of the card */}
-      {data.hasChildren && (
         <div
           style={{
-            borderTop: "1px solid #1f2937",
-            marginTop: 6,
-            paddingTop: 5,
-            textAlign: "center",
-            fontSize: 9,
-            userSelect: "none",
-            color: data.isCollapsed ? "#60a5fa" : "#4b5563",
-            letterSpacing: "0.03em",
+            color: accent,
+            fontWeight: 700,
+            fontSize: 11,
+            lineHeight: 1.3,
           }}
         >
-          {data.isCollapsed
-            ? `▶  ${data.hiddenCount} device${data.hiddenCount !== 1 ? "s" : ""} hidden — double-click to expand`
-            : "▼  double-click to collapse"}
+          {data.name}
         </div>
-      )}
+        <div style={{ color: "#9ca3af", fontSize: 10, marginBottom: 6 }}>
+          {data.model}
+        </div>
+
+        <div
+          style={{
+            borderTop: "1px solid #374151",
+            paddingTop: 6,
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+          }}
+        >
+          {[
+            [
+              "Status",
+              isOnline ? "Online" : "Offline",
+              isOnline ? "#4ade80" : "#f87171",
+            ],
+            ["IP", data.ip || "—", "#d1d5db"],
+            ["Version", data.version || "—", "#d1d5db"],
+            ...(data.uptime
+              ? [["Uptime", formatUptime(data.uptime), "#d1d5db"]]
+              : []),
+          ].map(([label, value, color]) => (
+            <div
+              key={label}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 10,
+                gap: 8,
+              }}
+            >
+              <span style={{ color: "#6b7280" }}>{label}</span>
+              <span
+                style={{
+                  color,
+                  fontWeight: label === "Status" ? 600 : 400,
+                  fontFamily: label === "IP" ? "monospace" : undefined,
+                }}
+              >
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* expand/collapse hint at the bottom of the card */}
+        {data.hasChildren && (
+          <div
+            style={{
+              borderTop: "1px solid #1f2937",
+              marginTop: 6,
+              paddingTop: 5,
+              textAlign: "center",
+              fontSize: 9,
+              userSelect: "none",
+              color: data.isCollapsed ? "#60a5fa" : "#4b5563",
+              letterSpacing: "0.03em",
+            }}
+          >
+            {data.isCollapsed
+              ? `▶  ${data.hiddenCount} device${data.hiddenCount !== 1 ? "s" : ""} hidden — double-click to expand`
+              : "▼  double-click to collapse"}
+          </div>
+        )}
       </div>
     </>
   );
 }
 
 const RouterNode = ({ data, selected, id }) => (
-  <DeviceNode data={data} selected={selected} id={id} accentColor="#ef4444" isGateway />
+  <DeviceNode
+    data={data}
+    selected={selected}
+    id={id}
+    accentColor="#ef4444"
+    isGateway
+  />
 );
 const SwdNode = ({ data, selected, id }) => (
   <DeviceNode data={data} selected={selected} id={id} accentColor="#a855f7" />
@@ -609,24 +631,50 @@ const SwitchNode = ({ data, selected, id }) => (
 
 function WirelessNode() {
   return (
-    <div style={{
-      border: "2px dashed #06b6d4", background: "#0c1a1f", borderRadius: 8,
-      padding: "10px 14px", width: 160, textAlign: "center",
-      boxShadow: "0 0 14px #06b6d444, 0 4px 20px rgba(0,0,0,.5)",
-    }}>
-      <Handle type="source" position={Position.Bottom}
-              style={{ background: "#06b6d4", width: 8, height: 8 }} />
-      <svg width="26" height="22" viewBox="0 0 24 20" fill="none" stroke="#06b6d4" strokeWidth="2"
-           strokeLinecap="round" style={{ margin: "0 auto 6px", display: "block" }}>
+    <div
+      style={{
+        border: "2px dashed #06b6d4",
+        background: "#0c1a1f",
+        borderRadius: 8,
+        padding: "10px 14px",
+        width: 160,
+        textAlign: "center",
+        boxShadow: "0 0 14px #06b6d444, 0 4px 20px rgba(0,0,0,.5)",
+      }}
+    >
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={{ background: "#06b6d4", width: 8, height: 8 }}
+      />
+      <svg
+        width="26"
+        height="22"
+        viewBox="0 0 24 20"
+        fill="none"
+        stroke="#06b6d4"
+        strokeWidth="2"
+        strokeLinecap="round"
+        style={{ margin: "0 auto 6px", display: "block" }}
+      >
         <path d="M1 5.5a15.5 15.5 0 0 1 22 0" />
         <path d="M4.5 9.5a11 11 0 0 1 15 0" />
         <path d="M8 13.5a6 6 0 0 1 8 0" />
         <circle cx="12" cy="17" r="1.2" fill="#06b6d4" stroke="none" />
       </svg>
-      <div style={{ color: "#06b6d4", fontWeight: 700, fontSize: 11, lineHeight: 1.3 }}>
+      <div
+        style={{
+          color: "#06b6d4",
+          fontWeight: 700,
+          fontSize: 11,
+          lineHeight: 1.3,
+        }}
+      >
         Wireless Bridge
       </div>
-      <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 2 }}>Nanobeam</div>
+      <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 2 }}>
+        Nanobeam
+      </div>
     </div>
   );
 }
@@ -641,7 +689,12 @@ const nodeTypes = {
 
 // takes raw device list + detail map and returns nodes/edges ready for react flow
 
-function buildTopology(devices, detailsMap, siteId, { hGap = H_GAP, handleSpacing = 24 } = {}) {
+function buildTopology(
+  devices,
+  detailsMap,
+  siteId,
+  { hGap = H_GAP, handleSpacing = 24 } = {},
+) {
   const isRouter = (d) => d.type === "gateway" || d.type === "router";
   // SWD = distribution tier (sits directly under the router)
   const isSwd = (d) => /swd\d+$/i.test(d.name ?? "");
@@ -723,7 +776,8 @@ function buildTopology(devices, detailsMap, siteId, { hGap = H_GAP, handleSpacin
         if (seen.has(edgeKey)) return;
         seen.add(edgeKey);
 
-        const localPort = c.port_ids?.[0] ?? c.port_id?.split(",")?.[0]?.trim() ?? "?";
+        const localPort =
+          c.port_ids?.[0] ?? c.port_id?.split(",")?.[0]?.trim() ?? "?";
         const peerDetail = detailsMap[peer.id];
         const peerClient =
           peerDetail?.clients?.find(
@@ -778,9 +832,13 @@ function buildTopology(devices, detailsMap, siteId, { hGap = H_GAP, handleSpacin
             if (seen.has(edgeKey)) continue;
             seen.add(edgeKey);
             rawEdges.push({
-              edgeKey, devId: dev.id, peerId: peer.id,
-              devPort: port.port_id, peerPort: "?",
-              color: "#06b6d4", wireless: true,
+              edgeKey,
+              devId: dev.id,
+              peerId: peer.id,
+              devPort: port.port_id,
+              peerPort: "?",
+              color: "#06b6d4",
+              wireless: true,
             });
           }
         }
@@ -876,7 +934,10 @@ function buildTopology(devices, detailsMap, siteId, { hGap = H_GAP, handleSpacin
       style: e.wireless
         ? { stroke: "#06b6d4", strokeWidth: 2, strokeDasharray: "8 4" }
         : { stroke: e.color, strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: e.wireless ? "#06b6d4" : e.color },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: e.wireless ? "#06b6d4" : e.color,
+      },
       data: { parentPort, childPort, parentName, childName },
     };
   });
@@ -892,9 +953,10 @@ function buildTopology(devices, detailsMap, siteId, { hGap = H_GAP, handleSpacin
   const nodeWidths = {};
   devices.forEach((d) => {
     const n = (edgesByParent[d.id] ?? []).length;
-    nodeWidths[d.id] = n <= 1
-      ? NODE_W
-      : Math.max(NODE_W, Math.ceil(((n - 1) * handleSpacing) / 0.7) + 40);
+    nodeWidths[d.id] =
+      n <= 1
+        ? NODE_W
+        : Math.max(NODE_W, Math.ceil(((n - 1) * handleSpacing) / 0.7) + 40);
   });
 
   // run the layout now that we know each node's actual width
@@ -928,7 +990,10 @@ function buildTopology(devices, detailsMap, siteId, { hGap = H_GAP, handleSpacin
 
   // anything with no connections goes to the side list instead of the diagram
   const connectedIds = new Set();
-  edgeList.forEach((e) => { connectedIds.add(e.source); connectedIds.add(e.target); });
+  edgeList.forEach((e) => {
+    connectedIds.add(e.source);
+    connectedIds.add(e.target);
+  });
 
   // Detect all devices that have a Nanobeam-style uplink (uplink=true, no LLDP system name,
   // valid neighbor_mac). This covers both devices already in the topology via other links
@@ -953,18 +1018,32 @@ function buildTopology(devices, detailsMap, siteId, { hGap = H_GAP, handleSpacin
 
   // Devices whose ONLY upstream path is through a Nanobeam — no Mist LLDP peers at all.
   // Show them in the topology connected to the wireless cloud node, not in offlineIsolated.
-  const nanobeamOnlyIds = new Set([...nanobeamDeviceIds].filter((id) => !connectedIds.has(id)));
+  const nanobeamOnlyIds = new Set(
+    [...nanobeamDeviceIds].filter((id) => !connectedIds.has(id)),
+  );
 
-  const offlineIsolated = devices.filter((d) => !connectedIds.has(d.id) && !nanobeamOnlyIds.has(d.id));
-  const linkedDevices   = devices.filter((d) =>  connectedIds.has(d.id));
+  const offlineIsolated = devices.filter(
+    (d) => !connectedIds.has(d.id) && !nanobeamOnlyIds.has(d.id),
+  );
+  const linkedDevices = devices.filter((d) => connectedIds.has(d.id));
 
   const nodes = linkedDevices.map((d) => ({
     id: d.id,
-    type: isRouter(d) ? "routerNode" : isSwd(d) ? "swdNode" : isAgg(d) ? "aggNode" : "switchNode",
+    type: isRouter(d)
+      ? "routerNode"
+      : isSwd(d)
+        ? "swdNode"
+        : isAgg(d)
+          ? "aggNode"
+          : "switchNode",
     position: positions[d.id] ?? { x: 0, y: 0 },
     data: {
-      name: d.name, model: d.model, ip: d.ip,
-      status: d.status, version: d.version, uptime: d.uptime,
+      name: d.name,
+      model: d.model,
+      ip: d.ip,
+      status: d.status,
+      version: d.version,
+      uptime: d.uptime,
       siteId,
       sourceHandles: nodeSourceHandles[d.id] ?? [],
       nodeWidth: nodeWidths[d.id] ?? NODE_W,
@@ -973,12 +1052,19 @@ function buildTopology(devices, detailsMap, siteId, { hGap = H_GAP, handleSpacin
 
   if (nanobeamDeviceIds.size > 0) {
     const positionedNano = [...nanobeamDeviceIds].filter((id) => positions[id]);
-    const avgX = positionedNano.length > 0
-      ? positionedNano.reduce((s, id) => s + positions[id].x, 0) / positionedNano.length
-      : (nodes.length > 0 ? nodes.reduce((s, n) => s + n.position.x, 0) / nodes.length : 0);
-    const refY = positionedNano.length > 0
-      ? Math.min(...positionedNano.map((id) => positions[id].y))
-      : (nodes.length > 0 ? Math.min(...nodes.map((n) => n.position.y)) : NODE_H + V_GAP);
+    const avgX =
+      positionedNano.length > 0
+        ? positionedNano.reduce((s, id) => s + positions[id].x, 0) /
+          positionedNano.length
+        : nodes.length > 0
+          ? nodes.reduce((s, n) => s + n.position.x, 0) / nodes.length
+          : 0;
+    const refY =
+      positionedNano.length > 0
+        ? Math.min(...positionedNano.map((id) => positions[id].y))
+        : nodes.length > 0
+          ? Math.min(...nodes.map((n) => n.position.y))
+          : NODE_H + V_GAP;
 
     const wirelessId = "wireless-cloud";
     const cloudX = avgX - 80;
@@ -997,13 +1083,27 @@ function buildTopology(devices, detailsMap, siteId, { hGap = H_GAP, handleSpacin
       if (!dev) return;
       nodes.push({
         id: devId,
-        type: isRouter(dev) ? "routerNode" : isSwd(dev) ? "swdNode" : isAgg(dev) ? "aggNode" : "switchNode",
-        position: { x: cloudX - 80 + idx * (NODE_W + hGap), y: cloudY + NODE_H + V_GAP },
+        type: isRouter(dev)
+          ? "routerNode"
+          : isSwd(dev)
+            ? "swdNode"
+            : isAgg(dev)
+              ? "aggNode"
+              : "switchNode",
+        position: {
+          x: cloudX - 80 + idx * (NODE_W + hGap),
+          y: cloudY + NODE_H + V_GAP,
+        },
         data: {
-          name: dev.name, model: dev.model, ip: dev.ip,
-          status: dev.status, version: dev.version, uptime: dev.uptime,
+          name: dev.name,
+          model: dev.model,
+          ip: dev.ip,
+          status: dev.status,
+          version: dev.version,
+          uptime: dev.uptime,
           siteId,
-          sourceHandles: [], nodeWidth: nodeWidths[devId] ?? NODE_W,
+          sourceHandles: [],
+          nodeWidth: nodeWidths[devId] ?? NODE_W,
         },
       });
     });
@@ -1049,6 +1149,7 @@ export default function TopologyView() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [showPortLabels, setShowPortLabels] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const rawInputRef = useRef(null);
 
   // Re-layout when port label toggle changes — wider nodes + gaps when on
@@ -1056,15 +1157,25 @@ export default function TopologyView() {
     const ri = rawInputRef.current;
     if (!ri) return;
     const opts = showPortLabels ? { hGap: H_GAP * 3, handleSpacing: 64 } : {};
-    const { nodes: n, edges: e, offlineIsolated: ol, childrenMap: cm } =
-      buildTopology(ri.devices, ri.detailsMap, ri.siteId, opts);
+    const {
+      nodes: n,
+      edges: e,
+      offlineIsolated: ol,
+      childrenMap: cm,
+    } = buildTopology(ri.devices, ri.detailsMap, ri.siteId, opts);
     setOfflineIsolated(ol);
     setRawData({ nodes: n, edges: e, childrenMap: cm });
   }, [showPortLabels]);
 
   const getToken = useCallback(async () => {
-    const r = await instance.acquireTokenSilent(request);
-    return r.accessToken;
+    try {
+      const r = await instance.acquireTokenSilent(request);
+      return r.accessToken;
+    } catch (silentErr) {
+      console.warn("Silent token acquisition failed, trying popup:", silentErr);
+      const r = await instance.acquireTokenPopup(request);
+      return r.accessToken;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instance]);
 
@@ -1077,7 +1188,13 @@ export default function TopologyView() {
           "Content-Type": "application/json",
         },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        if (res.status === 401)
+          throw new Error(
+            "Session expired. Please try again to refresh your token.",
+          );
+        throw new Error(`HTTP ${res.status}`);
+      }
       return res.json();
     },
     [getToken],
@@ -1155,6 +1272,7 @@ export default function TopologyView() {
 
   useEffect(() => {
     if (!selectedSiteId) return;
+    void retryKey; // retryKey increment forces this effect to re-run on "Try again"
     let cancelled = false;
     setIsLoadingTopo(true);
     setError(null);
@@ -1195,9 +1313,19 @@ export default function TopologyView() {
           // eslint-disable-next-line no-loop-func
           const results = await Promise.allSettled(
             batch.map((d) =>
-              authFetch(`${BASE}/mist/site/${selectedSiteId}/device/${d.id}/details`)
-                .then((r) => { fetchedCount++; if (!cancelled) setLoadingStatus(`${fetchedCount}/${total}`); return r; })
-                .catch((e) => { fetchedCount++; if (!cancelled) setLoadingStatus(`${fetchedCount}/${total}`); throw e; }),
+              authFetch(
+                `${BASE}/mist/site/${selectedSiteId}/device/${d.id}/details`,
+              )
+                .then((r) => {
+                  fetchedCount++;
+                  if (!cancelled) setLoadingStatus(`${fetchedCount}/${total}`);
+                  return r;
+                })
+                .catch((e) => {
+                  fetchedCount++;
+                  if (!cancelled) setLoadingStatus(`${fetchedCount}/${total}`);
+                  throw e;
+                }),
             ),
           );
           batch.forEach((d, j) => {
@@ -1238,7 +1366,7 @@ export default function TopologyView() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSiteId]);
+  }, [selectedSiteId, retryKey]);
 
   const isCollapsible = rawData.nodes.some(
     (n) => (rawData.childrenMap[n.id] ?? []).length > 0,
@@ -1335,22 +1463,40 @@ export default function TopologyView() {
           <div className="flex flex-col justify-center items-center py-32 gap-3">
             {(() => {
               const match = loadingStatus?.match(/(\d+)\/(\d+)/);
-              const done  = match ? parseInt(match[1]) : 0;
+              const done = match ? parseInt(match[1]) : 0;
               const total = match ? parseInt(match[2]) : 0;
-              const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+              const pct = total > 0 ? Math.round((done / total) * 100) : 0;
               return (
                 <div className="flex flex-col items-center gap-3 w-56">
                   {total === 0 ? (
                     <>
-                      <svg className="animate-spin w-6 h-6 text-pink-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                      <svg
+                        className="animate-spin w-6 h-6 text-pink-400"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                        />
                       </svg>
                       <p className="text-sm text-gray-400">Loading devices…</p>
                     </>
                   ) : (
                     <>
-                      <p className="text-sm text-gray-400">Loading device details…</p>
+                      <p className="text-sm text-gray-400">
+                        Loading device details…
+                      </p>
                       <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-pink-400 to-pink-500 transition-all duration-300"
@@ -1358,7 +1504,8 @@ export default function TopologyView() {
                         />
                       </div>
                       <p className="text-xs text-gray-500">
-                        <span className="text-white font-medium">{done}</span> / {total} devices ({pct}%)
+                        <span className="text-white font-medium">{done}</span> /{" "}
+                        {total} devices ({pct}%)
                       </p>
                     </>
                   )}
@@ -1367,8 +1514,14 @@ export default function TopologyView() {
             })()}
           </div>
         ) : error ? (
-          <div className="flex justify-center items-center py-32">
+          <div className="flex flex-col justify-center items-center py-32 gap-3">
             <p className="text-red-400 text-sm">{error}</p>
+            <button
+              onClick={() => setRetryKey((k) => k + 1)}
+              className="text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+            >
+              Try again
+            </button>
           </div>
         ) : nodes.length === 0 && selectedSiteId && !isLoadingTopo && !error ? (
           <div className="flex justify-center items-center py-32">
@@ -1444,74 +1597,76 @@ export default function TopologyView() {
               className="rounded-xl border border-gray-700"
             >
               <PortLabelsCtx.Provider value={showPortLabels}>
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onNodeDoubleClick={onNodeDoubleClick}
-                onEdgeMouseEnter={onEdgeMouseEnter}
-                onEdgeMouseLeave={onEdgeMouseLeave}
-                onInit={setRfInstance}
-                nodeTypes={nodeTypes}
-                edgeTypes={edgeTypes}
-                fitView
-                fitViewOptions={{ padding: 0.15 }}
-                minZoom={0.1}
-                proOptions={{ hideAttribution: true }}
-                deleteKeyCode={null}
-                nodesConnectable={false}
-              >
-                <Background color="#374151" gap={20} />
-                <Controls />
-                <MiniMap
-                  nodeColor={(n) =>
-                    n.type === "routerNode"
-                      ? "#ef4444"
-                      : n.type === "swdNode"
-                        ? "#a855f7"
-                        : n.type === "aggNode"
-                          ? "#f97316"
-                          : "#3b82f6"
-                  }
-                  maskColor="rgba(17,24,39,0.8)"
-                  className="!bg-gray-900 !border-gray-700"
-                  zoomable
-                  pannable
-                />
-                <Panel position="bottom-center">
-                  <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[10px] text-gray-500 bg-gray-950/80 px-3 py-1.5 rounded-lg border border-gray-800 backdrop-blur-sm">
-                    <span>Hover link = port info</span>
-                    <span className="text-gray-700">|</span>
-                    <span>Drag nodes</span>
-                    {isCollapsible && (
-                      <>
-                        <span className="text-gray-700">|</span>
-                        <span>Double-click node = collapse</span>
-                      </>
-                    )}
-                    <span className="text-gray-700">|</span>
-                    <span className="text-red-400">Red = router</span>
-                    <span className="text-purple-400">Purple = SWD</span>
-                    <span className="text-orange-400">Orange = AGG</span>
-                    <span className="text-blue-400">Blue = copper</span>
-                    <span className="text-amber-400">Yellow = fiber</span>
-                    <span className="text-cyan-400">Cyan dashed = wireless</span>
-                  </div>
-                </Panel>
-                <Panel position="top-right">
-                  <button
-                    onClick={() => setShowPortLabels((v) => !v)}
-                    className={`text-[10px] px-2 py-1 rounded border transition-colors font-mono ${
-                      showPortLabels
-                        ? "bg-pink-500/20 border-pink-500 text-pink-300"
-                        : "bg-gray-900/80 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white"
-                    }`}
-                  >
-                    {showPortLabels ? "Hide ports" : "Show ports"}
-                  </button>
-                </Panel>
-              </ReactFlow>
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onNodeDoubleClick={onNodeDoubleClick}
+                  onEdgeMouseEnter={onEdgeMouseEnter}
+                  onEdgeMouseLeave={onEdgeMouseLeave}
+                  onInit={setRfInstance}
+                  nodeTypes={nodeTypes}
+                  edgeTypes={edgeTypes}
+                  fitView
+                  fitViewOptions={{ padding: 0.15 }}
+                  minZoom={0.1}
+                  proOptions={{ hideAttribution: true }}
+                  deleteKeyCode={null}
+                  nodesConnectable={false}
+                >
+                  <Background color="#374151" gap={20} />
+                  <Controls />
+                  <MiniMap
+                    nodeColor={(n) =>
+                      n.type === "routerNode"
+                        ? "#ef4444"
+                        : n.type === "swdNode"
+                          ? "#a855f7"
+                          : n.type === "aggNode"
+                            ? "#f97316"
+                            : "#3b82f6"
+                    }
+                    maskColor="rgba(17,24,39,0.8)"
+                    className="!bg-gray-900 !border-gray-700"
+                    zoomable
+                    pannable
+                  />
+                  <Panel position="bottom-center">
+                    <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[10px] text-gray-500 bg-gray-950/80 px-3 py-1.5 rounded-lg border border-gray-800 backdrop-blur-sm">
+                      <span>Hover link = port info</span>
+                      <span className="text-gray-700">|</span>
+                      <span>Drag nodes</span>
+                      {isCollapsible && (
+                        <>
+                          <span className="text-gray-700">|</span>
+                          <span>Double-click node = collapse</span>
+                        </>
+                      )}
+                      <span className="text-gray-700">|</span>
+                      <span className="text-red-400">Red = router</span>
+                      <span className="text-purple-400">Purple = SWD</span>
+                      <span className="text-orange-400">Orange = AGG</span>
+                      <span className="text-blue-400">Blue = copper</span>
+                      <span className="text-amber-400">Yellow = fiber</span>
+                      <span className="text-cyan-400">
+                        Cyan dashed = wireless
+                      </span>
+                    </div>
+                  </Panel>
+                  <Panel position="top-right">
+                    <button
+                      onClick={() => setShowPortLabels((v) => !v)}
+                      className={`text-[10px] px-2 py-1 rounded border transition-colors font-mono ${
+                        showPortLabels
+                          ? "bg-pink-500/20 border-pink-500 text-pink-300"
+                          : "bg-gray-900/80 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white"
+                      }`}
+                    >
+                      {showPortLabels ? "Hide ports" : "Show ports"}
+                    </button>
+                  </Panel>
+                </ReactFlow>
               </PortLabelsCtx.Provider>
             </div>
 
