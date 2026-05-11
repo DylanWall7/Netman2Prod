@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@nextui-org/react";
 
 function StatusIcon({ status }) {
@@ -21,7 +21,50 @@ function StatusIcon({ status }) {
   return null;
 }
 
-export default function BatchQueue({ items, onSubmitAll, onClear, onClearSucceeded, onDelete, isSubmitting, styles, settingsReady }) {
+function DetailField({ label, value }) {
+  if (value === null || value === undefined || value === "") return null;
+  return (
+    <div>
+      <span className="text-xs text-gray-500 uppercase tracking-wider">{label}</span>
+      <p className="text-xs text-gray-200 mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+function StatusDetail({ d }) {
+  if (!d) return null;
+  const lastOnline = d?.custom_fields?.last_online?.value;
+  return (
+    <div className="px-3 pb-3 pt-2 border-t border-gray-600 grid grid-cols-2 gap-x-4 gap-y-2.5">
+      <DetailField label="Asset Tag" value={d.asset_tag} />
+      <DetailField label="Manufacturer" value={d.manufacturer?.name} />
+      <DetailField label="Model" value={d.model?.name} />
+      <DetailField label="Model #" value={d.model_number} />
+      <DetailField label="Category" value={d.category?.name} />
+      <DetailField label="Checked Out To" value={d.assigned_to?.name || d.assigned_to?.username} />
+      <DetailField label="Location" value={d.location?.name} />
+      <DetailField label="RTD Location" value={d.rtd_location?.name} />
+      <DetailField label="Last Online" value={lastOnline || (d.location ? "No date recorded" : null)} />
+      {d.notes && <div className="col-span-2"><DetailField label="Notes" value={d.notes} /></div>}
+      <DetailField label="Check-ins" value={d.checkin_counter} />
+      <DetailField label="Check-outs" value={d.checkout_counter} />
+      <DetailField label="Created" value={d.created_at?.formatted} />
+      <DetailField label="Last Check-in" value={d.last_checkin?.formatted} />
+      <DetailField label="Last Check-out" value={d.last_checkout?.formatted} />
+    </div>
+  );
+}
+
+export default function BatchQueue({ items, onSubmitAll, onClear, onClearSucceeded, onDelete, isSubmitting, styles, settingsReady, isStatusTab }) {
+  const [expanded, setExpanded] = useState(new Set());
+
+  const toggleExpand = (i) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
+
   const pending = items.filter((i) => i.status === "pending" || i.status === "error").length;
   const success = items.filter((i) => i.status === "success").length;
 
@@ -68,28 +111,46 @@ export default function BatchQueue({ items, onSubmitAll, onClear, onClearSucceed
         </div>
       </div>
 
-      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-        {items.map((item, i) => (
-          <div key={i} className="flex items-center gap-3 px-3 py-2 bg-gray-700 rounded-lg">
-            <span className="font-mono text-sm text-pink-400 flex-1 truncate">{item.serial}</span>
-            {item.message && (
-              <span className="text-xs text-gray-500 truncate max-w-[160px]">{item.message}</span>
-            )}
-            <StatusIcon status={item.status} />
-            {item.status !== "processing" && (
-              <button
-                onClick={() => onDelete(i)}
-                disabled={isSubmitting}
-                className="text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30 flex-shrink-0 ml-1"
-                title="Remove"
+      <div className="space-y-1.5 max-h-[32rem] overflow-y-auto pr-1">
+        {items.map((item, i) => {
+          const isExpanded = expanded.has(i);
+          const hasDetail = isStatusTab && item.data;
+          return (
+            <div key={i} className="bg-gray-700 rounded-lg overflow-hidden">
+              <div
+                className={`flex items-center gap-3 px-3 py-2 ${hasDetail ? "cursor-pointer hover:bg-gray-600/50 transition-colors" : ""}`}
+                onClick={hasDetail ? () => toggleExpand(i) : undefined}
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-        ))}
+                <span className="font-mono text-sm text-pink-400 flex-1 truncate">{item.serial}</span>
+                {item.message && (
+                  <span className="text-xs text-gray-400 truncate max-w-[160px]">{item.message}</span>
+                )}
+                <StatusIcon status={item.status} />
+                {hasDetail && (
+                  <svg
+                    className={`w-3.5 h-3.5 text-gray-500 flex-shrink-0 transition-transform duration-150 ${isExpanded ? "rotate-180" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                )}
+                {item.status !== "processing" && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(i); }}
+                    disabled={isSubmitting}
+                    className="text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30 flex-shrink-0"
+                    title="Remove"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              {isExpanded && <StatusDetail d={item.data} />}
+            </div>
+          );
+        })}
       </div>
 
       {success > 0 && (

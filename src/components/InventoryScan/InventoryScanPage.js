@@ -255,14 +255,19 @@ export default function InventoryScanPage() {
         const data = json?.data || json;
         if (res.ok) {
           setStatusResult({ serial, data });
+          const statusName = data?.status_label?.name || "Unknown";
+          const location = data?.location?.name ? ` @ ${data.location.name}` : "";
+          addRecentScan(serial, "status", `${statusName}${location}`, "success", "");
         } else {
           setStatusResult({
             serial,
             error: json?.message || "Device not found",
           });
+          addRecentScan(serial, "status", "", "error", json?.message || "Device not found");
         }
       } catch {
         setStatusResult({ serial, error: "Network error — check connection" });
+        addRecentScan(serial, "status", "", "error", "Network error");
       } finally {
         setIsSubmitting(false);
       }
@@ -350,10 +355,11 @@ export default function InventoryScanPage() {
               ...prev,
               [tab]: prev[tab].map((q, idx) =>
                 idx === i
-                  ? { ...q, status: res.ok ? "success" : "error", message }
+                  ? { ...q, status: res.ok ? "success" : "error", message, data: res.ok ? data : null }
                   : q,
               ),
             }));
+            addRecentScan(queue[i].serial, "status", res.ok ? message : "", res.ok ? "success" : "error", res.ok ? "" : message);
           } else {
             const { ok, message } = await submitScan(
               queue[i].serial,
@@ -547,6 +553,7 @@ export default function InventoryScanPage() {
               isSubmitting={isSubmitting}
               styles={styles}
               settingsReady={isSettingsReady()}
+              isStatusTab={isStatusTab}
             />
           )}
         </div>
@@ -557,29 +564,37 @@ export default function InventoryScanPage() {
               Recent Scans
             </h3>
             {recentScans.length > 0 && (
-              <div className="relative">
-                <svg
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { setRecentScans([]); setRecentSearch(""); }}
+                  className="text-xs text-red-700 hover:text-red-400 transition-colors"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"
+                  Clear All
+                </button>
+                <div className="relative">
+                  <svg
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"
+                    />
+                  </svg>
+                  <input
+                    type="text"
+                    value={recentSearch}
+                    onChange={(e) => setRecentSearch(e.target.value)}
+                    placeholder="Search serials..."
+                    className="pl-7 pr-3 py-1 text-xs font-mono rounded-lg border border-gray-600 bg-gray-700
+                               text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-pink-500
+                               focus:ring-1 focus:ring-pink-500/30 transition-colors w-44"
                   />
-                </svg>
-                <input
-                  type="text"
-                  value={recentSearch}
-                  onChange={(e) => setRecentSearch(e.target.value)}
-                  placeholder="Search serials..."
-                  className="pl-7 pr-3 py-1 text-xs font-mono rounded-lg border border-gray-600 bg-gray-700
-                             text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-pink-500
-                             focus:ring-1 focus:ring-pink-500/30 transition-colors w-44"
-                />
+                </div>
               </div>
             )}
           </div>

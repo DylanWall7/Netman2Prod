@@ -130,7 +130,7 @@ export default function StatusResult({ result, styles, onClear }) {
         <Field label="Model #" value={d?.model_number} />
         <Field label="Category" value={d?.category?.name} />
         <Field
-          label="Assigned To"
+          label="Checked Out To"
           value={d?.assigned_to?.name || d?.assigned_to?.username}
         />
         <Field label="Location" value={d?.location?.name} />

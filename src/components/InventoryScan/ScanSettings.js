@@ -512,7 +512,7 @@ export default function ScanSettings({
               type="button"
               disabled={locked}
               onClick={() => setOptionalOpen((o) => !o)}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span className="font-medium">Optional fields</span>
               <svg
