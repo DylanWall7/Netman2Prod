@@ -1,40 +1,81 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useMsal } from "@azure/msal-react";
+import { motion } from "framer-motion";
+
+const containerVariants = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.07 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 18 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: "easeOut" },
+  },
+};
+
+function ArrowUpRight({ className }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 17L17 7M17 7H7M17 7v10" />
+    </svg>
+  );
+}
+
+function Card({ to, title, description, external, children }) {
+  const inner = (
+    <motion.div
+      variants={itemVariants}
+      whileHover={{ scale: 1.025 }}
+      whileTap={{ scale: 0.975 }}
+      className="group relative flex items-start gap-4 p-5 rounded-xl bg-gray-800 border border-gray-700
+                 hover:border-pink-500/50 hover:shadow-lg hover:shadow-black/30
+                 transition-colors duration-200 cursor-pointer h-full"
+    >
+      <div className="flex-shrink-0 w-11 h-11 rounded-lg flex items-center justify-center bg-gray-700/80 text-gray-300">
+        {children}
+      </div>
+      <div className="flex-1 min-w-0">
+        <h4 className="text-sm font-semibold text-gray-100 group-hover:text-white transition-colors leading-snug">
+          {title}
+        </h4>
+        <p className="mt-1 text-xs text-gray-400 group-hover:text-gray-300 transition-colors leading-relaxed">
+          {description}
+        </p>
+      </div>
+      <ArrowUpRight className="absolute top-3.5 right-3.5 w-3.5 h-3.5 text-gray-600 group-hover:text-pink-500 transition-colors" />
+    </motion.div>
+  );
+
+  if (external) {
+    return <a href={to} target="_blank" rel="noopener noreferrer">{inner}</a>;
+  }
+  return <Link to={to}>{inner}</Link>;
+}
 
 export const HomeLayout = () => {
   const { accounts } = useMsal();
   const roles = accounts[0]?.idTokenClaims?.roles || [];
-
   const isEngineer = roles.includes("Engineer");
-  const hasNoRoles = roles.length === 0;
+  const isFieldServices = roles.includes("FieldServices");
+  const isAuthorized = isEngineer || isFieldServices;
 
-  if (hasNoRoles) {
+  if (!isAuthorized) {
     return (
       <div className="pt-40 grid place-items-center px-4">
         <div className="text-center space-y-6">
           <div className="flex justify-center">
-            <svg
-              className="w-16 h-16 text-yellow-500"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
+            <svg className="w-16 h-16 text-yellow-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-100">
-            Unauthorized
-          </h1>
-          <p className="text-gray-400">
-            Your account does not have access. Please contact your administrator
-            to request access.
-          </p>
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-100">Unauthorized</h1>
+          <p className="text-gray-400">Your account does not have access. Please contact your administrator to request access.</p>
         </div>
       </div>
     );
@@ -43,647 +84,184 @@ export const HomeLayout = () => {
   return (
     <div className="mt-12 px-4">
       <main className="h-full">
-        <div className="grid grid-cols-3 grid-rows-6 gap-6 max-w-7xl mx-auto mt-5">
-          {/* Card Component */}
-
+        <motion.div
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto mt-5"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
           {isEngineer && (
-            <Link to="/provision" className="col-span-1 row-span-1 group">
-              <div
-                className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
-               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
-               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
-               group-hover:border-pink-400"
-              >
-                <div className="flex-1">
-                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
-                    Provisioning Wizard
-                  </h4>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
-                    Deploy new sites, DHCP, and Netbox using the provisioning
-                    wizard.
-                  </p>
-                </div>
-                <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
-                  <svg
-                    fill="#000000"
-                    version="1.1"
-                    id="Layer_1"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 490 490"
-                    width="70"
-                    height="70"
-                  >
-                    <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
-                    <g
-                      id="SVGRepo_tracerCarrier"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    ></g>
-                    <g id="SVGRepo_iconCarrier">
-                      {" "}
-                      <g>
-                        {" "}
-                        <g>
-                          {" "}
-                          <g>
-                            {" "}
-                            <path d="M10,372.5h405c2.602-0.001,5.159-1.016,7.071-2.929l65-65c1.912-1.913,2.904-4.47,2.905-7.071H490v-245 c0-5.522-4.477-10-10-10H10c-5.523,0-10,4.478-10,10v310C0,368.022,4.477,372.5,10,372.5z M425,338.357V307.5h30.858L425,338.357 z M20,62.5h450v225h-55c-5.523,0-10,4.478-10,10v55H20V62.5z"></path>{" "}
-                            <path d="M350,92.5H250c-5.523,0-10,4.478-10,10v15h-25c-5.523,0-10,4.478-10,10v75h-80v-35h55c5.523,0,10-4.478,10-10v-60 c0-5.522-4.477-10-10-10H60c-5.523,0-10,4.478-10,10v60c0,5.522,4.477,10,10,10h45v45c0,5.522,4.477,10,10,10h90v70 c0,5.522,4.477,10,10,10h25v10c0,5.522,4.477,10,10,10h100c5.523,0,10-4.478,10-10v-50c0-5.522-4.477-10-10-10H250 c-5.523,0-10,4.478-10,10v20h-15v-60h15v10c0,5.522,4.477,10,10,10h100c5.523,0,10-4.478,10-10v-50c0-5.522-4.477-10-10-10H250 c-5.523,0-10,4.478-10,10v20h-15v-65h15v15c0,5.522,4.477,10,10,10h100c5.523,0,10-4.478,10-10v-50 C360,96.978,355.523,92.5,350,92.5z M70,147.5v-40h100v40H70z M260,272.5h80v30h-80V272.5z M260,192.5h80v30h-80V192.5z M340,142.5h-80v-30h80V142.5z"></path>{" "}
-                            <rect
-                              x="50"
-                              y="247.5"
-                              width="75"
-                              height="20"
-                            ></rect>{" "}
-                            <rect
-                              x="50"
-                              y="277.5"
-                              width="75"
-                              height="20"
-                            ></rect>{" "}
-                            <rect
-                              x="50"
-                              y="307.5"
-                              width="130"
-                              height="20"
-                            ></rect>{" "}
-                            <rect
-                              x="135"
-                              y="247.5"
-                              width="20"
-                              height="20"
-                            ></rect>{" "}
-                            <rect
-                              x="380"
-                              y="92.5"
-                              width="25"
-                              height="20"
-                            ></rect>{" "}
-                            <rect
-                              x="420"
-                              y="92.5"
-                              width="25"
-                              height="20"
-                            ></rect>{" "}
-                            <rect
-                              x="380"
-                              y="122.5"
-                              width="25"
-                              height="20"
-                            ></rect>{" "}
-                            <rect
-                              x="420"
-                              y="122.5"
-                              width="25"
-                              height="20"
-                            ></rect>{" "}
-                            <rect
-                              x="380"
-                              y="152.5"
-                              width="25"
-                              height="20"
-                            ></rect>{" "}
-                            <rect
-                              x="420"
-                              y="152.5"
-                              width="25"
-                              height="20"
-                            ></rect>{" "}
-                            <rect
-                              x="380"
-                              y="182.5"
-                              width="25"
-                              height="20"
-                            ></rect>{" "}
-                            <rect
-                              x="420"
-                              y="182.5"
-                              width="25"
-                              height="20"
-                            ></rect>{" "}
-                            <path d="M483.162,408.013l-60-20c-1.033-0.344-2.1-0.498-3.162-0.498V387.5H10c-5.523,0-10,4.478-10,10v40 c0,5.522,4.477,10,10,10h410h0.001c1.061,0,2.129-0.169,3.161-0.513l60-20c4.083-1.361,6.838-5.183,6.838-9.487 C490,413.196,487.246,409.374,483.162,408.013z M60,427.5H20v-20h40V427.5z M410,427.5H80v-20h330V427.5z M430,423.626v-12.252 l18.377,6.126L430,423.626z"></path>{" "}
-                          </g>{" "}
-                        </g>{" "}
-                      </g>{" "}
-                    </g>
-                  </svg>
-                </div>
-              </div>
-            </Link>
-          )}
-          {isEngineer && (
-            <Link to="/demobe" className="col-span-1 row-span-1 group">
-              <div
-                className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
-               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
-               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
-               group-hover:border-pink-400"
-              >
-                <div className="flex-1">
-                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
-                    Demobe Tool
-                  </h4>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
-                    Demobe sites and delete DHCP scopes by sitecode.
-                  </p>
-                </div>
-                <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
-                  <svg
-                    fill="#000000"
-                    height="70"
-                    width="70"
-                    version="1.1"
-                    id="Layer_1"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 512 512"
-                  >
-                    <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
-                    <g
-                      id="SVGRepo_tracerCarrier"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    ></g>
-                    <g id="SVGRepo_iconCarrier">
-                      {" "}
-                      <g>
-                        {" "}
-                        <g>
-                          {" "}
-                          <g>
-                            {" "}
-                            <path d="M19.994,317.133c1.57,1.254,3.456,1.869,5.325,1.869c2.5,0,4.983-1.101,6.664-3.208 c4.352-5.436,9.481-10.155,15.232-14.029c3.908-2.637,4.949-7.936,2.313-11.844c-2.628-3.908-7.927-4.941-11.844-2.313 c-7.194,4.838-13.594,10.735-19.021,17.528C15.718,308.813,16.316,314.189,19.994,317.133z"></path>{" "}
-                            <path d="M128,460.8H8.533c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533H128c4.71,0,8.533-3.823,8.533-8.533 S132.71,460.8,128,460.8z"></path>{" "}
-                            <path d="M136.55,426.667h-17.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067 c4.71,0,8.533-3.823,8.533-8.533S141.261,426.667,136.55,426.667z"></path>{" "}
-                            <path d="M205.056,366.916c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533h-0.085c-4.71,0-8.491,3.823-8.491,8.533 S200.337,366.916,205.056,366.916z"></path>{" "}
-                            <path d="M136.55,273.067h-17.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067 c4.71,0,8.533-3.823,8.533-8.533S141.261,273.067,136.55,273.067z"></path>{" "}
-                            <path d="M10.402,383.846c0.614,0,1.246-0.06,1.877-0.205c4.599-1.033,7.484-5.598,6.451-10.197 c-1.101-4.915-1.664-9.975-1.664-15.044c0-5.12,0.563-10.223,1.69-15.181c1.041-4.599-1.843-9.173-6.443-10.214 c-4.608-1.032-9.165,1.843-10.206,6.443C0.708,345.643,0,352.017,0,358.4c0,6.332,0.7,12.646,2.082,18.79 C2.978,381.158,6.494,383.846,10.402,383.846z"></path>{" "}
-                            <path d="M170.684,273.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067c4.71,0,8.533-3.823,8.533-8.533 s-3.823-8.533-8.533-8.533H170.684z"></path>{" "}
-                            <path d="M221.884,273.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067c4.71,0,8.533-3.823,8.533-8.533 s-3.823-8.533-8.533-8.533H221.884z"></path>{" "}
-                            <path d="M68.514,291.977c0.623,0,1.246-0.068,1.877-0.205c4.855-1.092,9.882-1.638,14.942-1.638c4.71,0,8.533-3.823,8.533-8.533 s-3.823-8.533-8.533-8.533c-6.306,0-12.587,0.691-18.671,2.048c-4.599,1.024-7.492,5.589-6.468,10.189 C61.082,289.271,64.606,291.977,68.514,291.977z"></path>{" "}
-                            <path d="M93.867,256H256c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533l-153.6-0.017V85.333l8.491-0.009 c0.017,0,0.026,0.009,0.043,0.009c0.017,0,0.026-0.009,0.043-0.009l93.15-0.094c0.239,0.102,0.649,0.563,0.674,0.102v59.733 c0,4.71,3.823,8.533,8.533,8.533c4.71,0,8.533-3.823,8.533-8.533V85.333c0-8.772-8.294-17.067-17.067-17.067h-85.333v-25.6 c0-4.71-3.823-8.533-8.533-8.533s-8.533,3.823-8.533,8.533v25.6c-9.25,0-17.067,7.817-17.067,17.067v162.133 C85.333,252.177,89.156,256,93.867,256z"></path>{" "}
-                            <path d="M70.272,425.003c-4.565-1.016-9.165,1.852-10.197,6.451s1.852,9.165,6.451,10.197c6.153,1.382,12.476,2.082,18.807,2.082 c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533C80.265,426.667,75.187,426.103,70.272,425.003z"></path>{" "}
-                            <path d="M85.606,349.85h-0.085c-4.71,0-8.491,3.823-8.491,8.533s3.866,8.533,8.576,8.533s8.533-3.823,8.533-8.533 S90.317,349.85,85.606,349.85z"></path>{" "}
-                            <path d="M136.55,358.383c0-28.228-22.972-51.2-51.2-51.2c-28.237,0-51.2,22.972-51.2,51.2c0,28.237,22.963,51.2,51.2,51.2 C113.579,409.583,136.55,386.62,136.55,358.383z M85.35,392.516c-18.825,0-34.133-15.309-34.133-34.133 S66.526,324.25,85.35,324.25c18.816,0,34.133,15.309,34.133,34.133S104.166,392.516,85.35,392.516z"></path>{" "}
-                            <path d="M47.232,415.053c-5.7-3.849-10.786-8.525-15.095-13.884c-2.961-3.669-8.329-4.241-12.006-1.306 c-3.669,2.961-4.25,8.329-1.297,12.006c5.393,6.69,11.733,12.518,18.85,17.331c1.468,0.99,3.123,1.459,4.77,1.459 c2.739,0,5.427-1.314,7.083-3.763C52.164,422.989,51.14,417.69,47.232,415.053z"></path>{" "}
-                            <path d="M204.8,409.583c28.237,0,51.2-22.963,51.2-51.2c0-28.228-22.963-51.2-51.2-51.2c-28.237,0-51.2,22.972-51.2,51.2 C153.6,386.62,176.563,409.583,204.8,409.583z M204.8,324.25c18.825,0,34.133,15.309,34.133,34.133s-15.309,34.133-34.133,34.133 s-34.133-15.309-34.133-34.133S185.975,324.25,204.8,324.25z"></path>{" "}
-                            <path d="M290.15,273.067h-17.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067 c4.71,0,8.533-3.823,8.533-8.533S294.861,273.067,290.15,273.067z"></path>{" "}
-                            <path d="M397.286,383.77c0.631,0.145,1.263,0.213,1.886,0.213c3.9,0,7.424-2.688,8.32-6.656 c1.399-6.187,2.108-12.561,2.108-18.944c0-6.332-0.7-12.646-2.082-18.79c-1.033-4.599-5.598-7.501-10.197-6.451 c-4.599,1.033-7.484,5.598-6.451,10.197c1.101,4.915,1.664,9.975,1.664,15.044c0,5.12-0.563,10.223-1.69,15.181 C389.803,378.155,392.687,382.729,397.286,383.77z"></path>{" "}
-                            <path d="M332.8,460.8h-17.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533H332.8c4.71,0,8.533-3.823,8.533-8.533 S337.51,460.8,332.8,460.8z"></path>{" "}
-                            <path d="M389.606,399.659c-3.669-2.944-9.054-2.355-11.998,1.331c-4.267,5.342-9.429,10.061-15.326,14.029 c-3.908,2.637-4.941,7.936-2.313,11.844c1.647,2.449,4.343,3.772,7.091,3.772c1.63,0,3.294-0.469,4.753-1.459 c7.339-4.941,13.764-10.837,19.123-17.527C393.882,407.97,393.284,402.594,389.606,399.659z"></path>{" "}
-                            <path d="M503.467,426.667h-13.244c-7.219-8.602-29.423-38.869-29.423-85.333c0-46.481,22.229-76.757,29.423-85.333h13.244 c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533H486.4c-2.261,0-4.437,0.896-6.033,2.5 c-1.425,1.425-33.348,34.133-36.335,91.366h-10.24l-15.795-86.861c-0.742-4.053-4.275-7.006-8.397-7.006H297.071 c-1.306-5.675-3.507-14.208-6.886-27.358c-5.41-25.992-24.098-40.909-51.251-40.909H175.94l10.889-21.786 c2.116-4.215,0.401-9.335-3.814-11.452c-4.215-2.108-9.344-0.393-11.452,3.823l-14.703,29.414H128 c-4.71,0-8.533,3.823-8.533,8.533c0,4.71,3.823,8.533,8.533,8.533h110.933c13.158,0,29.841,4.745,34.637,27.708 c3.669,14.293,7.757,30.438,8.346,33.161c0.12,0.905,0.384,1.801,0.802,2.637c1.434,2.918,4.395,4.762,7.646,4.762h112.111 l15.795,86.861c0.734,4.053,4.275,7.006,8.397,7.006h17.365c2.987,57.233,34.91,89.941,36.335,91.366 c1.596,1.604,3.772,2.5,6.033,2.5h17.067c4.71,0,8.533-3.823,8.533-8.533S508.177,426.667,503.467,426.667z"></path>{" "}
-                            <path d="M503.467,460.8H366.933c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h136.533 c4.71,0,8.533-3.823,8.533-8.533S508.177,460.8,503.467,460.8z"></path>{" "}
-                            <path d="M339.123,425.011c-4.881,1.092-9.916,1.638-14.959,1.638c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533 c6.289,0,12.57-0.683,18.662-2.048c4.599-1.024,7.501-5.581,6.477-10.18C348.279,426.889,343.731,424.004,339.123,425.011z"></path>{" "}
-                            <path d="M371.814,287.582c-3.917-2.628-9.207-1.596-11.844,2.304c-2.637,3.908-1.604,9.207,2.295,11.844 c5.854,3.951,10.965,8.619,15.206,13.884c1.69,2.091,4.156,3.183,6.647,3.183c1.877,0,3.772-0.614,5.35-1.886 c3.669-2.953,4.25-8.329,1.289-11.998C385.451,298.317,379.076,292.489,371.814,287.582z"></path>{" "}
-                            <path d="M339.217,291.78c0.64,0.145,1.271,0.213,1.894,0.213c3.9,0,7.415-2.697,8.312-6.656 c1.041-4.599-1.852-9.165-6.443-10.206c-6.135-1.382-12.467-2.082-18.816-2.082c-4.71,0-8.533,3.823-8.533,8.533 c0,4.71,3.823,8.533,8.533,8.533C329.25,290.116,334.319,290.679,339.217,291.78z"></path>{" "}
-                            <path d="M264.533,460.8H179.2c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h85.333c4.71,0,8.533-3.823,8.533-8.533 S269.244,460.8,264.533,460.8z"></path>{" "}
-                            <path d="M221.884,426.667c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067c4.71,0,8.533-3.823,8.533-8.533 s-3.823-8.533-8.533-8.533H221.884z"></path>{" "}
-                            <path d="M187.75,443.733c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533h-17.067c-4.71,0-8.533,3.823-8.533,8.533 s3.823,8.533,8.533,8.533H187.75z"></path>{" "}
-                            <path d="M290.15,426.667h-17.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067 c4.71,0,8.533-3.823,8.533-8.533S294.861,426.667,290.15,426.667z"></path>{" "}
-                            <path d="M273.067,358.383c0,28.237,22.963,51.2,51.2,51.2c28.237,0,51.2-22.963,51.2-51.2c0-28.228-22.963-51.2-51.2-51.2 C296.03,307.183,273.067,330.155,273.067,358.383z M324.267,324.25c18.825,0,34.133,15.309,34.133,34.133 s-15.309,34.133-34.133,34.133c-18.825,0-34.133-15.309-34.133-34.133S305.442,324.25,324.267,324.25z"></path>{" "}
-                            <path d="M324.523,366.916c4.719,0,8.533-3.823,8.533-8.533s-3.814-8.533-8.533-8.533h-0.085c-4.71,0-8.491,3.823-8.491,8.533 S319.804,366.916,324.523,366.916z"></path>{" "}
-                          </g>{" "}
-                        </g>{" "}
-                      </g>{" "}
-                    </g>
-                  </svg>
-                </div>
-              </div>
-            </Link>
-          )}
-          {isEngineer && (
-            <Link to="/workbench" className="col-span-1 row-span-1 group">
-              <div
-                className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
-               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
-               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
-               group-hover:border-pink-400"
-              >
-                <div className="flex-1">
-                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
-                    Workbench Info
-                  </h4>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
-                    List of workbenches and their details.
-                  </p>
-                </div>
-                <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
-                  <svg
-                    fill="#000000"
-                    height="70px"
-                    width="70px"
-                    version="1.1"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 128 128"
-                  >
-                    <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
-                    <g
-                      id="SVGRepo_tracerCarrier"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    ></g>
-                    <g id="SVGRepo_iconCarrier">
-                      <g id="_x31_"> </g>
-                      <g id="Layer_1">
-                        <g>
-                          <rect
-                            x="48"
-                            y="64.2"
-                            width="68.9"
-                            height="5.6"
-                          ></rect>
-                          <circle cx="51.7" cy="18.3" r="12.3"></circle>
-                          <path d="M60.3,73H39.6V57.6L28.9,39.3c-0.4-0.7-0.1-1.7,0.5-2.1c0.7-0.4,1.7-0.1,2.1,0.5l12.3,21.2c0.9,1.6,2.6,2.7,4.6,2.7h21.2 c3,0,5.4-2.5,5.4-5.4c0-3-2.5-5.4-5.4-5.4L51.9,51L37.8,27.2c-1-1.9-3.1-2.9-5.6-2.9c-0.3,0-1.1,0.1-1.5,0.2 c-0.3,0.1-0.8,0.2-1.1,0.3C19.2,28.2,11,44.6,11,61.5c-0.1,5.1,0,9.4,0.3,13.5c-0.4,4.9,2.5,9.7,7.3,11.5c1.3,0.4,2.5,0.7,3.8,0.7 h30.9v28.9c0,4,3.1,7,7,7c4,0,7-3.1,7-7v-36c0-1.8-0.7-3.7-2.1-4.9C63.8,73.8,62,73,60.3,73z"></path>{" "}
-                          <path d="M80.5,36.5c1,0.9,2.1,1.3,3.5,1.2c0.5,0,1-0.1,1.5-0.3l6,5.5l-9.9,10.2c-0.7,0.6-1,1.4-1,2.3c0,1.7,1.3,3,3,3 c1,0,1.9-0.5,2.5-1.3l9.5-10.5l5.6,5.1l0.9,0.9c-0.1,0.5-0.2,1-0.2,1.5c0.1,1.3,0.6,2.4,1.6,3.4c1,0.9,2.1,1.3,3.5,1.2 c0.5,0,0.9-0.1,1.3-0.3l-3.9-3.5l3.5-3.8l3.9,3.5c0.1-0.5,0.2-0.9,0.1-1.3c-0.1-1.3-0.6-2.4-1.6-3.3c-1-0.9-2.1-1.3-3.5-1.2 c-0.5,0-0.9,0.1-1.3,0.3l-6.7-6.2l4.3-5.1l6.9,6.1l6.1-6.9L98.8,21.7l-6.1,6.9l6.7,5.9L95,39.4l-6.1-5.6c0.1-0.5,0.2-0.9,0.1-1.3 c-0.1-1.3-0.6-2.5-1.6-3.4s-2.1-1.3-3.5-1.2c-0.5,0-0.9,0.1-1.3,0.3l3.9,3.5L83,35.4l-3.9-3.5c-0.1,0.5-0.2,0.9-0.1,1.3 C79,34.5,79.5,35.6,80.5,36.5z"></path>{" "}
-                        </g>
-                      </g>
-                    </g>
-                  </svg>
-                </div>
-              </div>
-            </Link>
-          )}
-          {isEngineer && (
-            <Link to="/managedevices" className="col-span-1 row-span-1 group">
-              <div
-                className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
-               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
-               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
-               group-hover:border-pink-400"
-              >
-                <div className="flex-1">
-                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
-                    Manage Devices
-                  </h4>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
-                    Manage Devices in Netbox.
-                  </p>
-                </div>
-                <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
-                  <svg
-                    fill="#000000"
-                    height="70px"
-                    width="70px"
-                    version="1.2"
-                    baseProfile="tiny"
-                    id="Layer_1"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="-351 153 256 256"
-                  >
-                    <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
-                    <g
-                      id="SVGRepo_tracerCarrier"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    ></g>
-                    <g id="SVGRepo_iconCarrier">
-                      {" "}
-                      <path d="M-139.1,345.7c-6.5-5.9-14.1-8.6-23-8.3c-3,0-5.9,0.7-8.9,1.7l-44.6-40.8l28.7-33.9l45.6,40.2l40.3-45.9l-114.1-100.4 l-40.3,45.9l44.4,39.1l-29.7,32.1l-40.6-37.2c0.7-3,1-5.9,0.7-8.9c-0.3-8.9-3.8-16.5-10.3-22.3c-6.5-5.9-14.1-8.6-23-8.3 c-3,0-6.2,0.7-8.9,1.7l25.8,23.4l-22.8,25l-25.8-23.4c-0.7,3-1,6.2-0.7,8.9c0.3,8.9,3.8,16.1,10.3,22c6.5,5.9,14.1,8.6,23,8.3 c3,0,6.5-0.7,9.6-2.1l39.4,36.1l-65.2,67.6c-4.5,3.8-6.8,9.2-6.8,15.1c0,11,8.9,19.9,19.9,19.9c6.8,0,12.7-3.5,16.5-8.6l62.8-69.2 l37.1,33.9l6.2,5.9c-0.7,3-1,6.5-1,9.6c0.3,8.9,3.8,16.1,10.3,22.3c6.5,5.9,14.1,8.6,23,8.3c3,0,5.9-0.7,8.9-1.7l-25.8-23.4l23-25.1 l25.5,23.5c0.7-3,1-6.2,0.7-8.9C-129.1,358.7-132.6,351.5-139.1,345.7z"></path>{" "}
-                    </g>
-                  </svg>
-                </div>
-              </div>
-            </Link>
-          )}
-          <Link
-            to="https://dhcp.kiewitplaza.com"
-            target="_blank"
-            className="col-span-1 row-span-1 group"
-          >
-            <div
-              className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
-               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
-               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
-               group-hover:border-pink-400"
-            >
-              <div className="flex-1">
-                <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
-                  DHCP Tool
-                </h4>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
-                  Manage DHCP reservations easily and efficiently.
-                </p>
-              </div>
-              <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
-                <svg
-                  width="70"
-                  height="70"
-                  viewBox="0 0 48 48"
-                  enableBackground="new 0 0 48 48"
-                  id="Layer_3"
-                  version="1.1"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="#000000"
-                >
-                  <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
-                  <g
-                    id="SVGRepo_tracerCarrier"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  ></g>
-                  <g id="SVGRepo_iconCarrier">
-                    <path
-                      d="M18.979,4.661c-2.212,0.573-4.284,1.494-6.129,2.735L9.857,4.402l-5.656,5.657l3.042,3.042 c-1.163,1.784-2.036,3.766-2.583,5.883H0v10.031h4.66c0.56,2.165,1.458,4.193,2.66,6.009l-3.118,3.118l5.656,5.656l3.119-3.118 c1.819,1.205,3.853,2.104,6.023,2.664V48h4.062v-8.047C14.665,39.465,8,32.52,8,24c0-8.521,6.665-15.465,15.062-15.953V0h-4.083 V4.661z"
-                      fill="#241F20"
-                    ></path>
-                    <path
-                      d="M15,24c0,4.654,3.532,8.482,8.062,8.951v-4.046C20.75,28.466,19,26.44,19,24c0-2.44,1.75-4.466,4.062-4.905 v-4.046C18.532,15.518,15,19.346,15,24z"
-                      fill="#241F20"
-                    ></path>
-                    <polygon
-                      fill="#241F20"
-                      points="36.957,2.026 36.957,0 26,0 26,8 36.957,8 36.957,6 43.936,6 43.936,40 26,40 26,42 26,43.334 26,48 47.936,48 47.936,2.026 "
-                    ></polygon>
-                    <polygon
-                      fill="#241F20"
-                      points="40.427,18.644 35.845,23.225 35.854,23.231 29.607,29.478 26,25.869 26,29.351 28.653,32.003 28.646,32.011 29.59,32.951 29.597,32.946 29.603,32.951 30.023,32.533 30.026,32.535 37.593,24.971 42.172,20.39 "
-                    ></polygon>
-                  </g>
-                </svg>
-              </div>
-            </div>
-          </Link>
-
-          <Link
-            to="https://mistviewer.kiewitplaza.com"
-            target="_blank"
-            className="col-span-1 row-span-1 group"
-          >
-            <div
-              className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
-               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
-               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
-               group-hover:border-pink-400"
-            >
-              <div className="flex-1">
-                <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
-                  Mist Viewer
-                </h4>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
-                  View Mist devices and monitor their real-time status.
-                </p>
-              </div>
-              <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
-                <svg
-                  width="70"
-                  height="70"
-                  viewBox="0 0 1024 1024"
-                  className="icon"
-                  version="1.1"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="#000000"
-                >
-                  <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
-                  <g
-                    id="SVGRepo_tracerCarrier"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  ></g>
-                  <g id="SVGRepo_iconCarrier">
-                    <path
-                      d="M464.8 409.7C431.9 365 378.9 336 319.2 336c-99.8 0-180.7 80.9-180.7 180.7s80.9 180.7 180.7 180.7h297.3c149.3 0 270.3-121 270.3-270.3s-121-270.3-270.3-270.3c-118.7 0-219.6 76.5-255.9 183"
-                      fill="#FFFFFF"
-                    ></path>
-                    <path
-                      d="M823.5 766.5c0-3.2 0.5-6.3 1.5-9.2H631V417.4c0-5.5-4.5-10-10-10s-10 4.5-10 10v359.9h214.6c-1.3-3.3-2.1-7-2.1-10.8z"
-                      fill="#000000"
-                    ></path>
-                    <path
-                      d="M230.2 791.7c-3.5-8.7-12-14.9-22-14.9-13.1 0-23.7 10.6-23.7 23.7s10.6 23.7 23.7 23.7c9.5 0 17.7-5.6 21.5-13.7 1.4-3 2.2-6.4 2.2-10 0-3.1-0.6-6.1-1.7-8.8z"
-                      fill="#E6E6E6"
-                    ></path>
-                    <path
-                      d="M852.2 737.9c-12.6 0-23.3 8.1-27.1 19.4-1 2.9-1.5 6-1.5 9.2 0 3.8 0.7 7.4 2.1 10.8 4.3 10.5 14.5 17.9 26.6 17.9 15.8 0 28.7-12.8 28.7-28.7-0.1-15.8-13-28.6-28.8-28.6zM700 257.7c2.1-5.1-0.3-11-5.4-13.1-78-32.3-135.3-15.6-169.6 4.1-37.2 21.3-55.7 50.2-56.4 51.5-2.9 4.7-1.5 10.8 3.1 13.8 1.7 1 3.5 1.5 5.3 1.5 3.3 0 6.6-1.6 8.5-4.6 0.2-0.3 17.1-26.4 50.2-45.2 44.1-24.9 94.9-25.8 151.2-2.5 5.1 2 11-0.4 13.1-5.5z"
-                      fill="#000000"
-                    ></path>
-                    <path
-                      d="M852.2 819.8c-12.4 0-22.9 7.8-26.9 18.8H534.5V717.3H611v-40h-76.5V537.9c0-5.5-4.5-10-10-10s-10 4.5-10 10v139.4h-66.9V537.9c0-5.5-4.5-10-10-10s-10 4.5-10 10v139.4H319.2c-88.6 0-160.7-72.1-160.7-160.7s72.1-160.7 160.7-160.7c50.9 0 99.3 24.5 129.5 65.6 6.5 8.9 19.1 10.8 28 4.3 8.9-6.5 10.8-19.1 4.3-28-18.3-24.8-42.4-45.4-69.7-59.5-7.9-4.1-16.1-7.7-24.5-10.7 39.3-91 129.3-150.8 229.8-150.8 138 0 250.3 112.3 250.3 250.3 0 133.1-104.4 242.2-235.7 249.8V717c72.1-3.5 139.3-33.3 190.7-84.7 54.8-54.8 85-127.7 85-205.2s-30.2-150.4-85-205.2c-54.8-54.8-127.7-85-205.2-85-118.8 0-224.9 72.1-269.1 181.2-9.3-1.3-18.8-2-28.2-2-110.7 0-200.7 90-200.7 200.7s90 200.7 200.7 200.7h108.4v73.9H250.9c-4.3-19.6-21.8-34.4-42.7-34.4-24.1 0-43.7 19.6-43.7 43.7s19.6 43.7 43.7 43.7c20.4 0 37.6-14.1 42.4-33h197v-93.9h66.9v141.3h310.9c4.1 10.8 14.6 18.5 26.8 18.5 15.8 0 28.7-12.8 28.7-28.7 0-16-12.9-28.8-28.7-28.8z m-622.5-9.3c-3.8 8.1-12 13.7-21.5 13.7-13.1 0-23.7-10.6-23.7-23.7s10.6-23.7 23.7-23.7c9.9 0 18.5 6.2 22 14.9 1.1 2.7 1.7 5.7 1.7 8.8 0 3.6-0.8 7-2.2 10z"
-                      fill="#000000"
-                    ></path>
-                  </g>
-                </svg>
-              </div>
-            </div>
-          </Link>
-          {isEngineer && (
-            <Link to="/NetworkSearch" className="col-span-1 row-span-1 group">
-              <div
-                className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
-               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
-               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
-               group-hover:border-pink-400"
-              >
-                <div className="flex-1">
-                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
-                    Network Search
-                  </h4>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
-                    Search the network for devices and information
-                  </p>
-                </div>
-                <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
-                  <svg
-                    width="70"
-                    height="70"
-                    viewBox="-0.5 0 25 25"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
-                    <g
-                      id="SVGRepo_tracerCarrier"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    ></g>
-                    <g id="SVGRepo_iconCarrier">
-                      <path
-                        d="M22 11.8201C22 9.84228 21.4135 7.90885 20.3147 6.26436C19.2159 4.61987 17.6542 3.33813 15.8269 2.58126C13.9996 1.82438 11.9889 1.62637 10.0491 2.01223C8.10927 2.39808 6.32748 3.35052 4.92896 4.74904C3.53043 6.14757 2.578 7.92935 2.19214 9.86916C1.80629 11.809 2.00436 13.8197 2.76123 15.6469C3.51811 17.4742 4.79985 19.036 6.44434 20.1348C8.08883 21.2336 10.0222 21.8201 12 21.8201"
-                        stroke="#000000"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      ></path>
-                      <path
-                        d="M2 11.8201H22"
-                        stroke="#000000"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      ></path>
-                      <path
-                        d="M12 21.8201C10.07 21.8201 8.5 17.3401 8.5 11.8201C8.5 6.30007 10.07 1.82007 12 1.82007C13.93 1.82007 15.5 6.30007 15.5 11.8201"
-                        stroke="#000000"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      ></path>
-                      <path
-                        d="M18.3691 21.6901C20.3021 21.6901 21.8691 20.1231 21.8691 18.1901C21.8691 16.2571 20.3021 14.6901 18.3691 14.6901C16.4361 14.6901 14.8691 16.2571 14.8691 18.1901C14.8691 20.1231 16.4361 21.6901 18.3691 21.6901Z"
-                        stroke="#000000"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      ></path>
-                      <path
-                        d="M22.9998 22.8202L20.8398 20.6702"
-                        stroke="#000000"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      ></path>
-                    </g>
-                  </svg>
-                </div>
-              </div>
-            </Link>
-          )}
-          <Link to="/opengear" className="col-span-1 row-span-1 group">
-            <div
-              className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
-               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
-               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
-               group-hover:border-pink-400"
-            >
-              <div className="flex-1">
-                <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
-                  Opengear List
-                </h4>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
-                  View Opengear device status.
-                </p>
-              </div>
-              <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
-                <svg
-                  fill="#000000"
-                  height="70px"
-                  width="70px"
-                  version="1.1"
-                  id="Layer_1"
-                  xmlns="http://www.w3.org/2000/svg"
-                  xmlnsXlink="http://www.w3.org/1999/xlink"
-                  viewBox="0 0 512 512"
-                  xmlSpace="preserve"
-                >
-                  <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
-                  <g
-                    id="SVGRepo_tracerCarrier"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  ></g>
-                  <g id="SVGRepo_iconCarrier">
-                    {" "}
+            <Card to="/provision" title="Provisioning Wizard" description="Deploy new sites, DHCP, and Netbox using the provisioning wizard.">
+              <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 490 490" width="28" height="28">
+                <g>
+                  <g>
                     <g>
-                      {" "}
-                      <g>
-                        {" "}
-                        <g>
-                          {" "}
-                          <path d="M512,256c0-130.994-98.398-238.995-225.308-254.162c-0.046-0.005-0.091-0.01-0.137-0.016 c-1.916-0.228-3.836-0.438-5.765-0.624c-0.348-0.034-0.698-0.061-1.046-0.093c-1.656-0.152-3.314-0.298-4.979-0.418 c-0.674-0.049-1.352-0.084-2.027-0.128c-1.37-0.088-2.739-0.18-4.114-0.247c-1.084-0.053-2.171-0.084-3.258-0.124 c-1-0.036-1.998-0.083-3.001-0.108C260.248,0.028,258.126,0,256,0s-4.248,0.028-6.365,0.081c-1.003,0.024-2,0.072-3.001,0.108 c-1.086,0.039-2.174,0.071-3.258,0.124c-1.376,0.067-2.744,0.158-4.114,0.247c-0.676,0.044-1.353,0.079-2.027,0.128 c-1.665,0.121-3.323,0.266-4.979,0.418c-0.349,0.032-0.698,0.059-1.046,0.093c-1.928,0.185-3.849,0.396-5.765,0.624 c-0.046,0.005-0.091,0.01-0.137,0.016C98.398,17.005,0,125.006,0,256c0,73.026,30.581,138.908,79.632,185.547 C119.15,485.493,184.636,512,256,512c20.143,0,40.204-2.531,60.175-7.389C330.808,509.4,346.432,512,362.667,512 C445.147,512,512,445.147,512,362.667c0-16.234-2.6-31.859-7.389-46.492C509.469,296.204,512,276.143,512,256z M469.321,258.153 c-27.103-27.655-64.87-44.819-106.654-44.819c-0.116,0-0.23,0.004-0.346,0.004c-0.71-21.795-2.506-42.48-5.328-61.77 c22.445-9.098,42.673-21.23,59.646-35.935c32.808,37.515,52.694,86.616,52.694,140.366 C469.333,256.718,469.329,257.435,469.321,258.153z M43.726,277.333h105.95c0.869,27.43,3.416,53.989,7.508,78.83 c-20.368,8.997-39.827,22.387-61.14,40.974C67.251,364.529,48.266,323.059,43.726,277.333z M95.361,115.634 c17.613,15.26,38.739,27.74,62.204,36.942c-4.319,25.479-7.01,53.117-7.897,82.091H43.726 C48.23,189.302,66.948,148.123,95.361,115.634z M256.004,42.675c19.798,0,39.656,29.689,51.885,79.64 C291.433,126.016,273.987,128,256,128c-16.675,0-32.886-1.707-48.274-4.904C220.49,74.006,239.082,42.675,256.004,42.675z M166.783,110.249c-14.881-6.441-28.346-14.469-39.888-23.838c18.593-14.22,39.28-25.24,61.319-32.666 C179.805,69.746,172.613,88.814,166.783,110.249z M328.832,55.513c20.153,7.364,39.105,17.769,56.272,30.898 c-10.691,8.679-23.034,16.208-36.622,22.391C343.259,88.604,336.67,70.685,328.832,55.513z M127.523,426.308 c30.611-26.112,55.088-38.181,87.462-41.395c4.907,32.857,20.518,62.208,43.168,84.407c-0.718,0.008-1.435,0.012-2.153,0.012 C207.757,469.333,163.26,453.311,127.523,426.308z M214.75,342.097c-5.599,0.442-11.022,1.082-16.294,1.932 c-3.238-21.069-5.303-43.51-6.087-66.697h47.741C226.948,296.201,218.035,318.249,214.75,342.097z M283.974,235.735 c-2.092-0.685-4.32-1.068-6.641-1.068h-84.952c0.873-24.79,3.234-48.29,6.685-69.799c18.263,3.795,37.375,5.799,56.933,5.799 c20.521,0,40.552-2.201,59.625-6.369c2.239,17.044,3.695,35.545,4.189,55.285C307.068,223.395,295.039,228.861,283.974,235.735z M362.667,469.333c-12.541,0-24.573-2.171-35.75-6.145c-0.631-0.307-1.28-0.597-1.962-0.856 c-37.297-14.128-63.6-47.797-68.226-87.2c-0.005-0.046-0.01-0.092-0.016-0.138c-0.298-2.568-0.499-5.162-0.61-7.775 c-0.011-0.266-0.021-0.532-0.03-0.799c-0.044-1.247-0.073-2.497-0.073-3.753C256,303.75,303.75,256,362.667,256 c1.256,0,2.506,0.029,3.753,0.073c0.266,0.009,0.533,0.019,0.799,0.03c2.613,0.111,5.207,0.312,7.775,0.61 c0.046,0.005,0.092,0.01,0.138,0.016c39.404,4.625,73.072,30.929,87.2,68.226c0.258,0.682,0.548,1.332,0.856,1.962 c3.974,11.177,6.145,23.209,6.145,35.75C469.333,421.583,421.583,469.333,362.667,469.333z"></path>{" "}
-                          <path d="M341.333,298.667C329.551,298.667,320,308.218,320,320s9.551,21.333,21.333,21.333C364.901,341.333,384,360.433,384,384 c0,11.782,9.551,21.333,21.333,21.333c11.782,0,21.333-9.551,21.333-21.333C426.667,336.869,388.465,298.667,341.333,298.667z"></path>{" "}
-                          <path d="M341.333,362.667C329.557,362.667,320,372.224,320,384s9.557,21.333,21.333,21.333c11.776,0,21.333-9.557,21.333-21.333 S353.109,362.667,341.333,362.667z"></path>{" "}
-                        </g>{" "}
-                      </g>{" "}
-                    </g>{" "}
+                      <path d="M10,372.5h405c2.602-0.001,5.159-1.016,7.071-2.929l65-65c1.912-1.913,2.904-4.47,2.905-7.071H490v-245 c0-5.522-4.477-10-10-10H10c-5.523,0-10,4.478-10,10v310C0,368.022,4.477,372.5,10,372.5z M425,338.357V307.5h30.858L425,338.357 z M20,62.5h450v225h-55c-5.523,0-10,4.478-10,10v55H20V62.5z" />
+                      <path d="M350,92.5H250c-5.523,0-10,4.478-10,10v15h-25c-5.523,0-10,4.478-10,10v75h-80v-35h55c5.523,0,10-4.478,10-10v-60 c0-5.522-4.477-10-10-10H60c-5.523,0-10,4.478-10,10v60c0,5.522,4.477,10,10,10h45v45c0,5.522,4.477,10,10,10h90v70 c0,5.522,4.477,10,10,10h25v10c0,5.522,4.477,10,10,10h100c5.523,0,10-4.478,10-10v-50c0-5.522-4.477-10-10-10H250 c-5.523,0-10,4.478-10,10v20h-15v-60h15v10c0,5.522,4.477,10,10,10h100c5.523,0,10-4.478,10-10v-50c0-5.522-4.477-10-10-10H250 c-5.523,0-10,4.478-10,10v20h-15v-65h15v15c0,5.522,4.477,10,10,10h100c5.523,0,10-4.478,10-10v-50 C360,96.978,355.523,92.5,350,92.5z M70,147.5v-40h100v40H70z M260,272.5h80v30h-80V272.5z M260,192.5h80v30h-80V192.5z M340,142.5h-80v-30h80V142.5z" />
+                      <rect x="50" y="247.5" width="75" height="20" />
+                      <rect x="50" y="277.5" width="75" height="20" />
+                      <rect x="50" y="307.5" width="130" height="20" />
+                      <rect x="135" y="247.5" width="20" height="20" />
+                      <rect x="380" y="92.5" width="25" height="20" />
+                      <rect x="420" y="92.5" width="25" height="20" />
+                      <rect x="380" y="122.5" width="25" height="20" />
+                      <rect x="420" y="122.5" width="25" height="20" />
+                      <rect x="380" y="152.5" width="25" height="20" />
+                      <rect x="420" y="152.5" width="25" height="20" />
+                      <rect x="380" y="182.5" width="25" height="20" />
+                      <rect x="420" y="182.5" width="25" height="20" />
+                      <path d="M483.162,408.013l-60-20c-1.033-0.344-2.1-0.498-3.162-0.498V387.5H10c-5.523,0-10,4.478-10,10v40 c0,5.522,4.477,10,10,10h410h0.001c1.061,0,2.129-0.169,3.161-0.513l60-20c4.083-1.361,6.838-5.183,6.838-9.487 C490,413.196,487.246,409.374,483.162,408.013z M60,427.5H20v-20h40V427.5z M410,427.5H80v-20h330V427.5z M430,423.626v-12.252 l18.377,6.126L430,423.626z" />
+                    </g>
                   </g>
-                </svg>
-              </div>
-            </div>
-          </Link>
-          {isEngineer && (
-            <Link to="/Reports" className="col-span-1 row-span-1 group">
-              <div
-                className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
-               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
-               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
-               group-hover:border-pink-400"
-              >
-                <div className="flex-1">
-                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
-                    Network Reports
-                  </h4>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
-                    View Network Reports
-                  </p>
-                </div>
-                <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
-                  <svg
-                    fill="#000000"
-                    viewBox="0 0 32 32"
-                    id="icon"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="70"
-                    height="70"
-                  >
-                    <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
-                    <g
-                      id="SVGRepo_tracerCarrier"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    ></g>
-                    <g id="SVGRepo_iconCarrier">
-                      <defs>
-                        <style>{`.cls-1{fill:none;}`}</style>
-                      </defs>
-                      <title>report</title>
-                      <rect x="15" y="20" width="2" height="4"></rect>
-                      <rect x="20" y="18" width="2" height="6"></rect>
-                      <rect x="10" y="14" width="2" height="10"></rect>
-                      <path d="M25,5H22V4a2,2,0,0,0-2-2H12a2,2,0,0,0-2,2V5H7A2,2,0,0,0,5,7V28a2,2,0,0,0,2,2H25a2,2,0,0,0,2-2V7A2,2,0,0,0,25,5ZM12,4h8V8H12ZM25,28H7V7h3v3H22V7h3Z"></path>
-                      <rect
-                        id="_Transparent_Rectangle_"
-                        data-name="&lt;Transparent Rectangle&gt;"
-                        className="cls-1"
-                        width="32"
-                        height="32"
-                      ></rect>
-                    </g>
-                  </svg>
-                </div>
-              </div>
-            </Link>
+                </g>
+              </svg>
+            </Card>
           )}
+
           {isEngineer && (
-            <Link to="/topology" className="col-span-1 row-span-1 group">
-              <div
-                className="bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700
-               transition-all duration-300 ease-in-out transform group-hover:scale-[1.015]
-               group-hover:shadow-xl rounded-xl shadow-md p-4 h-full flex items-center border border-transparent
-               group-hover:border-pink-400"
-              >
-                <div className="flex-1">
-                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white transition-colors group-hover:text-pink-700">
-                    Network Topology
-                  </h4>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 transition-colors group-hover:text-pink-700">
-                    View Network Topologies
-                  </p>
-                </div>
-                <div className="ml-4 transform transition-transform duration-300 group-hover:translate-x-1 group-hover:rotate-1">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="70"
-                    height="70"
-                  >
-                    <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
-                    <g
-                      id="SVGRepo_tracerCarrier"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    ></g>
-                    <g id="SVGRepo_iconCarrier">
-                      <path d="M5.46997 9C7.40297 9 8.96997 7.433 8.96997 5.5C8.96997 3.567 7.40297 2 5.46997 2C3.53697 2 1.96997 3.567 1.96997 5.5C1.96997 7.433 3.53697 9 5.46997 9Z" stroke="#000000" strokeWidth="1.5"></path>
-                      <path d="M16.97 15H19.97C21.07 15 21.97 15.9 21.97 17V20C21.97 21.1 21.07 22 19.97 22H16.97C15.87 22 14.97 21.1 14.97 20V17C14.97 15.9 15.87 15 16.97 15Z" stroke="#000000" strokeWidth="1.5"></path>
-                      <path d="M11.9999 5H14.6799C16.5299 5 17.3899 7.29 15.9999 8.51L8.00995 15.5C6.61995 16.71 7.47994 19 9.31994 19H11.9999" stroke="#000000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"></path>
-                      <path d="M5.48622 5.5H5.49777" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
-                      <path d="M18.4862 18.5H18.4978" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
+            <Card to="/demobe" title="Demobe Tool" description="Demobe sites and delete DHCP scopes by sitecode.">
+              <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28">
+                <g>
+                  <g>
+                    <g>
+                      <path d="M19.994,317.133c1.57,1.254,3.456,1.869,5.325,1.869c2.5,0,4.983-1.101,6.664-3.208 c4.352-5.436,9.481-10.155,15.232-14.029c3.908-2.637,4.949-7.936,2.313-11.844c-2.628-3.908-7.927-4.941-11.844-2.313 c-7.194,4.838-13.594,10.735-19.021,17.528C15.718,308.813,16.316,314.189,19.994,317.133z" />
+                      <path d="M128,460.8H8.533c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533H128c4.71,0,8.533-3.823,8.533-8.533 S132.71,460.8,128,460.8z" />
+                      <path d="M136.55,426.667h-17.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067 c4.71,0,8.533-3.823,8.533-8.533S141.261,426.667,136.55,426.667z" />
+                      <path d="M205.056,366.916c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533h-0.085c-4.71,0-8.491,3.823-8.491,8.533 S200.337,366.916,205.056,366.916z" />
+                      <path d="M136.55,273.067h-17.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067 c4.71,0,8.533-3.823,8.533-8.533S141.261,273.067,136.55,273.067z" />
+                      <path d="M10.402,383.846c0.614,0,1.246-0.06,1.877-0.205c4.599-1.033,7.484-5.598,6.451-10.197 c-1.101-4.915-1.664-9.975-1.664-15.044c0-5.12,0.563-10.223,1.69-15.181c1.041-4.599-1.843-9.173-6.443-10.214 c-4.608-1.032-9.165,1.843-10.206,6.443C0.708,345.643,0,352.017,0,358.4c0,6.332,0.7,12.646,2.082,18.79 C2.978,381.158,6.494,383.846,10.402,383.846z" />
+                      <path d="M170.684,273.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067c4.71,0,8.533-3.823,8.533-8.533 s-3.823-8.533-8.533-8.533H170.684z" />
+                      <path d="M221.884,273.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067c4.71,0,8.533-3.823,8.533-8.533 s-3.823-8.533-8.533-8.533H221.884z" />
+                      <path d="M68.514,291.977c0.623,0,1.246-0.068,1.877-0.205c4.855-1.092,9.882-1.638,14.942-1.638c4.71,0,8.533-3.823,8.533-8.533 s-3.823-8.533-8.533-8.533c-6.306,0-12.587,0.691-18.671,2.048c-4.599,1.024-7.492,5.589-6.468,10.189 C61.082,289.271,64.606,291.977,68.514,291.977z" />
+                      <path d="M93.867,256H256c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533l-153.6-0.017V85.333l8.491-0.009 c0.017,0,0.026,0.009,0.043,0.009c0.017,0,0.026-0.009,0.043-0.009l93.15-0.094c0.239,0.102,0.649,0.563,0.674,0.102v59.733 c0,4.71,3.823,8.533,8.533,8.533c4.71,0,8.533-3.823,8.533-8.533V85.333c0-8.772-8.294-17.067-17.067-17.067h-85.333v-25.6 c0-4.71-3.823-8.533-8.533-8.533s-8.533,3.823-8.533,8.533v25.6c-9.25,0-17.067,7.817-17.067,17.067v162.133 C85.333,252.177,89.156,256,93.867,256z" />
+                      <path d="M70.272,425.003c-4.565-1.016-9.165,1.852-10.197,6.451s1.852,9.165,6.451,10.197c6.153,1.382,12.476,2.082,18.807,2.082 c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533C80.265,426.667,75.187,426.103,70.272,425.003z" />
+                      <path d="M85.606,349.85h-0.085c-4.71,0-8.491,3.823-8.491,8.533s3.866,8.533,8.576,8.533s8.533-3.823,8.533-8.533 S90.317,349.85,85.606,349.85z" />
+                      <path d="M136.55,358.383c0-28.228-22.972-51.2-51.2-51.2c-28.237,0-51.2,22.972-51.2,51.2c0,28.237,22.963,51.2,51.2,51.2 C113.579,409.583,136.55,386.62,136.55,358.383z M85.35,392.516c-18.825,0-34.133-15.309-34.133-34.133 S66.526,324.25,85.35,324.25c18.816,0,34.133,15.309,34.133,34.133S104.166,392.516,85.35,392.516z" />
+                      <path d="M47.232,415.053c-5.7-3.849-10.786-8.525-15.095-13.884c-2.961-3.669-8.329-4.241-12.006-1.306 c-3.669,2.961-4.25,8.329-1.297,12.006c5.393,6.69,11.733,12.518,18.85,17.331c1.468,0.99,3.123,1.459,4.77,1.459 c2.739,0,5.427-1.314,7.083-3.763C52.164,422.989,51.14,417.69,47.232,415.053z" />
+                      <path d="M204.8,409.583c28.237,0,51.2-22.963,51.2-51.2c0-28.228-22.963-51.2-51.2-51.2c-28.237,0-51.2,22.972-51.2,51.2 C153.6,386.62,176.563,409.583,204.8,409.583z M204.8,324.25c18.825,0,34.133,15.309,34.133,34.133s-15.309,34.133-34.133,34.133 s-34.133-15.309-34.133-34.133S185.975,324.25,204.8,324.25z" />
+                      <path d="M290.15,273.067h-17.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067 c4.71,0,8.533-3.823,8.533-8.533S294.861,273.067,290.15,273.067z" />
+                      <path d="M397.286,383.77c0.631,0.145,1.263,0.213,1.886,0.213c3.9,0,7.424-2.688,8.32-6.656 c1.399-6.187,2.108-12.561,2.108-18.944c0-6.332-0.7-12.646-2.082-18.79c-1.033-4.599-5.598-7.501-10.197-6.451 c-4.599,1.033-7.484,5.598-6.451,10.197c1.101,4.915,1.664,9.975,1.664,15.044c0,5.12-0.563,10.223-1.69,15.181 C389.803,378.155,392.687,382.729,397.286,383.77z" />
+                      <path d="M332.8,460.8h-17.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533H332.8c4.71,0,8.533-3.823,8.533-8.533 S337.51,460.8,332.8,460.8z" />
+                      <path d="M389.606,399.659c-3.669-2.944-9.054-2.355-11.998,1.331c-4.267,5.342-9.429,10.061-15.326,14.029 c-3.908,2.637-4.941,7.936-2.313,11.844c1.647,2.449,4.343,3.772,7.091,3.772c1.63,0,3.294-0.469,4.753-1.459 c7.339-4.941,13.764-10.837,19.123-17.527C393.882,407.97,393.284,402.594,389.606,399.659z" />
+                      <path d="M503.467,426.667h-13.244c-7.219-8.602-29.423-38.869-29.423-85.333c0-46.481,22.229-76.757,29.423-85.333h13.244 c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533H486.4c-2.261,0-4.437,0.896-6.033,2.5 c-1.425,1.425-33.348,34.133-36.335,91.366h-10.24l-15.795-86.861c-0.742-4.053-4.275-7.006-8.397-7.006H297.071 c-1.306-5.675-3.507-14.208-6.886-27.358c-5.41-25.992-24.098-40.909-51.251-40.909H175.94l10.889-21.786 c2.116-4.215,0.401-9.335-3.814-11.452c-4.215-2.108-9.344-0.393-11.452,3.823l-14.703,29.414H128 c-4.71,0-8.533,3.823-8.533,8.533c0,4.71,3.823,8.533,8.533,8.533h110.933c13.158,0,29.841,4.745,34.637,27.708 c3.669,14.293,7.757,30.438,8.346,33.161c0.12,0.905,0.384,1.801,0.802,2.637c1.434,2.918,4.395,4.762,7.646,4.762h112.111 l15.795,86.861c0.734,4.053,4.275,7.006,8.397,7.006h17.365c2.987,57.233,34.91,89.941,36.335,91.366 c1.596,1.604,3.772,2.5,6.033,2.5h17.067c4.71,0,8.533-3.823,8.533-8.533S508.177,426.667,503.467,426.667z" />
+                      <path d="M503.467,460.8H366.933c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h136.533 c4.71,0,8.533-3.823,8.533-8.533S508.177,460.8,503.467,460.8z" />
+                      <path d="M339.123,425.011c-4.881,1.092-9.916,1.638-14.959,1.638c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533 c6.289,0,12.57-0.683,18.662-2.048c4.599-1.024,7.501-5.581,6.477-10.18C348.279,426.889,343.731,424.004,339.123,425.011z" />
+                      <path d="M371.814,287.582c-3.917-2.628-9.207-1.596-11.844,2.304c-2.637,3.908-1.604,9.207,2.295,11.844 c5.854,3.951,10.965,8.619,15.206,13.884c1.69,2.091,4.156,3.183,6.647,3.183c1.877,0,3.772-0.614,5.35-1.886 c3.669-2.953,4.25-8.329,1.289-11.998C385.451,298.317,379.076,292.489,371.814,287.582z" />
+                      <path d="M339.217,291.78c0.64,0.145,1.271,0.213,1.894,0.213c3.9,0,7.415-2.697,8.312-6.656 c1.041-4.599-1.852-9.165-6.443-10.206c-6.135-1.382-12.467-2.082-18.816-2.082c-4.71,0-8.533,3.823-8.533,8.533 c0,4.71,3.823,8.533,8.533,8.533C329.25,290.116,334.319,290.679,339.217,291.78z" />
+                      <path d="M264.533,460.8H179.2c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h85.333c4.71,0,8.533-3.823,8.533-8.533 S269.244,460.8,264.533,460.8z" />
+                      <path d="M221.884,426.667c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067c4.71,0,8.533-3.823,8.533-8.533 s-3.823-8.533-8.533-8.533H221.884z" />
+                      <path d="M187.75,443.733c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533h-17.067c-4.71,0-8.533,3.823-8.533,8.533 s3.823,8.533,8.533,8.533H187.75z" />
+                      <path d="M290.15,426.667h-17.067c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h17.067 c4.71,0,8.533-3.823,8.533-8.533S294.861,426.667,290.15,426.667z" />
+                      <path d="M273.067,358.383c0,28.237,22.963,51.2,51.2,51.2c28.237,0,51.2-22.963,51.2-51.2c0-28.228-22.963-51.2-51.2-51.2 C296.03,307.183,273.067,330.155,273.067,358.383z M324.267,324.25c18.825,0,34.133,15.309,34.133,34.133 s-15.309,34.133-34.133,34.133c-18.825,0-34.133-15.309-34.133-34.133S305.442,324.25,324.267,324.25z" />
+                      <path d="M324.523,366.916c4.719,0,8.533-3.823,8.533-8.533s-3.814-8.533-8.533-8.533h-0.085c-4.71,0-8.491,3.823-8.491,8.533 S319.804,366.916,324.523,366.916z" />
                     </g>
-                  </svg>
-                </div>
-              </div>
-            </Link>
+                  </g>
+                </g>
+              </svg>
+            </Card>
           )}
-        </div>
+
+          {isEngineer && (
+            <Card to="/workbench" title="Workbench Info" description="List of workbenches and their details.">
+              <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="28" height="28">
+                <g>
+                  <rect x="48" y="64.2" width="68.9" height="5.6" />
+                  <circle cx="51.7" cy="18.3" r="12.3" />
+                  <path d="M60.3,73H39.6V57.6L28.9,39.3c-0.4-0.7-0.1-1.7,0.5-2.1c0.7-0.4,1.7-0.1,2.1,0.5l12.3,21.2c0.9,1.6,2.6,2.7,4.6,2.7h21.2 c3,0,5.4-2.5,5.4-5.4c0-3-2.5-5.4-5.4-5.4L51.9,51L37.8,27.2c-1-1.9-3.1-2.9-5.6-2.9c-0.3,0-1.1,0.1-1.5,0.2 c-0.3,0.1-0.8,0.2-1.1,0.3C19.2,28.2,11,44.6,11,61.5c-0.1,5.1,0,9.4,0.3,13.5c-0.4,4.9,2.5,9.7,7.3,11.5c1.3,0.4,2.5,0.7,3.8,0.7 h30.9v28.9c0,4,3.1,7,7,7c4,0,7-3.1,7-7v-36c0-1.8-0.7-3.7-2.1-4.9C63.8,73.8,62,73,60.3,73z" />
+                  <path d="M80.5,36.5c1,0.9,2.1,1.3,3.5,1.2c0.5,0,1-0.1,1.5-0.3l6,5.5l-9.9,10.2c-0.7,0.6-1,1.4-1,2.3c0,1.7,1.3,3,3,3 c1,0,1.9-0.5,2.5-1.3l9.5-10.5l5.6,5.1l0.9,0.9c-0.1,0.5-0.2,1-0.2,1.5c0.1,1.3,0.6,2.4,1.6,3.4c1,0.9,2.1,1.3,3.5,1.2 c0.5,0,0.9-0.1,1.3-0.3l-3.9-3.5l3.5-3.8l3.9,3.5c0.1-0.5,0.2-0.9,0.1-1.3c-0.1-1.3-0.6-2.4-1.6-3.3c-1-0.9-2.1-1.3-3.5-1.2 c-0.5,0-0.9,0.1-1.3,0.3l-6.7-6.2l4.3-5.1l6.9,6.1l6.1-6.9L98.8,21.7l-6.1,6.9l6.7,5.9L95,39.4l-6.1-5.6c0.1-0.5,0.2-0.9,0.1-1.3 c-0.1-1.3-0.6-2.5-1.6-3.4s-2.1-1.3-3.5-1.2c-0.5,0-0.9,0.1-1.3,0.3l3.9,3.5L83,35.4l-3.9-3.5c-0.1,0.5-0.2,0.9-0.1,1.3 C79,34.5,79.5,35.6,80.5,36.5z" />
+                </g>
+              </svg>
+            </Card>
+          )}
+
+          {isEngineer && (
+            <Card to="/managedevices" title="Manage Devices" description="Manage devices in Netbox.">
+              <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="-351 153 256 256" width="28" height="28">
+                <path d="M-139.1,345.7c-6.5-5.9-14.1-8.6-23-8.3c-3,0-5.9,0.7-8.9,1.7l-44.6-40.8l28.7-33.9l45.6,40.2l40.3-45.9l-114.1-100.4 l-40.3,45.9l44.4,39.1l-29.7,32.1l-40.6-37.2c0.7-3,1-5.9,0.7-8.9c-0.3-8.9-3.8-16.5-10.3-22.3c-6.5-5.9-14.1-8.6-23-8.3 c-3,0-6.2,0.7-8.9,1.7l25.8,23.4l-22.8,25l-25.8-23.4c-0.7,3-1,6.2-0.7,8.9c0.3,8.9,3.8,16.1,10.3,22c6.5,5.9,14.1,8.6,23,8.3 c3,0,6.5-0.7,9.6-2.1l39.4,36.1l-65.2,67.6c-4.5,3.8-6.8,9.2-6.8,15.1c0,11,8.9,19.9,19.9,19.9c6.8,0,12.7-3.5,16.5-8.6l62.8-69.2 l37.1,33.9l6.2,5.9c-0.7,3-1,6.5-1,9.6c0.3,8.9,3.8,16.1,10.3,22.3c6.5,5.9,14.1,8.6,23,8.3c3,0,5.9-0.7,8.9-1.7l-25.8-23.4l23-25.1 l25.5,23.5c0.7-3,1-6.2,0.7-8.9C-129.1,358.7-132.6,351.5-139.1,345.7z" />
+              </svg>
+            </Card>
+          )}
+
+          {isAuthorized && (
+            <Card to="https://dhcp.kiewitplaza.com" title="DHCP Tool" description="Manage DHCP reservations easily and efficiently." external>
+              <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor">
+                <path d="M18.979,4.661c-2.212,0.573-4.284,1.494-6.129,2.735L9.857,4.402l-5.656,5.657l3.042,3.042 c-1.163,1.784-2.036,3.766-2.583,5.883H0v10.031h4.66c0.56,2.165,1.458,4.193,2.66,6.009l-3.118,3.118l5.656,5.656l3.119-3.118 c1.819,1.205,3.853,2.104,6.023,2.664V48h4.062v-8.047C14.665,39.465,8,32.52,8,24c0-8.521,6.665-15.465,15.062-15.953V0h-4.083 V4.661z" />
+                <path d="M15,24c0,4.654,3.532,8.482,8.062,8.951v-4.046C20.75,28.466,19,26.44,19,24c0-2.44,1.75-4.466,4.062-4.905 v-4.046C18.532,15.518,15,19.346,15,24z" />
+                <polygon points="36.957,2.026 36.957,0 26,0 26,8 36.957,8 36.957,6 43.936,6 43.936,40 26,40 26,42 26,43.334 26,48 47.936,48 47.936,2.026" />
+                <polygon points="40.427,18.644 35.845,23.225 35.854,23.231 29.607,29.478 26,25.869 26,29.351 28.653,32.003 28.646,32.011 29.59,32.951 29.597,32.946 29.603,32.951 30.023,32.533 30.026,32.535 37.593,24.971 42.172,20.39" />
+              </svg>
+            </Card>
+          )}
+
+          {isAuthorized && (
+            <Card to="https://mistviewer.kiewitplaza.com" title="Mist Viewer" description="View Mist devices and monitor their real-time status." external>
+              <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor">
+                <path d="M464.8 409.7C431.9 365 378.9 336 319.2 336c-99.8 0-180.7 80.9-180.7 180.7s80.9 180.7 180.7 180.7h297.3c149.3 0 270.3-121 270.3-270.3s-121-270.3-270.3-270.3c-118.7 0-219.6 76.5-255.9 183" />
+                <path d="M823.5 766.5c0-3.2 0.5-6.3 1.5-9.2H631V417.4c0-5.5-4.5-10-10-10s-10 4.5-10 10v359.9h214.6c-1.3-3.3-2.1-7-2.1-10.8z" />
+                <path d="M852.2 819.8c-12.4 0-22.9 7.8-26.9 18.8H534.5V717.3H611v-40h-76.5V537.9c0-5.5-4.5-10-10-10s-10 4.5-10 10v139.4h-66.9V537.9c0-5.5-4.5-10-10-10s-10 4.5-10 10v139.4H319.2c-88.6 0-160.7-72.1-160.7-160.7s72.1-160.7 160.7-160.7c50.9 0 99.3 24.5 129.5 65.6 6.5 8.9 19.1 10.8 28 4.3 8.9-6.5 10.8-19.1 4.3-28-18.3-24.8-42.4-45.4-69.7-59.5-7.9-4.1-16.1-7.7-24.5-10.7 39.3-91 129.3-150.8 229.8-150.8 138 0 250.3 112.3 250.3 250.3 0 133.1-104.4 242.2-235.7 249.8V717c72.1-3.5 139.3-33.3 190.7-84.7 54.8-54.8 85-127.7 85-205.2s-30.2-150.4-85-205.2c-54.8-54.8-127.7-85-205.2-85c-118.8 0-224.9 72.1-269.1 181.2-9.3-1.3-18.8-2-28.2-2-110.7 0-200.7 90-200.7 200.7s90 200.7 200.7 200.7h108.4v73.9H250.9c-4.3-19.6-21.8-34.4-42.7-34.4-24.1 0-43.7 19.6-43.7 43.7s19.6 43.7 43.7 43.7c20.4 0 37.6-14.1 42.4-33h197v-93.9h66.9v141.3h310.9c4.1 10.8 14.6 18.5 26.8 18.5 15.8 0 28.7-12.8 28.7-28.7 0-16-12.9-28.8-28.7-28.8z" />
+              </svg>
+            </Card>
+          )}
+
+          {isEngineer && (
+            <Card to="/NetworkSearch" title="Network Search" description="Search the network for devices and information.">
+              <svg viewBox="-0.5 0 25 25" fill="none" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+                <path d="M22 11.8201C22 9.84228 21.4135 7.90885 20.3147 6.26436C19.2159 4.61987 17.6542 3.33813 15.8269 2.58126C13.9996 1.82438 11.9889 1.62637 10.0491 2.01223C8.10927 2.39808 6.32748 3.35052 4.92896 4.74904C3.53043 6.14757 2.578 7.92935 2.19214 9.86916C1.80629 11.809 2.00436 13.8197 2.76123 15.6469C3.51811 17.4742 4.79985 19.036 6.44434 20.1348C8.08883 21.2336 10.0222 21.8201 12 21.8201" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M2 11.8201H22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M12 21.8201C10.07 21.8201 8.5 17.3401 8.5 11.8201C8.5 6.30007 10.07 1.82007 12 1.82007C13.93 1.82007 15.5 6.30007 15.5 11.8201" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M18.3691 21.6901C20.3021 21.6901 21.8691 20.1231 21.8691 18.1901C21.8691 16.2571 20.3021 14.6901 18.3691 14.6901C16.4361 14.6901 14.8691 16.2571 14.8691 18.1901C14.8691 20.1231 16.4361 21.6901 18.3691 21.6901Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M22.9998 22.8202L20.8398 20.6702" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </Card>
+          )}
+
+          {isAuthorized && (
+            <Card to="/opengear" title="Opengear List" description="View Opengear device status.">
+            <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28">
+              <g>
+                <g>
+                  <g>
+                    <path d="M512,256c0-130.994-98.398-238.995-225.308-254.162c-0.046-0.005-0.091-0.01-0.137-0.016 c-1.916-0.228-3.836-0.438-5.765-0.624c-0.348-0.034-0.698-0.061-1.046-0.093c-1.656-0.152-3.314-0.298-4.979-0.418 c-0.674-0.049-1.352-0.084-2.027-0.128c-1.37-0.088-2.739-0.18-4.114-0.247c-1.084-0.053-2.171-0.084-3.258-0.124 c-1-0.036-1.998-0.083-3.001-0.108C260.248,0.028,258.126,0,256,0s-4.248,0.028-6.365,0.081c-1.003,0.024-2,0.072-3.001,0.108 c-1.086,0.039-2.174,0.071-3.258,0.124c-1.376,0.067-2.744,0.158-4.114,0.247c-0.676,0.044-1.353,0.079-2.027,0.128 c-1.665,0.121-3.323,0.266-4.979,0.418c-0.349,0.032-0.698,0.059-1.046,0.093c-1.928,0.185-3.849,0.396-5.765,0.624 c-0.046,0.005-0.091,0.01-0.137,0.016C98.398,17.005,0,125.006,0,256c0,73.026,30.581,138.908,79.632,185.547 C119.15,485.493,184.636,512,256,512c20.143,0,40.204-2.531,60.175-7.389C330.808,509.4,346.432,512,362.667,512 C445.147,512,512,445.147,512,362.667c0-16.234-2.6-31.859-7.389-46.492C509.469,296.204,512,276.143,512,256z M469.321,258.153 c-27.103-27.655-64.87-44.819-106.654-44.819c-0.116,0-0.23,0.004-0.346,0.004c-0.71-21.795-2.506-42.48-5.328-61.77 c22.445-9.098,42.673-21.23,59.646-35.935c32.808,37.515,52.694,86.616,52.694,140.366 C469.333,256.718,469.329,257.435,469.321,258.153z M43.726,277.333h105.95c0.869,27.43,3.416,53.989,7.508,78.83 c-20.368,8.997-39.827,22.387-61.14,40.974C67.251,364.529,48.266,323.059,43.726,277.333z M95.361,115.634 c17.613,15.26,38.739,27.74,62.204,36.942c-4.319,25.479-7.01,53.117-7.897,82.091H43.726 C48.23,189.302,66.948,148.123,95.361,115.634z M256.004,42.675c19.798,0,39.656,29.689,51.885,79.64 C291.433,126.016,273.987,128,256,128c-16.675,0-32.886-1.707-48.274-4.904C220.49,74.006,239.082,42.675,256.004,42.675z M166.783,110.249c-14.881-6.441-28.346-14.469-39.888-23.838c18.593-14.22,39.28-25.24,61.319-32.666 C179.805,69.746,172.613,88.814,166.783,110.249z M328.832,55.513c20.153,7.364,39.105,17.769,56.272,30.898 c-10.691,8.679-23.034,16.208-36.622,22.391C343.259,88.604,336.67,70.685,328.832,55.513z M127.523,426.308 c30.611-26.112,55.088-38.181,87.462-41.395c4.907,32.857,20.518,62.208,43.168,84.407c-0.718,0.008-1.435,0.012-2.153,0.012 C207.757,469.333,163.26,453.311,127.523,426.308z M214.75,342.097c-5.599,0.442-11.022,1.082-16.294,1.932 c-3.238-21.069-5.303-43.51-6.087-66.697h47.741C226.948,296.201,218.035,318.249,214.75,342.097z M283.974,235.735 c-2.092-0.685-4.32-1.068-6.641-1.068h-84.952c0.873-24.79,3.234-48.29,6.685-69.799c18.263,3.795,37.375,5.799,56.933,5.799 c20.521,0,40.552-2.201,59.625-6.369c2.239,17.044,3.695,35.545,4.189,55.285C307.068,223.395,295.039,228.861,283.974,235.735z M362.667,469.333c-12.541,0-24.573-2.171-35.75-6.145c-0.631-0.307-1.28-0.597-1.962-0.856 c-37.297-14.128-63.6-47.797-68.226-87.2c-0.005-0.046-0.01-0.092-0.016-0.138c-0.298-2.568-0.499-5.162-0.61-7.775 c-0.011-0.266-0.021-0.532-0.03-0.799c-0.044-1.247-0.073-2.497-0.073-3.753C256,303.75,303.75,256,362.667,256 c1.256,0,2.506,0.029,3.753,0.073c0.266,0.009,0.533,0.019,0.799,0.03c2.613,0.111,5.207,0.312,7.775,0.61 c0.046,0.005,0.092,0.01,0.138,0.016c39.404,4.625,73.072,30.929,87.2,68.226c0.258,0.682,0.548,1.332,0.856,1.962 c3.974,11.177,6.145,23.209,6.145,35.75C469.333,421.583,421.583,469.333,362.667,469.333z" />
+                    <path d="M341.333,298.667C329.551,298.667,320,308.218,320,320s9.551,21.333,21.333,21.333C364.901,341.333,384,360.433,384,384 c0,11.782,9.551,21.333,21.333,21.333c11.782,0,21.333-9.551,21.333-21.333C426.667,336.869,388.465,298.667,341.333,298.667z" />
+                    <path d="M341.333,362.667C329.557,362.667,320,372.224,320,384s9.557,21.333,21.333,21.333c11.776,0,21.333-9.557,21.333-21.333 S353.109,362.667,341.333,362.667z" />
+                  </g>
+                </g>
+              </g>
+            </svg>
+            </Card>
+          )}
+
+          {isEngineer && (
+            <Card to="/Reports" title="Network Reports" description="View network reports and analytics.">
+              <svg fill="currentColor" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+                <rect x="15" y="20" width="2" height="4" />
+                <rect x="20" y="18" width="2" height="6" />
+                <rect x="10" y="14" width="2" height="10" />
+                <path d="M25,5H22V4a2,2,0,0,0-2-2H12a2,2,0,0,0-2,2V5H7A2,2,0,0,0,5,7V28a2,2,0,0,0,2,2H25a2,2,0,0,0,2-2V7A2,2,0,0,0,25,5ZM12,4h8V8H12ZM25,28H7V7h3v3H22V7h3Z" />
+              </svg>
+            </Card>
+          )}
+
+          {isEngineer && (
+            <Card to="/inventory" title="Inventory Scan" description="Scan assets into depot, locations, jobs, or add to inventory.">
+              <svg fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+                <path d="M3 5a2 2 0 012-2h2a1 1 0 010 2H5v2a1 1 0 01-2 0V5zM3 19a2 2 0 002 2h2a1 1 0 000-2H5v-2a1 1 0 00-2 0v2zM19 3h-2a1 1 0 000 2h2v2a1 1 0 002 0V5a2 2 0 00-2-2zM21 17a1 1 0 00-2 0v2h-2a1 1 0 000 2h2a2 2 0 002-2v-2zM7 8a1 1 0 011-1h8a1 1 0 110 2H8a1 1 0 01-1-1zM7 12a1 1 0 011-1h8a1 1 0 110 2H8a1 1 0 01-1-1zM7 16a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1z" fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
+              </svg>
+            </Card>
+          )}
+
+          {isEngineer && (
+            <Card to="/topology" title="Network Topology" description="View network topologies.">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+                <path d="M5.46997 9C7.40297 9 8.96997 7.433 8.96997 5.5C8.96997 3.567 7.40297 2 5.46997 2C3.53697 2 1.96997 3.567 1.96997 5.5C1.96997 7.433 3.53697 9 5.46997 9Z" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M16.97 15H19.97C21.07 15 21.97 15.9 21.97 17V20C21.97 21.1 21.07 22 19.97 22H16.97C15.87 22 14.97 21.1 14.97 20V17C14.97 15.9 15.87 15 16.97 15Z" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M11.9999 5H14.6799C16.5299 5 17.3899 7.29 15.9999 8.51L8.00995 15.5C6.61995 16.71 7.47994 19 9.31994 19H11.9999" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M5.48622 5.5H5.49777" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M18.4862 18.5H18.4978" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </Card>
+          )}
+        </motion.div>
       </main>
     </div>
   );

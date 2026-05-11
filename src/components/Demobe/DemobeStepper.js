@@ -43,6 +43,21 @@ export default function DemobeStepper() {
     ...GizmoRequest,
     account: accounts[0],
   };
+  const [siteLoadError, setSiteLoadError] = useState(null);
+
+  const getToken = async () => {
+    try {
+      const res = await instance.acquireTokenSilent(request);
+      return res.accessToken;
+    } catch {
+      try {
+        const res = await instance.acquireTokenPopup(request);
+        return res.accessToken;
+      } catch {
+        throw new Error("Session expired — please log in again.");
+      }
+    }
+  };
 
   const daysOptions = [
     { key: "30", label: "30 Days" },
@@ -64,16 +79,13 @@ export default function DemobeStepper() {
   useEffect(() => {
     (async () => {
       setIsLoading(true);
+      setSiteLoadError(null);
       try {
-        GetAllSites({
-          token: await instance.acquireTokenSilent(request).then((response) => {
-            return response.accessToken;
-          }),
-        });
+        const token = await getToken();
+        GetAllSites({ token });
       } catch (err) {
         setIsLoading(false);
-        console.log({ err });
-        setLoading(false);
+        setSiteLoadError(err.message || "Failed to load sites — please try again.");
       }
     })();
   }, [accounts.length === 0, selectedDays]);
@@ -133,8 +145,7 @@ export default function DemobeStepper() {
     setSeletonLoading(true);
 
     try {
-      const tokenResponse = await instance.acquireTokenSilent(request);
-      const token = tokenResponse.accessToken;
+      const token = await getToken();
 
       const { url, label } = steps[currentStep];
 
@@ -170,8 +181,7 @@ export default function DemobeStepper() {
   const handleGenerateDHCP = async () => {
     setDhcpJsonLoading(true);
     try {
-      const tokenResponse = await instance.acquireTokenSilent(request);
-      const token = tokenResponse.accessToken;
+      const token = await getToken();
 
       const response = await fetch(dhcpToDeleteURL, {
         method: "GET",
@@ -484,6 +494,25 @@ export default function DemobeStepper() {
             </div>
           </div>
         )}
+      {siteLoadError && (
+        <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
+          <div className="text-5xl">⚠️</div>
+          <p className="text-red-400 text-sm max-w-sm font-semibold">{siteLoadError}</p>
+          <button
+            onClick={() => {
+              setSiteLoadError(null);
+              setIsLoading(true);
+              getToken().then((token) => GetAllSites({ token })).catch((err) => {
+                setIsLoading(false);
+                setSiteLoadError(err.message || "Failed to load sites.");
+              });
+            }}
+            className="text-xs px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-black transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
       </div>
     </>
   );

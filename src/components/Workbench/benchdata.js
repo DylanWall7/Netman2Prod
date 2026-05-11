@@ -106,7 +106,7 @@ const benches = [
   },
   {
     rack: "6",
-    user: "mahamane.kosso",
+    user: "vacant",
     console_ip: "10.18.96.102",
     switch_name: "KHONELV1SWA9061",
     subnet: "10.18.102.0/24",

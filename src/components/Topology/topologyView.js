@@ -1173,8 +1173,12 @@ export default function TopologyView() {
       return r.accessToken;
     } catch (silentErr) {
       console.warn("Silent token acquisition failed, trying popup:", silentErr);
-      const r = await instance.acquireTokenPopup(request);
-      return r.accessToken;
+      try {
+        const r = await instance.acquireTokenPopup(request);
+        return r.accessToken;
+      } catch {
+        throw new Error("Session expired — please log in again.");
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instance]);
@@ -1263,12 +1267,17 @@ export default function TopologyView() {
 
   useEffect(() => {
     if (accounts.length === 0) return;
+    setIsLoadingSites(true);
+    setError(null);
     authFetch(`${BASE}/mist/site/summary`)
       .then((d) => setSiteList(Array.isArray(d) ? d : (d.data ?? [])))
-      .catch((e) => console.error("Failed to load sites:", e))
+      .catch((e) => {
+        console.error("Failed to load sites:", e);
+        setError(e.message || "Failed to load site list — please try again.");
+      })
       .finally(() => setIsLoadingSites(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts.length]);
+  }, [accounts.length, retryKey]);
 
   useEffect(() => {
     if (!selectedSiteId) return;
@@ -1514,13 +1523,14 @@ export default function TopologyView() {
             })()}
           </div>
         ) : error ? (
-          <div className="flex flex-col justify-center items-center py-32 gap-3">
-            <p className="text-red-400 text-sm">{error}</p>
+          <div className="flex flex-col justify-center items-center py-32 gap-3 text-center">
+            <div className="text-5xl">⚠️</div>
+            <p className="text-red-400 text-sm max-w-sm font-semibold">{error}</p>
             <button
               onClick={() => setRetryKey((k) => k + 1)}
-              className="text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+              className="text-xs px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-black transition-colors"
             >
-              Try again
+              Try Again
             </button>
           </div>
         ) : nodes.length === 0 && selectedSiteId && !isLoadingTopo && !error ? (

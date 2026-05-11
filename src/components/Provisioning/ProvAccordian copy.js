@@ -16,6 +16,7 @@ import {
   ModalBody,
   ModalFooter,
 } from "@nextui-org/react";
+import ProvisionLoading from "./ProvisionLoading";
 import { GizmoRequest } from "../../authConfig";
 import { set, useForm } from "react-hook-form";
 
@@ -546,22 +547,6 @@ export const ProvAccordian = () => {
     { key: "V102_SRX3XX_KPN", label: "V102_SRX3XX_KPN" },
     { key: "V102_SRX3XX_KPN_INET", label: "V102_SRX3XX_KPN_INET" },
   ];
-  const handleDownloadTemplate = () => {
-    const rows = [
-      "serial,name,model,ip,oob_ip",
-      "AJ123456789,KHONELABWAP0101,AP43,,",
-      "AJ123456790,KHONELABWAP0102,AP43,,",
-      "AJ123456791,KHONELABSW0101,EX3400-48P,10.0.0.1,",
-    ];
-    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "device_import_template.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleImportCSV = (event) => {
     setDevices([]);
     const file = event.target.files[0];
@@ -639,16 +624,6 @@ export const ProvAccordian = () => {
     </svg>
   );
 
-  const [accordionKeys, setAccordionKeys] = React.useState(new Set([]));
-
-  useEffect(() => {
-    if (siteCodeSelected?.length > 1) {
-      setAccordionKeys(new Set(["1"]));
-    } else {
-      setAccordionKeys(new Set([]));
-    }
-  }, [siteCodeSelected]);
-
   const itemClasses = {
     base: "py-0 w-full border rounded border-pink-200",
     title: "font-normal text-medium text-pink-400",
@@ -661,15 +636,6 @@ export const ProvAccordian = () => {
   const [devices, setDevices] = React.useState([
     { serial: "", name: "", model: "", ip: "", oob_ip: "" },
   ]);
-
-  const [dragState, setDragState] = React.useState({
-    active: false,
-    field: null,
-    fromIndex: null,
-    toIndex: null,
-  });
-  const dragStateRef = React.useRef(dragState);
-  dragStateRef.current = dragState;
 
   const handleInputChange = (index, event) => {
     const values = [...devices];
@@ -752,69 +718,8 @@ export const ProvAccordian = () => {
   };
 
   const handleRemoveDevice = (index) => {
-    setDevices((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      return next.length > 0 ? next : [{ serial: "", name: "", model: "", ip: "", oob_ip: "" }];
-    });
+    setDevices((prev) => prev.filter((_, i) => i !== index));
   };
-
-  function incrementName(name, offset) {
-    const match = name.match(/^(.*?)(\d+)$/);
-    if (!match) return name;
-    const [, prefix, numStr] = match;
-    const next = (parseInt(numStr, 10) + offset)
-      .toString()
-      .padStart(numStr.length, "0");
-    return prefix + next;
-  }
-
-  useEffect(() => {
-    const handleMouseUp = () => {
-      const ds = dragStateRef.current;
-      if (!ds.active) return;
-      if (
-        ds.fromIndex !== null &&
-        ds.toIndex !== null &&
-        ds.fromIndex !== ds.toIndex
-      ) {
-        const { field, fromIndex, toIndex } = ds;
-        const start = Math.min(fromIndex, toIndex);
-        const end = Math.max(fromIndex, toIndex);
-        setDevices((prev) => {
-          const updated = [...prev];
-          const sourceValue = updated[fromIndex]?.[field] ?? "";
-          const existingEnd = Math.min(end, prev.length - 1);
-          const newRowCount = Math.min(Math.max(0, end - (prev.length - 1)), 20 - prev.length);
-          for (let i = start; i <= existingEnd; i++) {
-            if (i === fromIndex) continue;
-            if (field === "name") {
-              updated[i] = {
-                ...updated[i],
-                name: incrementName(sourceValue, i - fromIndex),
-              };
-            } else {
-              updated[i] = { ...updated[i], [field]: sourceValue };
-            }
-          }
-          for (let i = 0; i < newRowCount; i++) {
-            const offset = prev.length + i - fromIndex;
-            const newRow = { serial: "", name: "", model: "", ip: "", oob_ip: "" };
-            if (field === "name") {
-              newRow.name = incrementName(sourceValue, offset);
-            } else {
-              newRow[field] = sourceValue;
-            }
-            updated.push(newRow);
-          }
-          return updated;
-        });
-      }
-      setDragState({ active: false, field: null, fromIndex: null, toIndex: null });
-    };
-    document.addEventListener("mouseup", handleMouseUp);
-    return () => document.removeEventListener("mouseup", handleMouseUp);
-  }, []);
-
   const nextIPURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/addresses/${devices?.length}`;
 
   const validateGoodIcon = (
@@ -851,13 +756,9 @@ export const ProvAccordian = () => {
     </svg>
   );
 
-  const hasACM = devices.some((d) => d.model?.startsWith("ACM"));
-  const gridCols = hasACM
-    ? "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_1fr_2.5rem]"
-    : "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_2.5rem]";
-
   return (
     <>
+      {isLoading && <ProvisionLoading loading={isLoading} />}
       <div className="  text-lg flex flex-col justify-center items-center">
         <div className="">
           <div className="  ml-5">
@@ -869,67 +770,55 @@ export const ProvAccordian = () => {
                 <span className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-pink-400 to-pink-500"></span>
               </h1>
               <p className="text-sm text-pink-400 mb-8">
-                Select a site to get started.
+                Provision a site with the following steps.
               </p>
-              <div className="dark text-foreground flex justify-center">
-                <Autocomplete
-                  size="sm"
-                  label="Site Code (From ServiceNow)"
-                  menuTrigger="input"
-                  placeholder="Site Code"
-                  className="max-w-sm text-pink-400"
-                  variant="bordered"
-                  isLoading={isLoading}
-                  onInputChange={(value) => setSiteCodeSelected(value)}
-                >
-                  {siteList.data?.map((site) => (
-                    <AutocompleteItem value={site} key={site.id}>
-                      {site ? site : "No Site Code"}
-                    </AutocompleteItem>
-                  ))}
-                </Autocomplete>
-              </div>
             </div>
           </div>
         </div>
 
         <div className="mt-12">
           <div className="flex flex-col justify-start ml-5">
-            <Accordion
-              itemClasses={itemClasses}
-              keepContentMounted={true}
-              selectedKeys={accordionKeys}
-              onSelectionChange={setAccordionKeys}
-            >
+            <Accordion itemClasses={itemClasses} keepContentMounted={true}>
               <AccordionItem
                 key="1"
                 aria-label="Accordion 1"
                 title="Step 1: Create Site in Netbox"
                 className="text-pink-400"
-                isDisabled={siteCodeSelected?.length > 1 ? false : true}
               >
                 <div className="  text-lg  ">
                   <div className="flex justify-start">
                     <div className="flex justify-start ml-5"></div>
                   </div>
-                  <div className="mt-6">
+                  <div className=" mt-6 ">
                     <form className="w-full flex justify-center">
-                      <div className="border-pink-200 border-large rounded-lg p-5 flex flex-col bg-pink-300 w-3/4">
-                        <div className="p-2 dark text-foreground">
-                          <Input
-                            size="sm"
-                            label="Selected Site"
-                            className="max-w-lg"
-                            variant="bordered"
-                            value={siteCodeSelected}
-                            isReadOnly
-                          />
+                      <div className=" border-pink-200 border-large rounded-lg p-5 flex flex-col bg-pink-300 w-3/4 ">
+                        <div className=" p-2 ">
+                          <div className="dark text-foreground  ">
+                            <Autocomplete
+                              size="sm"
+                              label="Site Code (From ServiceNow)"
+                              menuTrigger="input"
+                              placeholder="Site Code"
+                              className="max-w-sm text-pink-400"
+                              variant="bordered"
+                              onInputChange={(value) => {
+                                setSiteCodeSelected(value);
+                              }}
+                            >
+                              {siteList.data?.map((site) => (
+                                <AutocompleteItem value={site} key={site.id}>
+                                  {site ? site : "No Site Code"}
+                                </AutocompleteItem>
+                              ))}
+                            </Autocomplete>
+                          </div>
                         </div>
+                        <div className=" p-2 "></div>
                         <div className="p-2 flex justify-end">
                           <Button
                             isLoading={netboxLoading}
                             onPress={handleSubmit(handleAddNetbox)}
-                            className="bg-pink-600"
+                            className="bg-pink-600 "
                           >
                             Add Site
                           </Button>
@@ -1058,97 +947,73 @@ export const ProvAccordian = () => {
                       <div className=" border-pink-200 border-large rounded-lg p-5 flex flex-col bg-pink-300 ">
                         <div className="p-2 dark text-foreground bg-transparent ">
                           <div className=" ">
-                            <div className="px-2 py-2 flex items-center justify-between">
-                              <span className="text-xs text-pink-400 tracking-wider uppercase font-medium select-none">Device Assign List</span>
-                              <div className="relative group">
-                                <button
-                                  type="button"
-                                  onClick={handleDownloadTemplate}
-                                  className="text-violet-400 hover:text-violet-300 hover:bg-violet-400/10 rounded p-1 transition-colors"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" width={15} height={15} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
-                                  </svg>
-                                </button>
-                                <div className="absolute bottom-full right-0 mb-1.5 px-2 py-1 bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                                  Download CSV Template
-                                </div>
-                              </div>
+                            <div className=" px-2 py-3 text-left leading-4 text-pink-400 tracking-wider">
+                              Device Assign List
                             </div>
-                            <div className="overflow-hidden rounded-lg border border-zinc-600/60">
-                              {/* Table header */}
-                              <div className={`grid ${gridCols} bg-zinc-800/70 border-b border-zinc-600/60 text-xs uppercase tracking-wider text-zinc-400 font-semibold select-none`}>
-                                <div className="flex items-center justify-center py-2 border-r border-zinc-600/40">#</div>
-                                <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">Serial</div>
-                                <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">Name</div>
-                                <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">Model</div>
-                                <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">IP</div>
-                                {hasACM && <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">OOB IP</div>}
-                                <div className="py-2" />
-                              </div>
-                              {/* Device rows */}
+                            <div>
                               {devices.map((device, index) => (
                                 <div
                                   key={index}
-                                  className={`grid ${gridCols} border-b border-zinc-700/40 h-10 transition-colors ${
-                                    dragState.active &&
-                                    index !== dragState.fromIndex &&
-                                    index >= Math.min(dragState.fromIndex, Math.min(dragState.toIndex, devices.length - 1)) &&
-                                    index <= Math.max(dragState.fromIndex, Math.min(dragState.toIndex, devices.length - 1))
-                                      ? "bg-pink-400/15 ring-1 ring-inset ring-pink-400"
-                                      : "hover:bg-zinc-800/20"
-                                  }`}
-                                  onMouseMove={() => {
-                                    if (dragState.active && dragState.toIndex !== index) {
-                                      setDragState((prev) => ({ ...prev, toIndex: index }));
-                                    }
-                                  }}
+                                  className="flex w-full flex-wrap md:flex-nowrap gap-2 m-2"
                                 >
-                                  <div className="flex items-center justify-center text-xs text-zinc-500 border-r border-zinc-700/40 select-none">
-                                    {index + 1}
-                                  </div>
-                                  <div className="relative border-r border-zinc-700/40 focus-within:bg-pink-400/5 focus-within:ring-1 focus-within:ring-inset focus-within:ring-pink-400">
-                                    <input
-                                      type="text"
-                                      name="serial"
-                                      value={device.serial}
-                                      onChange={(event) => handleInputChange(index, event)}
-                                      placeholder="Serial Number"
-                                      className="w-full h-full px-2 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
-                                    />
-                                  </div>
-                                  <div className="relative border-r border-zinc-700/40 focus-within:bg-pink-400/5 focus-within:ring-1 focus-within:ring-inset focus-within:ring-pink-400">
-                                    <input
-                                      type="text"
-                                      name="name"
-                                      value={device.name}
-                                      onChange={(event) => handleInputChange(index, event)}
-                                      placeholder="Device Name"
-                                      className="w-full h-full px-2 pr-4 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
-                                    />
-                                    <div
-                                      title="Drag down to fill names"
-                                      className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 bg-pink-500 border border-pink-800 cursor-ns-resize z-10"
-                                      onMouseDown={(e) => {
-                                        e.preventDefault();
-                                        setDragState({ active: true, field: "name", fromIndex: index, toIndex: index });
-                                      }}
-                                    />
-                                  </div>
-                                  <div className="dark relative border-r border-zinc-700/40">
+                                  <Input
+                                    classNames={{
+                                      label: "text-pink-400",
+                                      input: ["placeholder:text-pink-400"],
+                                      innerWrapper: "bg-transparent",
+                                      inputWrapper: [
+                                        "bg-pink-300",
+                                        "border-zinc-600",
+                                        "rounded-lg",
+                                        "border",
+                                        "border-2",
+                                        "border-opacity-70",
+                                        "hover:border-zinc-500",
+                                        "h-full",
+                                      ],
+                                    }}
+                                    type="text"
+                                    name="serial"
+                                    value={device.serial}
+                                    onChange={(event) =>
+                                      handleInputChange(index, event)
+                                    }
+                                    placeholder="Serial Number"
+                                  />
+                                  <Input
+                                    classNames={{
+                                      label: "text-pink-400",
+                                      input: ["placeholder:text-pink-400"],
+                                      innerWrapper: "bg-transparent",
+                                      inputWrapper: [
+                                        "bg-pink-300",
+                                        "border-zinc-600",
+                                        "rounded-lg",
+                                        "border",
+                                        "border-opacity-70",
+                                        "border-2",
+                                        "hover:border-zinc-500",
+                                        "h-full",
+                                      ],
+                                    }}
+                                    type="text"
+                                    size="small"
+                                    name="name"
+                                    value={device.name}
+                                    onChange={(event) =>
+                                      handleInputChange(index, event)
+                                    }
+                                    placeholder="Device Name"
+                                  />
+                                  <div className="dark w-full ">
                                     <Autocomplete
                                       size="sm"
+                                      label="Model"
                                       menuTrigger="input"
                                       placeholder="Model"
-                                      variant="flat"
+                                      className="w-full  text-pink-400"
+                                      variant="bordered"
                                       selectedKey={device.model}
-                                      classNames={{
-                                        base: "max-w-full h-full",
-                                        mainWrapper: "h-full",
-                                        inputWrapper: "bg-transparent shadow-none rounded-none border-none h-full min-h-0 py-0 pl-0 pr-6 group-data-[focus=true]:bg-pink-400/5",
-                                        input: "text-sm text-zinc-100 placeholder:text-zinc-500 pl-2 py-0",
-                                        innerWrapper: "bg-transparent h-full py-0",
-                                      }}
                                       onSelectionChange={(value) => {
                                         const values = [...devices];
                                         values[index].model = value;
@@ -1156,97 +1021,75 @@ export const ProvAccordian = () => {
                                       }}
                                     >
                                       {modelList.map((model) => (
-                                        <AutocompleteItem key={model} value={model}>
+                                        <AutocompleteItem
+                                          key={model}
+                                          value={model}
+                                        >
                                           {model ? model : "No Model"}
                                         </AutocompleteItem>
                                       ))}
                                     </Autocomplete>
-                                    <div
-                                      title="Drag down to fill model"
-                                      className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 bg-pink-500 border border-pink-800 cursor-ns-resize z-10"
-                                      onMouseDown={(e) => {
-                                        e.preventDefault();
-                                        setDragState({ active: true, field: "model", fromIndex: index, toIndex: index });
+                                  </div>
+                                  <Input
+                                    classNames={{
+                                      label: "text-pink-400",
+                                      input: ["placeholder:text-pink-400"],
+                                      innerWrapper: "bg-transparent",
+                                      inputWrapper: [
+                                        "bg-pink-300",
+                                        "border-zinc-600",
+                                        "rounded-lg",
+                                        "border",
+                                        "border-2",
+                                        "border-opacity-70",
+                                        "hover:border-zinc-500",
+                                        "h-full",
+                                      ],
+                                    }}
+                                    type="text"
+                                    name="ip"
+                                    value={device.ip}
+                                    disabled={device.model?.startsWith("AP")}
+                                    onChange={(event) =>
+                                      handleInputChange(index, event)
+                                    }
+                                    placeholder="IP Address"
+                                  />
+                                  {device.model?.startsWith("ACM") && (
+                                    <Input
+                                      classNames={{
+                                        label: "text-pink-400",
+                                        input: ["placeholder:text-pink-400"],
+                                        innerWrapper: "bg-transparent",
+                                        inputWrapper: [
+                                          "bg-pink-300",
+                                          "border-zinc-600",
+                                          "rounded-lg",
+                                          "border",
+                                          "border-2",
+                                          "border-opacity-70",
+                                          "hover:border-zinc-500",
+                                          "h-full",
+                                        ],
                                       }}
-                                    />
-                                  </div>
-                                  <div className="relative border-r border-zinc-700/40 focus-within:bg-pink-400/5 focus-within:ring-1 focus-within:ring-inset focus-within:ring-pink-400">
-                                    <input
                                       type="text"
-                                      name="ip"
-                                      value={device.ip}
-                                      disabled={device.model?.startsWith("AP")}
-                                      onChange={(event) => handleInputChange(index, event)}
-                                      placeholder="IP Address"
-                                      className="w-full h-full px-2 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none disabled:opacity-30 disabled:cursor-not-allowed"
+                                      name="oob_ip"
+                                      value={device.oob_ip}
+                                      onChange={(event) =>
+                                        handleInputChange(index, event)
+                                      }
+                                      placeholder="4G OOB IP"
                                     />
-                                  </div>
-                                  {hasACM && (
-                                    <div className="relative border-r border-zinc-700/40 focus-within:bg-pink-400/5 focus-within:ring-1 focus-within:ring-inset focus-within:ring-pink-400">
-                                      {device.model?.startsWith("ACM") && (
-                                        <input
-                                          type="text"
-                                          name="oob_ip"
-                                          value={device.oob_ip}
-                                          onChange={(event) => handleInputChange(index, event)}
-                                          placeholder="4G OOB IP"
-                                          className="w-full h-full px-2 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
-                                        />
-                                      )}
-                                    </div>
                                   )}
-                                  <div className="flex items-center justify-center">
-                                    <Button
-                                      onPress={() => handleRemoveDevice(index)}
-                                      isIconOnly
-                                      variant="light"
-                                      size="sm"
-                                    >
-                                      <RedTrashIcon size={16} />
-                                    </Button>
-                                  </div>
+                                  <Button
+                                    onPress={() => handleRemoveDevice(index)}
+                                    isIconOnly
+                                    variant="light"
+                                  >
+                                    <RedTrashIcon />
+                                  </Button>
                                 </div>
                               ))}
-                              {/* Ghost rows — shown while dragging to preview new rows */}
-                              {dragState.active && devices.length < 20 && (
-                                Array.from({ length: 20 - devices.length }).map((_, i) => {
-                                  const ghostIndex = devices.length + i;
-                                  const isActive = ghostIndex <= dragState.toIndex;
-                                  const sourceValue = devices[dragState.fromIndex]?.[dragState.field] ?? "";
-                                  const previewValue = dragState.field === "name"
-                                    ? incrementName(sourceValue, ghostIndex - dragState.fromIndex)
-                                    : sourceValue;
-                                  return (
-                                    <div
-                                      key={`ghost-${ghostIndex}`}
-                                      className={`grid ${gridCols} border-b border-dashed h-10 transition-colors ${
-                                        isActive
-                                          ? "border-pink-400/50 bg-pink-400/10"
-                                          : "border-zinc-600/20 opacity-20"
-                                      }`}
-                                      onMouseMove={() => {
-                                        if (dragState.active) {
-                                          setDragState((prev) => ({ ...prev, toIndex: ghostIndex }));
-                                        }
-                                      }}
-                                    >
-                                      <div className="flex items-center justify-center text-xs text-zinc-500 border-r border-dashed border-zinc-600/30 select-none">
-                                        {ghostIndex + 1}
-                                      </div>
-                                      <div className="border-r border-dashed border-zinc-600/30" />
-                                      <div className={`border-r border-dashed border-zinc-600/30 flex items-center px-2 text-xs italic ${isActive ? "text-pink-800" : ""}`}>
-                                        {dragState.field === "name" ? previewValue : ""}
-                                      </div>
-                                      <div className={`border-r border-dashed border-zinc-600/30 flex items-center px-2 text-xs italic ${isActive ? "text-pink-800" : ""}`}>
-                                        {dragState.field === "model" ? previewValue : ""}
-                                      </div>
-                                      <div className="border-r border-dashed border-zinc-600/30" />
-                                      {hasACM && <div className="border-r border-dashed border-zinc-600/30" />}
-                                      <div />
-                                    </div>
-                                  );
-                                })
-                              )}
                             </div>
                             {devices.length < 500 && (
                               <div className="flex justify-start">
@@ -1254,15 +1097,13 @@ export const ProvAccordian = () => {
                                   <Button
                                     onPress={handleAddDevice}
                                     isIconOnly
-                                    variant="bordered"
-                                    size="sm"
-                                    className="border-pink-500/60 text-pink-400 hover:border-pink-400 hover:bg-pink-400/10 rounded-md transition-colors"
+                                    className="bg-green-500 hover:bg-green-400 active:scale-95 text-white shadow-md rounded-full p-3 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-300"
                                   >
-                                    <GreenPlusIcon size={16} fill="currentColor" />
+                                    <GreenPlusIcon fill="white" />
                                   </Button>
 
                                   <div>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-3 ">
                                       <input
                                         type="file"
                                         accept=".csv"
@@ -1271,40 +1112,54 @@ export const ProvAccordian = () => {
                                         onChange={handleImportCSV}
                                       />
                                       <Button
-                                        onPress={() => document.getElementById("csvUpload").click()}
-                                        size="sm"
-                                        variant="bordered"
-                                        className="border-sky-500/60 text-sky-400 hover:border-sky-400 hover:bg-sky-400/10 rounded-md text-xs transition-colors"
+                                        onPress={() =>
+                                          document
+                                            .getElementById("csvUpload")
+                                            .click()
+                                        }
+                                        className=" relative flex items-center bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
                                       >
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          className="w-5 h-5 animate-bounce-slow"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                          strokeWidth={2}
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d="M9 17v-6h6v6m-6 0h6m2 4H7a2 2 0 01-2-2V5a2 2 0 012-2h5l2 2h5a2 2 0 012 2v10a2 2 0 01-2 2z"
+                                          />
+                                        </svg>
                                         Import CSV
+                                        <span className="  inset-0 rounded-lg bg-white/10 opacity-0 hover:opacity-100 transition duration-300"></span>
                                       </Button>
+
                                       <Button
                                         onPress={() => {
-                                          setDevices([{ serial: "", name: "", model: "", ip: "", oob_ip: "" }]);
-                                          document.getElementById("csvUpload").value = "";
+                                          setDevices([]);
+                                          document.getElementById(
+                                            "csvUpload",
+                                          ).value = "";
                                         }}
-                                        size="sm"
-                                        variant="bordered"
-                                        className="border-rose-500/60 text-rose-400 hover:border-rose-400 hover:bg-rose-400/10 rounded-md text-xs transition-colors"
+                                        className="relative flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-500 hover:to-orange-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
                                       >
                                         Clear CSV
                                       </Button>
                                     </div>
-                                    <div className="flex gap-2 mt-2">
+                                    <div className="flex gap-3 mt-4">
                                       <Button
                                         isLoading={nextIpLoading}
                                         onPress={handleFillIPs}
-                                        size="sm"
-                                        variant="bordered"
-                                        className="border-emerald-500/60 text-emerald-400 hover:border-emerald-400 hover:bg-emerald-400/10 rounded-md text-xs transition-colors"
+                                        className="relative flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
                                       >
                                         Fill IPs
                                       </Button>
                                       <Button
                                         onPress={handleClearIPs}
-                                        size="sm"
-                                        variant="bordered"
-                                        className="border-rose-500/60 text-rose-400 hover:border-rose-400 hover:bg-rose-400/10 rounded-md text-xs transition-colors"
+                                        className="relative flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-500 hover:to-orange-500 text-white shadow-lg rounded-lg px-4 py-2 font-semibold transition-all duration-300 ease-out hover:scale-105 active:scale-95"
                                       >
                                         Clear IPs
                                       </Button>

@@ -24,6 +24,7 @@ import OpengearReports from "./components/Reports/OpengearReports";
 import ReportLandingPage from "./components/Reports/ReportLandingPage";
 import NetworkSearch from "./components/NetworkSearch/NetworkSearch";
 import TopologyView from "./components/Topology/topologyView";
+import InventoryScanPage from "./components/InventoryScan/InventoryScanPage";
 
 const Unauthorized = () => {
   return (
@@ -276,6 +277,14 @@ function App() {
               element={<DeviceProv />}
             /> */}
 
+            <Route
+              path="inventory"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <InventoryScanPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<NoMatch />} />
           </Routes>
         </AuthenticatedTemplate>
