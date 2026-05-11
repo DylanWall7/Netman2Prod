@@ -51,6 +51,23 @@ export default function ScanSettings({
   const request = { ...GizmoRequest, account: accounts[0] };
   const baseUrl = `https://${process.env.REACT_APP_API_BASEURL}`;
 
+  const [optionalOpen, setOptionalOpen] = useState(false);
+  const [activeOptional, setActiveOptional] = useState([]);
+
+  const OPTIONAL_FIELDS = [
+    { key: "purchase_date", label: "Purchase Date", type: "date" },
+    { key: "purchase_cost", label: "Purchase Cost", type: "number" },
+    { key: "order_number", label: "Order Number", type: "text" },
+  ];
+
+  function toggleOptionalField(key) {
+    setActiveOptional((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      if (!next.includes(key)) onSettingsChange({ [key]: "" });
+      return next;
+    });
+  }
+
   const [locations, setLocations] = useState([]);
   const [categories, setCategories] = useState([]);
   const [models, setModels] = useState([]);
@@ -489,6 +506,65 @@ export default function ScanSettings({
               ))}
             </Autocomplete>
           )}
+
+          <div className="rounded-lg border border-gray-700 overflow-hidden">
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() => setOptionalOpen((o) => !o)}
+              className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span className="font-medium">Optional fields</span>
+              <svg
+                className={`w-3.5 h-3.5 transition-transform duration-150 ${optionalOpen ? "rotate-180" : ""}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {optionalOpen && (
+              <div className="border-t border-gray-700 p-2 space-y-2">
+                <div className="flex flex-wrap gap-1.5 pb-1">
+                  {OPTIONAL_FIELDS.map((f) => {
+                    const active = activeOptional.includes(f.key);
+                    return (
+                      <button
+                        key={f.key}
+                        type="button"
+                        onClick={() => toggleOptionalField(f.key)}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          active
+                            ? "bg-pink-600/30 border-pink-500/60 text-pink-300"
+                            : "bg-gray-700 border-gray-600 text-gray-400 hover:text-gray-200 hover:border-gray-500"
+                        }`}
+                      >
+                        {active ? "✓ " : "+ "}{f.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {OPTIONAL_FIELDS.filter((f) => activeOptional.includes(f.key)).map((f) => (
+                  <div key={f.key}>
+                    <label className="block text-xs text-gray-400 mb-1">{f.label}</label>
+                    <input
+                      type={f.type}
+                      disabled={locked}
+                      value={settings[f.key] || ""}
+                      onChange={(e) => onSettingsChange({ [f.key]: e.target.value })}
+                      step={f.type === "number" ? "0.01" : undefined}
+                      min={f.type === "number" ? "0" : undefined}
+                      className="w-full px-3 py-1.5 text-xs rounded-lg border border-gray-600 bg-gray-700
+                                 text-gray-200 placeholder:text-gray-500
+                                 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500/30
+                                 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="px-3 py-2 bg-gray-700 rounded-lg">
             <p className="text-xs text-gray-500">
