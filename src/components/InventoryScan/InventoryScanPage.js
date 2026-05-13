@@ -182,7 +182,7 @@ export default function InventoryScanPage() {
       if (s.notes?.trim()) body.notes = s.notes.trim();
       return body;
     }
-    if (tab === "jobout") return { location_id: s.locationId };
+    if (tab === "jobout") return { checkout_to_type: "location", assigned_location: s.locationId, status_id: 4 };
     if (tab === "add")
       return {
         serial,
@@ -224,17 +224,11 @@ export default function InventoryScanPage() {
   const submitScan = async (serial, tab, token) => {
     const res = await fetch(getEndpoint(tab, serial), {
       method: getMethod(tab),
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(buildBody(tab, serial)),
     });
     const data = await res.json().catch(() => ({}));
-    return {
-      ok: res.ok,
-      message: data?.message || (res.ok ? "Success" : "Failed"),
-    };
+    return { ok: res.ok, message: data?.message || (res.ok ? "Success" : "Failed") };
   };
 
   const handleSingleScan = async (serial) => {
