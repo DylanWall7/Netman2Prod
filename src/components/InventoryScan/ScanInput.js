@@ -17,6 +17,7 @@ export default function ScanInput({
 }) {
   const [value, setValue] = useState("");
   const [validationError, setValidationError] = useState("");
+  const [stripS, setStripS] = useState(true);
   const inputRef = useRef(null);
   const submitRef = useRef(null);
 
@@ -39,7 +40,10 @@ export default function ScanInput({
   };
 
   const submit = (raw) => {
-    const serial = raw.trim().toUpperCase();
+    let serial = raw.trim().toUpperCase();
+    if (stripS && serial.startsWith("S") && serial.length > 12) serial = serial.slice(1);
+    // Remap shifted number keys (scanner keyboard layout issue: ! = Shift+1, etc.)
+    serial = serial.replace(/!/g, "1");
     const error = validate(serial);
     if (error) {
       setValidationError(error);
@@ -198,6 +202,20 @@ export default function ScanInput({
             : "Press Enter or scan to add to queue"}
         </p>
       )}
+
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setStripS((v) => !v)}
+          className={`relative inline-flex h-4 w-7 flex-shrink-0 rounded-full border-2 border-transparent
+            transition-colors duration-200 focus:outline-none cursor-pointer
+            ${stripS ? "bg-pink-500" : "bg-gray-600"}`}
+        >
+          <span className={`inline-block h-3 w-3 rounded-full bg-white shadow transform transition-transform duration-200
+            ${stripS ? "translate-x-3" : "translate-x-0"}`} />
+        </button>
+        <span className="text-xs text-gray-500">Strip leading S prefix (scanner)</span>
+      </div>
     </div>
   );
 }
