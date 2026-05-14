@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { PageLayout } from "./components/PageLayout";
 import { NextUIProvider } from "@nextui-org/react";
 import { Routes, Route } from "react-router-dom";
@@ -77,62 +77,7 @@ const ProtectedRoute = ({ children, allowedRoles, allowNoRoles = false }) => {
 };
 
 function App() {
-  const url = `https://${process.env.REACT_APP_API_BASEURL}/api/mist/site/summary`;
-  const [siteList, setSiteList] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loading, setLoading] = useState(false);
   const { instance, accounts } = useMsal();
-  const request = {
-    ...GizmoRequest,
-    account: accounts[0],
-  };
-
-  useEffect(() => {
-    const fetchSites = async () => {
-      if (accounts.length === 0) return;
-
-      setIsLoading(true);
-      try {
-        const response = await instance.acquireTokenSilent(request);
-        const token = response.accessToken;
-
-        await GetAllMistSites({ token });
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchSites();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts]);
-
-  async function GetAllMistSites({ token }) {
-    const headers = new Headers();
-    const bearer = `Bearer ${token}`;
-
-    headers.append("Authorization", bearer);
-    headers.append("Content-Type", "application/json");
-
-    const options = {
-      method: "GET",
-      headers: headers,
-    };
-
-    return fetch(url, options)
-      .then(async (response) => {
-        let text = await response.json();
-
-        setSiteList(text);
-        setIsLoading(false);
-      })
-
-      .catch((error) => {
-        console.error("Error:", error);
-        setLoading(false);
-      });
-  }
 
   return (
     <NextUIProvider>
@@ -168,7 +113,7 @@ function App() {
               path="provision"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
-                  <ProvAccordian siteList={siteList} />
+                  <ProvAccordian />
                 </ProtectedRoute>
               }
             ></Route>

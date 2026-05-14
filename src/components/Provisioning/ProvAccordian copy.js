@@ -801,12 +801,15 @@ export const ProvAccordian = () => {
                               placeholder="Site Code"
                               className="max-w-sm text-pink-400"
                               variant="bordered"
+                              onSelectionChange={(key) => {
+                                setSiteCodeSelected(key ?? "");
+                              }}
                               onInputChange={(value) => {
-                                setSiteCodeSelected(value);
+                                if (!value) setSiteCodeSelected("");
                               }}
                             >
                               {siteList.data?.map((site) => (
-                                <AutocompleteItem value={site} key={site.id}>
+                                <AutocompleteItem value={site} key={site}>
                                   {site ? site : "No Site Code"}
                                 </AutocompleteItem>
                               ))}

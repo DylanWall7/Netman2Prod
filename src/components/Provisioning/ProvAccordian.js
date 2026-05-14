@@ -10,11 +10,6 @@ import {
   AccordionItem,
   Select,
   SelectItem,
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
 } from "@nextui-org/react";
 import { GizmoRequest } from "../../authConfig";
 import { set, useForm } from "react-hook-form";
@@ -25,16 +20,13 @@ export const ProvAccordian = () => {
   const { register, handleSubmit } = useForm();
   const [loading, setLoading] = React.useState(false);
   const [siteCodeSelected, setSiteCodeSelected] = React.useState(new Set([]));
+  const [isSiteFullySelected, setIsSiteFullySelected] = React.useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [siteList, setSiteList] = useState([]);
   const [postStatus, setPostStatus] = useState("");
   const [validation, setValidation] = useState([]);
   const [validateLoading, setValidateLoading] = React.useState(false);
   const [dhcpLoading, setDhcpLoading] = React.useState("");
-  const [dhcpJsonModal, setDhcpJsonModal] = React.useState(false);
-  const [dhcpJsonData, setDhcpJsonData] = React.useState(null);
-  const [dhcpJsonLoading, setDhcpJsonLoading] = React.useState(false);
-  const [dhcpCopied, setDhcpCopied] = React.useState(false);
   const [mistLoading, setMistLoading] = React.useState("");
   const [vlan1, setVlan1] = React.useState([]);
   const [vlan5, setVlan5] = React.useState([]);
@@ -51,7 +43,7 @@ export const ProvAccordian = () => {
   const [ipIndex, setIpIndex] = useState(0);
   const [nextIpLoading, setNextIpLoading] = React.useState(false);
 
-  // const [dhcpData, setDhcpData] = useState({ status: null, logs: {} }); // re-enable with deploy
+  const [dhcpData, setDhcpData] = useState({ status: null, logs: {} });
   const [fillIpData, setFillIpData] = useState({
     status: null,
     log: [],
@@ -81,11 +73,10 @@ export const ProvAccordian = () => {
   const url = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/snowlocations`;
   const NetboxURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}`;
   const ValidateURL = `https://${process.env.REACT_APP_API_BASEURL}/api/validation/netboxsite/${siteCodeSelected}`;
-  // const vlan1URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/1`;
-  // const vlan5URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/5`;
-  // const vlan9URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/9`;
-  // const vlan13URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/13`;
-  const dhcpGenerateURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/generate/${siteCodeSelected}`;
+  const vlan1URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/1`;
+  const vlan5URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/5`;
+  const vlan9URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/9`;
+  const vlan13URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/13`;
   const CreateMistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}`;
   const DeployDeviceURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/devices`;
   const netboxtomistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/devices`;
@@ -120,7 +111,7 @@ export const ProvAccordian = () => {
     setVlan5([]);
     setVlan9([]);
     setVlan13([]);
-    // setDhcpData({ status: null, logs: {} }); // re-enable with deploy
+    setDhcpData({ status: null, logs: {} });
   }
 
   useEffect(() => {
@@ -178,34 +169,21 @@ export const ProvAccordian = () => {
       setCreateNetbox([{ msg: err.message || "Authentication failed." }]);
     }
   };
-  // const handleDHCP = async () => {
-  //   resetforms();
-  //   setDhcpLoading(true);
-  //   setSeletonLoading(true);
-  //   try {
-  //     await CreatDHCPAllVlan({
-  //       token: await instance.acquireTokenSilent(request).then((response) => {
-  //         return response.accessToken;
-  //       }),
-  //     });
-  //   } catch (err) {
-  //     console.log({ err });
-  //     setDhcpLoading(false);
-  //     setSeletonLoading(false);
-  //     setLoading(false);
-  //   }
-  // };
-
-  const handleGenerateDHCP = async () => {
-    setDhcpJsonLoading(true);
+  const handleDHCP = async () => {
+    resetforms();
+    setDhcpLoading(true);
+    setSeletonLoading(true);
     try {
-      const token = await instance
-        .acquireTokenSilent(request)
-        .then((res) => res.accessToken);
-      await GenerateDHCPJson({ token });
+      await CreatDHCPAllVlan({
+        token: await instance.acquireTokenSilent(request).then((response) => {
+          return response.accessToken;
+        }),
+      });
     } catch (err) {
       console.log({ err });
-      setDhcpJsonLoading(false);
+      setDhcpLoading(false);
+      setSeletonLoading(false);
+      setLoading(false);
     }
   };
   const handleCreateMist = async () => {
@@ -435,46 +413,29 @@ export const ProvAccordian = () => {
         setValidateLoading(false);
       });
   }
-  // async function CreatDHCPAllVlan({ token }) {
-  //   const headers = new Headers();
-  //   const bearer = `Bearer ${token}`;
-  //   headers.append("Authorization", bearer);
-  //   headers.append("Content-Type", "application/json");
-  //   const options = { method: "POST", headers: headers };
-  //   const allresponses = await Promise.all([
-  //     fetch(vlan1URL, options),
-  //     fetch(vlan5URL, options),
-  //     fetch(vlan9URL, options),
-  //     fetch(vlan13URL, options),
-  //   ]).catch((error) => { console.error("Error:", error); setLoading(false); });
-  //   const data = await Promise.all(allresponses.map((response) => response.json()));
-  //   const vlanKeys = ["vlan1", "vlan5", "vlan9", "vlan13"];
-  //   const logs = vlanKeys.reduce((acc, key, i) => { acc[key] = data[i].log || []; return acc; }, {});
-  //   setDhcpData({ status: data[0].status, logs });
-  //   setDhcpLoading(false);
-  //   setSeletonLoading(false);
-  //   setLoading(false);
-  // }
-
-  async function GenerateDHCPJson({ token }) {
+  async function CreatDHCPAllVlan({ token }) {
     const headers = new Headers();
-    headers.append("Authorization", `Bearer ${token}`);
+    const bearer = `Bearer ${token}`;
+    headers.append("Authorization", bearer);
     headers.append("Content-Type", "application/json");
-
-    const response = await fetch(dhcpGenerateURL, {
-      method: "GET",
-      headers,
-    }).catch((error) => {
-      console.error("Error:", error);
-      setDhcpJsonLoading(false);
-    });
-
-    const { status, log, ...dhcpConfig } = await response.json();
-    setPostStatus(status);
-    setCreateNetbox(log);
-    setDhcpJsonData(dhcpConfig);
-    setDhcpJsonLoading(false);
-    setDhcpJsonModal(true);
+    const options = { method: "POST", headers: headers };
+    const allresponses = await Promise.all([
+      fetch(vlan1URL, options),
+      fetch(vlan5URL, options),
+      fetch(vlan9URL, options),
+      fetch(vlan13URL, options),
+    ]).catch((error) => { console.error("Error:", error); setLoading(false); });
+    const data = await Promise.all(allresponses.map((response) => response.json()));
+    const vlanKeys = ["vlan1", "vlan5", "vlan9", "vlan13"];
+    const logs = vlanKeys.reduce((acc, key, i) => { acc[key] = data[i].log || []; return acc; }, {});
+    setDhcpData({ status: data[0].status, logs });
+    const allLogs = vlanKeys.flatMap((key, i) => data[i].log || []);
+    const overallStatus = data.some((d) => d.status === 0) ? 0 : 1;
+    setPostStatus(overallStatus);
+    setCreateNetbox(allLogs);
+    setDhcpLoading(false);
+    setSeletonLoading(false);
+    setLoading(false);
   }
   async function PushDevicesFromNetboxToMist({ token }) {
     setPostStatus("");
@@ -642,12 +603,12 @@ export const ProvAccordian = () => {
   const [accordionKeys, setAccordionKeys] = React.useState(new Set([]));
 
   useEffect(() => {
-    if (siteCodeSelected?.length > 1) {
+    if (isSiteFullySelected) {
       setAccordionKeys(new Set(["1"]));
     } else {
       setAccordionKeys(new Set([]));
     }
-  }, [siteCodeSelected]);
+  }, [isSiteFullySelected]);
 
   const itemClasses = {
     base: "py-0 w-full border rounded border-pink-200",
@@ -880,10 +841,19 @@ export const ProvAccordian = () => {
                   className="max-w-sm text-pink-400"
                   variant="bordered"
                   isLoading={isLoading}
-                  onInputChange={(value) => setSiteCodeSelected(value)}
+                  onSelectionChange={(key) => {
+                    setSiteCodeSelected(key ?? "");
+                    setIsSiteFullySelected(!!key);
+                  }}
+                  onInputChange={(value) => {
+                    if (!value) {
+                      setSiteCodeSelected("");
+                      setIsSiteFullySelected(false);
+                    }
+                  }}
                 >
                   {siteList.data?.map((site) => (
-                    <AutocompleteItem value={site} key={site.id}>
+                    <AutocompleteItem value={site} key={site}>
                       {site ? site : "No Site Code"}
                     </AutocompleteItem>
                   ))}
@@ -906,7 +876,7 @@ export const ProvAccordian = () => {
                 aria-label="Accordion 1"
                 title="Step 1: Create Site in Netbox"
                 className="text-pink-400"
-                isDisabled={siteCodeSelected?.length > 1 ? false : true}
+                isDisabled={!isSiteFullySelected}
               >
                 <div className="  text-lg  ">
                   <div className="flex justify-start">
@@ -942,8 +912,8 @@ export const ProvAccordian = () => {
               <AccordionItem
                 key="2"
                 aria-label="Accordion 2"
-                title="Step 2: Generate DHCP JSON"
-                isDisabled={siteCodeSelected?.length > 1 ? false : true}
+                title="Step 2: Deploy DHCP"
+                isDisabled={!isSiteFullySelected}
               >
                 <div className="  text-lg  ">
                   <div className="  mt-6 ">
@@ -957,29 +927,17 @@ export const ProvAccordian = () => {
                             placeholder="Site Description"
                             variant="bordered"
                             value={siteCodeSelected}
-                            isDisabled={
-                              siteCodeSelected?.length > 1 ? false : true
-                            }
+                            isDisabled={!isSiteFullySelected}
                           />
                         </div>
-
-                        <div className=" p-2 ">
-                          <div className="dark text-foreground bg-background-pink-300 "></div>
-                        </div>
                         <div className="p-2 flex justify-end">
-                          {/* <Button onPress={handleDHCP} onPressStart={() => setValue("siteDHCP", siteCodeSelected)} className="bg-pink-600 " isLoading={dhcpLoading}>Deploy DHCP</Button> */}
                           <Button
-                            onPress={
-                              dhcpJsonData
-                                ? () => setDhcpJsonModal(true)
-                                : handleGenerateDHCP
-                            }
+                            onPress={handleDHCP}
+                            onPressStart={() => setValue("siteDHCP", siteCodeSelected)}
                             className="bg-pink-600"
-                            isLoading={dhcpJsonLoading}
+                            isLoading={dhcpLoading}
                           >
-                            {dhcpJsonData
-                              ? "Show DHCP JSON"
-                              : "Generate DHCP JSON"}
+                            Deploy DHCP
                           </Button>
                         </div>
                       </div>
@@ -988,7 +946,7 @@ export const ProvAccordian = () => {
                 </div>
               </AccordionItem>
               <AccordionItem
-                isDisabled={siteCodeSelected?.length > 1 ? false : true}
+                isDisabled={!isSiteFullySelected}
                 key="3"
                 aria-label="Accordion 3"
                 title="Step 3: Deploy Site to Mist"
@@ -1006,7 +964,7 @@ export const ProvAccordian = () => {
                             placeholder="Site Description"
                             value={siteCodeSelected}
                             isDisabled={
-                              siteCodeSelected?.length > 1 ? false : true
+                              !isSiteFullySelected
                             }
                             {...registerMist("siteMist")}
                           />
@@ -1050,7 +1008,7 @@ export const ProvAccordian = () => {
                 key="4"
                 aria-label="Accordion 4"
                 title="Step 4: Deploy Devices to Netbox"
-                isDisabled={siteCodeSelected?.length > 1 ? false : true}
+                isDisabled={!isSiteFullySelected}
               >
                 <div className="  text-lg  ">
                   <div className=" flex justify-left mt-6 ">
@@ -1334,7 +1292,7 @@ export const ProvAccordian = () => {
                 key="5"
                 aria-label="Accordion 5"
                 title="Step 5: Deploy Devices from Netbox to Mist"
-                isDisabled={siteCodeSelected?.length > 1 ? false : true}
+                isDisabled={!isSiteFullySelected}
               >
                 <div className="  text-lg  ">
                   <div className="  mt-6 ">
@@ -1349,7 +1307,7 @@ export const ProvAccordian = () => {
                             variant="bordered"
                             value={siteCodeSelected}
                             isDisabled={
-                              siteCodeSelected?.length > 1 ? false : true
+                              !isSiteFullySelected
                             }
                           />
                         </div>
@@ -1372,7 +1330,7 @@ export const ProvAccordian = () => {
               </AccordionItem>
 
               <AccordionItem
-                isDisabled={siteCodeSelected?.length > 1 ? false : true}
+                isDisabled={!isSiteFullySelected}
                 key="6"
                 aria-label="Accordion 6"
                 title="Step 6: Validate Site"
@@ -1512,51 +1470,6 @@ export const ProvAccordian = () => {
         </div>
       </div>
 
-      <Modal
-        isOpen={dhcpJsonModal}
-        onOpenChange={setDhcpJsonModal}
-        size="3xl"
-        scrollBehavior="inside"
-        classNames={{ base: "dark text-foreground" }}
-      >
-        <ModalContent>
-          {(onClose) => (
-            <>
-              <ModalHeader className="flex flex-col gap-1 text-pink-400">
-                DHCP JSON — {siteCodeSelected}
-              </ModalHeader>
-              <ModalBody>
-                <pre className="bg-zinc-900 text-green-300 text-sm rounded-lg p-4 overflow-auto whitespace-pre-wrap break-all">
-                  {dhcpJsonData?.data
-                    ? Object.values(dhcpJsonData.data)
-                        .map((scopeValue) => JSON.stringify(scopeValue, null, 2))
-                        .join("\n\n")
-                    : "No data returned."}
-                </pre>
-              </ModalBody>
-              <ModalFooter>
-                <Button className="bg-zinc-700 text-white" onPress={onClose}>
-                  Close
-                </Button>
-                <Button
-                  className={dhcpCopied ? "bg-green-600" : "bg-pink-600 text-black"}
-                  onPress={() => {
-                    navigator.clipboard.writeText(
-                      Object.values(dhcpJsonData?.data || {})
-                          .map((scopeValue) => JSON.stringify(scopeValue, null, 2))
-                          .join("\n\n"),
-                    );
-                    setDhcpCopied(true);
-                    setTimeout(() => setDhcpCopied(false), 2000);
-                  }}
-                >
-                  {dhcpCopied ? "Copied!" : "Copy JSON"}
-                </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
-      </Modal>
       {siteLoadError && (
         <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
           <div className="text-5xl">⚠️</div>

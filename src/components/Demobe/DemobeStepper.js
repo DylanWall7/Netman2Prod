@@ -7,12 +7,6 @@ import {
   AutocompleteItem,
   Select,
   SelectItem,
-  Button,
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
 } from "@nextui-org/react";
 import { useSearchParams } from "react-router-dom";
 
@@ -27,10 +21,6 @@ export default function DemobeStepper() {
   const [siteList, setSiteList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [dhcpJsonModal, setDhcpJsonModal] = useState(false);
-  const [dhcpJsonData, setDhcpJsonData] = useState(null);
-  const [dhcpJsonLoading, setDhcpJsonLoading] = useState(false);
-  const [dhcpCopied, setDhcpCopied] = useState(false);
   const [selectedDays, setSelectedDays] = useState(() => {
     const daysParam = searchParams.get("days");
     return daysParam ? parseInt(daysParam, 10) : 90;
@@ -176,32 +166,6 @@ export default function DemobeStepper() {
     }
   };
 
-  const dhcpToDeleteURL = `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/dhcp/${siteCode}/todelete`;
-
-  const handleGenerateDHCP = async () => {
-    setDhcpJsonLoading(true);
-    try {
-      const token = await getToken();
-
-      const response = await fetch(dhcpToDeleteURL, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      const { status, log, ...dhcpConfig } = await response.json();
-      setPostStatus(status);
-      setCreateNetbox(log);
-      setDhcpJsonData(dhcpConfig);
-      setDhcpJsonLoading(false);
-      setDhcpJsonModal(true);
-    } catch (err) {
-      console.error("DHCP generate error:", err);
-      setDhcpJsonLoading(false);
-    }
-  };
 
   const nextStep = () => {
     if (currentStep < steps.length - 1) setCurrentStep((prev) => prev + 1);
@@ -288,28 +252,6 @@ export default function DemobeStepper() {
                   </Autocomplete>
                 </div>
               </div>
-            </div>
-          ) : currentStep === 1 ? (
-            <div>
-              <p className="text-lg mb-4">
-                Site Code:{" "}
-                <span className="font-mono text-blue-400">
-                  {siteCode || "N/A"}
-                </span>
-              </p>
-              {/* <button
-                onClick={() => setShowModal(true)}
-                className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-500 transition"
-              >
-                {steps[currentStep].label}
-              </button> */}
-              <Button
-                onPress={dhcpJsonData ? () => setDhcpJsonModal(true) : handleGenerateDHCP}
-                className="bg-pink-600"
-                isLoading={dhcpJsonLoading}
-              >
-                {dhcpJsonData ? "Show DHCP JSON" : "Generate DHCP JSON"}
-              </Button>
             </div>
           ) : (
             <div>
@@ -414,7 +356,7 @@ export default function DemobeStepper() {
                       key={index}
                       className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-3
                     ${
-                      postStatus === 0
+                      message.status === 0
                         ? "bg-red-800/30 text-red-200 animate-pulse10s before:content-['!'] before:text-red-400 before:font-bold before:mr-2"
                         : "bg-green-800/30 text-green-200 animate-bounceOnce before:content-['✓'] before:text-green-400 before:font-bold before:mr-2"
                     }`}
@@ -426,48 +368,6 @@ export default function DemobeStepper() {
             </div>
           )}
         </div>
-
-        <Modal
-          isOpen={dhcpJsonModal}
-          onOpenChange={setDhcpJsonModal}
-          size="3xl"
-          scrollBehavior="inside"
-          classNames={{ base: "dark text-foreground" }}
-        >
-          <ModalContent>
-            {(onClose) => (
-              <>
-                <ModalHeader className="flex flex-col gap-1 text-pink-400">
-                  DHCP JSON — {siteCode}
-                </ModalHeader>
-                <ModalBody>
-                  <pre className="bg-zinc-900 text-green-300 text-sm rounded-lg p-4 overflow-auto whitespace-pre-wrap break-all">
-                    {dhcpJsonData?.data
-                      ? JSON.stringify(dhcpJsonData.data, null, 2)
-                      : "No data returned."}
-                  </pre>
-                </ModalBody>
-                <ModalFooter>
-                  <Button className="bg-zinc-700 text-white" onPress={onClose}>
-                    Close
-                  </Button>
-                  <Button
-                    className={dhcpCopied ? "bg-green-600" : "bg-pink-600 text-black"}
-                    onPress={() => {
-                      navigator.clipboard.writeText(
-                        JSON.stringify(dhcpJsonData?.data, null, 2)
-                      );
-                      setDhcpCopied(true);
-                      setTimeout(() => setDhcpCopied(false), 2000);
-                    }}
-                  >
-                    {dhcpCopied ? "Copied!" : "Copy JSON"}
-                  </Button>
-                </ModalFooter>
-              </>
-            )}
-          </ModalContent>
-        </Modal>
 
         {showModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center">
