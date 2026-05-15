@@ -355,10 +355,7 @@ export default function DemobeStepper() {
 
               {dhcpDeleted && (
                 <div className="rounded-lg border border-green-600/50 bg-green-900/20 p-4 mt-2 text-center">
-                  <p className="text-green-400 text-sm font-semibold mb-1">Kia DHCP Scopes Deleted</p>
-                  <p className="text-green-200/70 text-xs">
-                    DHCP scopes for <span className="font-mono">{siteCode}</span> have been deleted. Select a new site to continue.
-                  </p>
+                  <p className="text-green-400 text-sm font-semibold">DHCP Scopes Deleted</p>
                 </div>
               )}
 
@@ -411,9 +408,20 @@ export default function DemobeStepper() {
                       </ul>
                       <button
                         onClick={() => setShowModal(true)}
-                        className="text-xs px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 transition-colors w-full"
+                        disabled={skeletonLoading}
+                        className="text-xs px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 transition-colors w-full flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        Delete These Scopes
+                        {skeletonLoading ? (
+                          <>
+                            <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                            </svg>
+                            Deleting…
+                          </>
+                        ) : (
+                          "Delete These Scopes"
+                        )}
                       </button>
                     </div>
                   )}
