@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { GizmoRequest } from "../../authConfig";
-import ProvisionLoading from "../Provisioning/ProvisionLoading";
 import {
   InteractionRequiredAuthError,
   InteractionStatus,
@@ -27,6 +26,8 @@ export const ManageDevicePage = () => {
   const [siteCodeSelected, setSiteCodeSelected] = useState("");
   const [getDeviceData, setGetDeviceData] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [siteLoadError, setSiteLoadError] = useState(null);
+  const [deviceLoadError, setDeviceLoadError] = useState(null);
 
   const url = `https://${process.env.REACT_APP_API_BASEURL}/api/management/netbox/sites/`;
   const GetDevicesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/management/netbox/${siteCodeSelected}/devices/`;
@@ -40,10 +41,11 @@ export const ManageDevicePage = () => {
           "Content-Type": "application/json",
         },
       });
+      if (!res.ok) throw new Error(`Failed to load sites (${res.status})`);
       const text = await res.json();
       setSiteList(text);
     } catch (error) {
-      console.error("Error fetching sites:", error);
+      setSiteLoadError(error.message || "Failed to load sites — please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -66,7 +68,7 @@ export const ManageDevicePage = () => {
           .then((r) => r.accessToken);
         await GetAllSites({ token });
       } catch (err) {
-        console.error({ err });
+        setSiteLoadError(err.message || "Failed to load sites — please try again.");
         setIsLoading(false);
       }
     })();
@@ -108,7 +110,7 @@ export const ManageDevicePage = () => {
         : [];
       setGetDeviceData(dataArray);
     } catch (err) {
-      console.error("Error getting devices:", err);
+      setDeviceLoadError(err.message || "Failed to load devices — please try again.");
     } finally {
       setNetboxLoading(false);
     }
@@ -119,8 +121,6 @@ export const ManageDevicePage = () => {
 
   return (
     <>
-      {isLoading && <ProvisionLoading loading={isLoading} />}
-
       <div className=" text-gray-100 flex flex-col items-center">
         <div className="max-w-3xl text-center mt-16">
           <h1 className="text-3xl font-bold leading-tight mb-2 pb-4 relative">
@@ -143,10 +143,17 @@ export const ManageDevicePage = () => {
               placeholder="Site Code"
               className="max-w-sm text-pink-400"
               variant="bordered"
-              onInputChange={(value) => setSiteCodeSelected(value)}
+              isLoading={isLoading}
+              onSelectionChange={(key) => {
+                setSiteCodeSelected(key ?? "");
+                setDeviceLoadError(null);
+              }}
+              onInputChange={(value) => {
+                if (!value) setSiteCodeSelected("");
+              }}
             >
               {siteList?.map((site) => (
-                <AutocompleteItem key={site.id} value={site.name}>
+                <AutocompleteItem key={site.name} value={site.name}>
                   {site.name || "No Site Code"}
                 </AutocompleteItem>
               ))}
@@ -164,8 +171,20 @@ export const ManageDevicePage = () => {
           </div>
         </form>
 
+        {siteLoadError && (
+          <div className="mb-4 px-4 py-3 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-sm max-w-xl text-center">
+            {siteLoadError}
+          </div>
+        )}
+
+        {deviceLoadError && (
+          <div className="mb-4 px-4 py-3 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-sm max-w-xl text-center">
+            {deviceLoadError}
+          </div>
+        )}
+
         <div className="w-full max-w-6xl space-y-8">
-          {(!getDeviceData || getDeviceData.length === 0) && !netboxLoading && (
+          {(!getDeviceData || getDeviceData.length === 0) && !netboxLoading && !deviceLoadError && (
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
               <div className="relative">
                 <div className="text-6xl relative z-10">🚧</div>

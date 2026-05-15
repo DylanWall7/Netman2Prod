@@ -64,8 +64,6 @@ const Map = () => {
               name={result.display}
             >
               <LayerGroup>
-                {console.log(result)}
-
                 <CircleMarker
                   key={result.id}
                   center={[

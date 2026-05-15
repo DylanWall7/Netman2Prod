@@ -12,7 +12,7 @@ import {
   SelectItem,
 } from "@nextui-org/react";
 import { GizmoRequest } from "../../authConfig";
-import { set, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 
 export const ProvAccordian = () => {
   const [dhcpSite, setDHCPSite] = React.useState("");
@@ -37,11 +37,15 @@ export const ProvAccordian = () => {
   const [modelList, setModelList] = React.useState([]);
   const [netboxLoading, setNetboxLoading] = useState(false);
   const [template, setTemplate] = React.useState(new Set([]));
-  const [seletonLoading, setSeletonLoading] = React.useState(false);
+  const [skeletonLoading, setSkeletonLoading] = React.useState(false);
   const [netboxToMistLoading, setNetboxToMistLoading] = React.useState(false);
   const [availableIps, setAvailableIps] = useState([]);
   const [ipIndex, setIpIndex] = useState(0);
   const [nextIpLoading, setNextIpLoading] = React.useState(false);
+  const [logsCopied, setLogsCopied] = React.useState(false);
+  const [logFilter, setLogFilter] = React.useState(null);
+  const [resultKey, setResultKey] = React.useState(0);
+  const [csvLimitWarning, setCsvLimitWarning] = React.useState(false);
 
   const [dhcpData, setDhcpData] = useState({ status: null, logs: {} });
   const [fillIpData, setFillIpData] = useState({
@@ -131,13 +135,13 @@ export const ProvAccordian = () => {
   const handleAddNetbox = async () => {
     resetforms();
     setNetboxLoading(true);
-    setSeletonLoading(true);
+    setSkeletonLoading(true);
     try {
       const token = await getToken();
       CreateNetbox({ token });
     } catch (err) {
       setNetboxLoading(false);
-      setSeletonLoading(false);
+      setSkeletonLoading(false);
       setPostStatus(0);
       setCreateNetbox([{ msg: err.message || "Authentication failed." }]);
     }
@@ -145,13 +149,13 @@ export const ProvAccordian = () => {
   const handleNetboxMistPush = async () => {
     resetforms();
     setNetboxToMistLoading(true);
-    setSeletonLoading(true);
+    setSkeletonLoading(true);
     try {
       const token = await getToken();
       PushDevicesFromNetboxToMist({ token });
     } catch (err) {
       setNetboxToMistLoading(false);
-      setSeletonLoading(false);
+      setSkeletonLoading(false);
       setPostStatus(0);
       setCreateNetbox([{ msg: err.message || "Authentication failed." }]);
     }
@@ -172,7 +176,7 @@ export const ProvAccordian = () => {
   const handleDHCP = async () => {
     resetforms();
     setDhcpLoading(true);
-    setSeletonLoading(true);
+    setSkeletonLoading(true);
     try {
       await CreatDHCPAllVlan({
         token: await instance.acquireTokenSilent(request).then((response) => {
@@ -180,16 +184,15 @@ export const ProvAccordian = () => {
         }),
       });
     } catch (err) {
-      console.log({ err });
       setDhcpLoading(false);
-      setSeletonLoading(false);
+      setSkeletonLoading(false);
       setLoading(false);
     }
   };
   const handleCreateMist = async () => {
     resetforms();
     setMistLoading(true);
-    setSeletonLoading(true);
+    setSkeletonLoading(true);
     try {
       await CreateMistSite({
         token: await instance.acquireTokenSilent(request).then((response) => {
@@ -197,17 +200,16 @@ export const ProvAccordian = () => {
         }),
       });
     } catch (err) {
-      console.log({ err });
       setDhcpLoading(false);
       setMistLoading(false);
-      setSeletonLoading(false);
+      setSkeletonLoading(false);
       setLoading(false);
     }
   };
   const handleDeployDevice = async () => {
     resetforms();
     setDeployLoading(true);
-    setSeletonLoading(true);
+    setSkeletonLoading(true);
     try {
       await DeplyDevicetoNetbox({
         token: await instance.acquireTokenSilent(request).then((response) => {
@@ -215,10 +217,9 @@ export const ProvAccordian = () => {
         }),
       });
     } catch (err) {
-      console.log({ err });
       setDhcpLoading(false);
       setDeployLoading(false);
-      setSeletonLoading(false);
+      setSkeletonLoading(false);
       setLoading(false);
     }
   };
@@ -237,7 +238,6 @@ export const ProvAccordian = () => {
 
       return await GetAvailableIps({ token });
     } catch (err) {
-      console.log({ err });
       setNextIpLoading(false);
       setLoading(false);
       return [];
@@ -302,21 +302,22 @@ export const ProvAccordian = () => {
 
     return fetch(NetboxURL, options)
       .then(async (response) => {
-        let netboxPostResponce = await response.json();
+        if (!response.ok) throw new Error(`Create Netbox site failed (${response.status})`);
+        let netboxPostResponse = await response.json();
 
-        setCreateNetbox(netboxPostResponce?.log);
-        setPostStatus(netboxPostResponce?.status);
-
+        setCreateNetbox(netboxPostResponse?.log);
+        setPostStatus(netboxPostResponse?.status);
+        setResultKey((k) => k + 1);
         setIsLoading(false);
         setNetboxLoading(false);
-        setSeletonLoading(false);
+        setSkeletonLoading(false);
       })
 
       .catch((error) => {
         console.error("Error:", error);
         setLoading(false);
         setNetboxLoading(false);
-        setSeletonLoading(false);
+        setSkeletonLoading(false);
       });
   }
   async function CreateMistSite({ token }) {
@@ -330,25 +331,27 @@ export const ProvAccordian = () => {
     const options = {
       method: "POST",
       body: JSON.stringify({
-        gateway_template: template?.currentKey,
+        gateway_template: [...template][0],
       }),
       headers: headers,
     };
 
     return fetch(CreateMistURL, options)
       .then(async (response) => {
-        let mistPostResponce = await response.json();
+        if (!response.ok) throw new Error(`Create Mist site failed (${response.status})`);
+        let mistPostResponse = await response.json();
 
-        setCreateNetbox(mistPostResponce?.log);
-        setPostStatus(mistPostResponce?.status);
-        setSeletonLoading(false);
+        setCreateNetbox(mistPostResponse?.log);
+        setPostStatus(mistPostResponse?.status);
+        setResultKey((k) => k + 1);
+        setSkeletonLoading(false);
         setMistLoading(false);
       })
 
       .catch((error) => {
         console.error("Error:", error);
         setMistLoading(false);
-        setSeletonLoading(false);
+        setSkeletonLoading(false);
         setLoading(false);
       });
   }
@@ -369,18 +372,20 @@ export const ProvAccordian = () => {
 
     return fetch(DeployDeviceURL, options)
       .then(async (response) => {
-        let DeployDevicePostResponce = await response.json();
+        if (!response.ok) throw new Error(`Deploy devices failed (${response.status})`);
+        let DeployDevicePostResponse = await response.json();
 
-        setCreateNetbox(DeployDevicePostResponce?.log);
-        setPostStatus(DeployDevicePostResponce?.status);
-        setSeletonLoading(false);
+        setCreateNetbox(DeployDevicePostResponse?.log);
+        setPostStatus(DeployDevicePostResponse?.status);
+        setResultKey((k) => k + 1);
+        setSkeletonLoading(false);
         setDeployLoading(false);
       })
 
       .catch((error) => {
         console.error("Error:", error);
         setDeployLoading(false);
-        setSeletonLoading(false);
+        setSkeletonLoading(false);
         setLoading(false);
       });
   }
@@ -399,6 +404,7 @@ export const ProvAccordian = () => {
 
     return fetch(ValidateURL, options)
       .then(async (response) => {
+        if (!response.ok) throw new Error(`Validate site failed (${response.status})`);
         let validateGetResponce = await response.json();
 
         setValidation(validateGetResponce.log);
@@ -425,6 +431,9 @@ export const ProvAccordian = () => {
       fetch(vlan9URL, options),
       fetch(vlan13URL, options),
     ]).catch((error) => { console.error("Error:", error); setLoading(false); });
+    for (const res of allresponses) {
+      if (!res.ok) throw new Error(`DHCP request failed (${res.status})`);
+    }
     const data = await Promise.all(allresponses.map((response) => response.json()));
     const vlanKeys = ["vlan1", "vlan5", "vlan9", "vlan13"];
     const logs = vlanKeys.reduce((acc, key, i) => { acc[key] = data[i].log || []; return acc; }, {});
@@ -433,8 +442,9 @@ export const ProvAccordian = () => {
     const overallStatus = data.some((d) => d.status === 0) ? 0 : 1;
     setPostStatus(overallStatus);
     setCreateNetbox(allLogs);
+    setResultKey((k) => k + 1);
     setDhcpLoading(false);
-    setSeletonLoading(false);
+    setSkeletonLoading(false);
     setLoading(false);
   }
   async function PushDevicesFromNetboxToMist({ token }) {
@@ -453,21 +463,22 @@ export const ProvAccordian = () => {
 
     return fetch(netboxtomistURL, options)
       .then(async (response) => {
-        let netboxPostResponce = await response.json();
+        if (!response.ok) throw new Error(`Push to Mist failed (${response.status})`);
+        let netboxPostResponse = await response.json();
 
-        setCreateNetbox(netboxPostResponce?.log);
-        setPostStatus(netboxPostResponce?.status);
-
+        setCreateNetbox(netboxPostResponse?.log);
+        setPostStatus(netboxPostResponse?.status);
+        setResultKey((k) => k + 1);
         setIsLoading(false);
         setNetboxToMistLoading(false);
-        setSeletonLoading(false);
+        setSkeletonLoading(false);
       })
 
       .catch((error) => {
         console.error("Error:", error);
         setLoading(false);
         setNetboxToMistLoading(false);
-        setSeletonLoading(false);
+        setSkeletonLoading(false);
       });
   }
 
@@ -525,6 +536,7 @@ export const ProvAccordian = () => {
 
   const handleImportCSV = (event) => {
     setDevices([]);
+    setCsvLimitWarning(false);
     const file = event.target.files[0];
     if (!file) return;
 
@@ -549,17 +561,13 @@ export const ProvAccordian = () => {
       });
 
       const limitedDevices = parsedDevices.slice(0, 20);
+      if (parsedDevices.length > 20) setCsvLimitWarning(true);
 
       setDevices((prev) => [...prev, ...limitedDevices]);
     };
     reader.readAsText(file);
   };
 
-  // React.useEffect(() => {
-  //   setTimeout(() => {
-  //     setPostStatus("");
-  //   }, 300000);
-  // }, [postStatus]);
   const RedTrashIcon = ({ size = 24, ...props }) => (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -637,19 +645,6 @@ export const ProvAccordian = () => {
     values[index][event.target.name] = event.target.value;
     setDevices(values);
   };
-  // const handleAddDevice = () => {
-  //   setDevices((prev) => {
-  //     let ipToAssign = "";
-
-  //
-  //     if (availableIps.length > 0) {
-  //       ipToAssign = availableIps[0];
-  //       setAvailableIps((prevIps) => prevIps.slice(1));
-  //     }
-
-  //     return [...prev, { serial: "", name: "", model: "", ip: ipToAssign }];
-  //   });
-  // };
   const handleFillIPs = async () => {
     resetforms();
     setFillIpData({ status: null, log: [] });
@@ -658,6 +653,7 @@ export const ProvAccordian = () => {
     if (response?.status === 0) {
       setCreateNetbox(response?.log);
       setPostStatus(response?.status);
+      setResultKey((k) => k + 1);
       return;
     }
 
@@ -1240,6 +1236,7 @@ export const ProvAccordian = () => {
                                         onPress={() => {
                                           setDevices([{ serial: "", name: "", model: "", ip: "", oob_ip: "" }]);
                                           document.getElementById("csvUpload").value = "";
+                                          setCsvLimitWarning(false);
                                         }}
                                         size="sm"
                                         variant="bordered"
@@ -1248,6 +1245,11 @@ export const ProvAccordian = () => {
                                         Clear CSV
                                       </Button>
                                     </div>
+                                    {csvLimitWarning && (
+                                      <p className="text-xs text-yellow-400 mt-1">
+                                        CSV truncated to 20 devices (max limit).
+                                      </p>
+                                    )}
                                     <div className="flex gap-2 mt-2">
                                       <Button
                                         isLoading={nextIpLoading}
@@ -1390,9 +1392,8 @@ export const ProvAccordian = () => {
         </div>
 
         <div className=" mt-3 p-2 flex justify-center">
-          {/* {(dhcpData.status === 0 || dhcpData.status === 1) && ( ... )} */}
           <div>
-            {seletonLoading && (
+            {skeletonLoading && (
               <div className="flex flex-col gap-2 ml-5 w-80">
                 {[...Array(4)].map((_, i) => (
                   <div
@@ -1402,72 +1403,67 @@ export const ProvAccordian = () => {
                 ))}
               </div>
             )}
-
-            {!seletonLoading && (postStatus === 0 || postStatus === 1) && (
-              <div
-                className={`max-w-2xl mx-auto p-6 rounded-2xl shadow-lg border-2 transition-all duration-5
-            ${
-              postStatus === 0
-                ? "bg-red-900/20 border-red-700"
-                : "bg-green-900/20 border-green-700"
-            }`}
-              >
-                <h3
-                  className={`text-2xl font-bold text-center mb-4 transition-colors duration-5
-              ${postStatus === 0 ? "text-red-500" : "text-green-400"}`}
-                >
-                  {postStatus === 0 ? "Error Message" : "Success Message"}
-                </h3>
-
-                <ul className="space-y-2">
-                  {Array.isArray(createNetbox) &&
-                    createNetbox.map((message, index) => (
-                      <li
-                        key={index}
-                        className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-3
-                    ${
-                      message.status === 0
-                        ? "bg-red-800/30 text-red-200 animate-pulse10s"
-                        : "bg-green-800/30 text-green-200 animate-bounceOnce"
-                    }`}
-                      >
-                        {message.status === 0 ? (
-                          <svg
-                            className="w-5 h-5 text-red-400 flex-shrink-0 font-bold"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M12 4a1.5 1.5 0 011.5 1.5v9a1.5 1.5 0 01-3 0v-9A1.5 1.5 0 0112 4zm0 14.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        ) : (
-                          <svg
-                            className="w-5 h-5 text-green-400 flex-shrink-0"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth="3"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                        )}
-                        <span className="text-md">{message.msg}</span>
-                      </li>
-                    ))}
-                </ul>
-              </div>
-            )}
           </div>
         </div>
+        {!skeletonLoading &&
+          (postStatus === 0 || postStatus === 1) &&
+          Array.isArray(createNetbox) &&
+          createNetbox.length > 0 && (
+          <div className="w-full max-w-2xl mx-auto mt-6">
+            <div className={`flex items-center justify-between px-3 py-2 bg-[#0d2438] rounded-t-lg border ${postStatus === 0 ? "border-red-500/50" : postStatus === 1 ? "border-green-500/50" : "border-white/10"}`}>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Results</span>
+                <button
+                  onClick={() => setLogFilter(logFilter === 1 ? null : 1)}
+                  className={`flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded transition-colors ${logFilter === 1 ? "bg-green-600 text-white" : "bg-green-900/40 text-green-400 hover:bg-green-800/60"}`}
+                >
+                  ✓ {createNetbox.filter((m) => m.status !== 0).length}
+                </button>
+                <button
+                  onClick={() => setLogFilter(logFilter === 0 ? null : 0)}
+                  className={`flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded transition-colors ${logFilter === 0 ? "bg-red-600 text-white" : "bg-red-900/40 text-red-400 hover:bg-red-800/60"}`}
+                >
+                  ✗ {createNetbox.filter((m) => m.status === 0).length}
+                </button>
+                {logFilter !== null && (
+                  <button onClick={() => setLogFilter(null)} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+                    show all
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  const text = createNetbox
+                    .filter((m) => logFilter === null || m.status === logFilter)
+                    .map((m) => `[${m.status === 0 ? "ERR" : " OK"}] ${m.msg}`)
+                    .join("\n");
+                  navigator.clipboard.writeText(text);
+                  setLogsCopied(true);
+                  setTimeout(() => setLogsCopied(false), 2000);
+                }}
+                className={`text-xs px-2 py-1 rounded transition-colors ${logsCopied ? "bg-green-700 text-white" : "bg-zinc-700 hover:bg-zinc-600 text-zinc-300"}`}
+              >
+                {logsCopied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+            <div className={`overflow-y-auto max-h-[420px] bg-[#081b2a] border border-t-0 rounded-b-lg ${postStatus === 0 ? "border-red-500/50" : postStatus === 1 ? "border-green-500/50" : "border-white/10"}`}>
+              {createNetbox.map((message, originalIndex) => (
+                <div
+                  key={`${resultKey}-${originalIndex}`}
+                  className={`flex items-start gap-2 px-3 py-1.5 border-b border-white/5 text-xs font-mono last:border-0 ${message.status === 0 ? "text-red-300 animate-pulse10s" : "text-green-300 animate-bounceOnce"}`}
+                  style={logFilter !== null && message.status !== logFilter
+                    ? { height: 0, overflow: "hidden", padding: 0, borderBottom: "none", opacity: 0 }
+                    : {}}
+                >
+                  <span className={`mt-0.5 flex-shrink-0 font-bold ${message.status === 0 ? "text-red-500" : "text-green-500"}`}>
+                    {message.status === 0 ? "✗" : "✓"}
+                  </span>
+                  <span>{message.msg}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {siteLoadError && (

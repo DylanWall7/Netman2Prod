@@ -20,6 +20,7 @@ import LogsPage from "./components/LogPage/LogFile";
 import MobeBenchTable from "./components/Workbench/WorkbenchList";
 import { ManageDevicePage } from "./components/ManageDevice/ManageDevicePage";
 import DHCPManager from "./components/ManageDHCP/DHCPManager";
+import DHCPScopeDetail from "./components/ManageDHCP/DHCPScopeDetail";
 import OpengearReports from "./components/Reports/OpengearReports";
 import ReportLandingPage from "./components/Reports/ReportLandingPage";
 import NetworkSearch from "./components/NetworkSearch/NetworkSearch";
@@ -209,7 +210,8 @@ function App() {
                 </ProtectedRoute>
               }
             ></Route>
-            {/* <Route path="dhcpmanager" element={<DHCPManager />}></Route> */}
+            {/* <Route path="dhcpmanager" element={<DHCPManager />} />
+            <Route path="dhcpmanager/scope" element={<DHCPScopeDetail />} /> */}
             {/* <Route path="ogtemplate" element={<OgTemplate />} /> */}
             {/* <Route
               path="mistassigntool/:siteCode"
