@@ -5,6 +5,7 @@ import ScanSettings from "./ScanSettings";
 import ScanInput from "./ScanInput";
 import BatchQueue from "./BatchQueue";
 import StatusResult from "./StatusResult";
+import AssetQuickEditModal from "./AssetQuickEditModal";
 
 const TABS = [
   { id: "depot", label: "Depot In", action: "Depot In" },
@@ -118,6 +119,10 @@ export default function InventoryScanPage() {
   const [duplicateWarning, setDuplicateWarning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [recentSearch, setRecentSearch] = useState("");
+  const [expandedScanIndex, setExpandedScanIndex] = useState(null);
+  const [assetCache, setAssetCache] = useState({});
+  const [assetCacheLoading, setAssetCacheLoading] = useState(false);
+  const [quickEditScan, setQuickEditScan] = useState(null);
 
   const getToken = async () => {
     try {
@@ -125,7 +130,7 @@ export default function InventoryScanPage() {
       return res.accessToken;
     } catch {
       try {
-        const res = await instance.acquireTokenPopup(request);
+        const res = await instance.acquireTokenPopup({ ...request, redirectUri: `${window.location.origin}/blank.html` });
         return res.accessToken;
       } catch {
         throw new Error("Session expired — please log in again.");
@@ -142,15 +147,19 @@ export default function InventoryScanPage() {
     } catch {}
   }, [recentScans]);
 
-  const addRecentScan = (serial, tab, target, status, message) => {
+  const addRecentScan = (serial, tab, target, status, message, assetData = null, log = []) => {
+    setAssetCache((prev) => { const next = { ...prev }; delete next[serial]; return next; });
     setRecentScans((prev) =>
       [
         {
           serial,
+          tabId: tab,
           action: TABS.find((t) => t.id === tab)?.action || tab,
           target,
           status,
           message,
+          assetData,
+          log,
           timestamp: new Date(),
           dotClass: TAB_STYLES[tab].dot,
         },
@@ -228,11 +237,30 @@ export default function InventoryScanPage() {
       body: JSON.stringify(buildBody(tab, serial)),
     });
     const data = await res.json().catch(() => ({}));
-    return { ok: res.ok, message: data?.message || (res.ok ? "Success" : "Failed") };
+    const ok = res.ok && data?.status !== 0;
+
+    let message;
+    if (ok) {
+      message = data?.message || "Success";
+    } else {
+      const errorEntry = data?.log?.find((l) => l.status === 0);
+      if (errorEntry?.msg) {
+        try {
+          const parsed = JSON.parse(errorEntry.msg);
+          message = parsed?.messages || parsed?.message || errorEntry.msg;
+        } catch {
+          message = errorEntry.msg;
+        }
+      } else {
+        message = data?.message || data?.messages || "Failed";
+      }
+    }
+
+    return { ok, message, log: data?.log ?? [] };
   };
 
-  const handleSingleScan = async (serial) => {
-    const tab = activeTab;
+  const handleSingleScan = async (serial, tabOverride) => {
+    const tab = tabOverride ?? activeTab;
 
     if (tab === "status") {
       setIsSubmitting(true);
@@ -274,21 +302,34 @@ export default function InventoryScanPage() {
     );
     setIsSubmitting(true);
     setSingleResult(null);
+    setExpandedScanIndex(null);
     try {
       const token = await getToken();
-      const { ok, message } = await submitScan(serial, tab, token);
+      const { ok, message, log } = await submitScan(serial, tab, token);
       const target = getTarget(tab);
-      setSingleResult({
-        status: ok ? "success" : "error",
-        message: ok ? `${message} → ${target}` : message,
-      });
-      addRecentScan(serial, tab, target, ok ? "success" : "error", message);
+      let assetData = null;
+      let finalMessage = message;
+      if (ok) {
+        setSingleResult({ status: "success", message: `${message} → ${target}` });
+      } else {
+        try {
+          const statusRes = await fetch(`${baseUrl}/api/snipeit/hardware/byserial/${serial}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const statusJson = await statusRes.json().catch(() => ({}));
+          const asset = statusJson?.data;
+          if (statusRes.ok && asset?.id) {
+            assetData = asset;
+          } else {
+            finalMessage = "Asset not found in SnipeIT";
+          }
+        } catch {}
+        setSingleResult({ status: "error", message: finalMessage, assetData, log });
+      }
+      addRecentScan(serial, tab, target, ok ? "success" : "error", finalMessage, assetData, ok ? [] : log);
       if (ok && !locked[tab]) setLocked((prev) => ({ ...prev, [tab]: true }));
     } catch {
-      setSingleResult({
-        status: "error",
-        message: "Network error — check connection",
-      });
+      setSingleResult({ status: "error", message: "Network error — check connection" });
       addRecentScan(serial, tab, "", "error", "Network error");
     } finally {
       setIsSubmitting(false);
@@ -417,6 +458,27 @@ export default function InventoryScanPage() {
       ...prev,
       [activeTab]: prev[activeTab].filter((_, i) => i !== index),
     }));
+
+  const handleExpandScan = async (i, scan) => {
+    if (expandedScanIndex === i) {
+      setExpandedScanIndex(null);
+      return;
+    }
+    setExpandedScanIndex(i);
+    if (scan.status === "success" && !assetCache[scan.serial]) {
+      setAssetCacheLoading(true);
+      try {
+        const token = await getToken();
+        const res = await fetch(`${baseUrl}/api/snipeit/hardware/byserial/${scan.serial}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json().catch(() => ({}));
+        const asset = json?.data;
+        if (res.ok && asset?.id) setAssetCache((prev) => ({ ...prev, [scan.serial]: asset }));
+      } catch {}
+      finally { setAssetCacheLoading(false); }
+    }
+  };
 
   const handleResetSettings = () => {
     setLocked((prev) => ({ ...prev, [activeTab]: false }));
@@ -603,38 +665,102 @@ export default function InventoryScanPage() {
                   .filter(
                     (s) =>
                       !recentSearch.trim() ||
-                      s.serial
-                        .toLowerCase()
-                        .includes(recentSearch.trim().toLowerCase()),
+                      s.serial.toLowerCase().includes(recentSearch.trim().toLowerCase()),
                   )
-                  .map((scan, i) => (
-                    <div key={i} className="flex items-center gap-3 px-4 py-2">
-                      <span
-                        className={`w-2 h-2 rounded-full flex-shrink-0 ${scan.dotClass}`}
-                      />
-                      <span className="font-mono text-sm text-pink-400 w-40 truncate">
-                        {scan.serial}
-                      </span>
-                      <span className="text-xs text-gray-500 w-28 flex-shrink-0">
-                        {scan.action}
-                      </span>
-                      <span className="text-xs text-gray-500 flex-1 truncate">
-                        {scan.target}
-                      </span>
-                      <span className="text-xs text-gray-600 flex-shrink-0">
-                        {formatTime(scan.timestamp)}
-                      </span>
-                      <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${
-                          scan.status === "success"
-                            ? "bg-green-500/20 text-green-400"
-                            : "bg-red-500/20 text-red-400"
-                        }`}
-                      >
-                        {scan.status === "success" ? "OK" : "Error"}
-                      </span>
-                    </div>
-                  ))}
+                  .map((scan, i) => {
+                    const isError = scan.status === "error";
+                    const isExpanded = expandedScanIndex === i;
+                    const cachedAsset = assetCache[scan.serial];
+                    const expandedAsset = isError ? scan.assetData : cachedAsset;
+                    return (
+                      <div key={i} className="divide-y divide-gray-700/50">
+                        <div className="flex items-center gap-3 px-4 py-2">
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${scan.dotClass}`} />
+                          <span className="font-mono text-sm text-pink-400 w-40 truncate">{scan.serial}</span>
+                          <span className="text-xs text-gray-500 w-28 flex-shrink-0">{scan.action}</span>
+                          <span className={`text-xs flex-1 truncate ${isError ? "text-red-400/80" : "text-gray-500"}`}>
+                            {isError ? scan.message : scan.target}
+                          </span>
+                          {isError ? (
+                            <button
+                              onClick={() => { setQuickEditScan(scan); setExpandedScanIndex(null); }}
+                              className="flex-shrink-0 text-gray-600 hover:text-pink-400 transition-colors"
+                              title={scan.assetData ? "Quick Edit Asset" : "Add to Inventory"}
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          ) : (
+                            <span className="w-3.5 flex-shrink-0" />
+                          )}
+                          <span className="text-xs text-gray-600 flex-shrink-0">{formatTime(scan.timestamp)}</span>
+                          <button
+                            onClick={() => handleExpandScan(i, scan)}
+                            className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 transition-colors cursor-pointer ${
+                              isError
+                                ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                                : "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                            }`}
+                          >
+                            {isError ? "Error" : "OK"}
+                          </button>
+                        </div>
+                        {isExpanded && (
+                          <div className={`px-4 py-3 space-y-2 ${isError ? "bg-red-500/5" : "bg-green-500/5"}`}>
+                            {assetCacheLoading && !isError && !cachedAsset && (
+                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <div className="w-3 h-3 border border-gray-500 border-t-transparent rounded-full animate-spin" />
+                                Loading asset status…
+                              </div>
+                            )}
+                            {expandedAsset && (
+                              <div className={`flex flex-wrap gap-x-4 gap-y-0.5 text-xs ${isError ? "text-red-300/80" : "text-green-300/80"}`}>
+                                {expandedAsset.status_label?.name && (
+                                  <span>Status: <span className={`font-medium ${isError ? "text-red-200" : "text-green-200"}`}>{expandedAsset.status_label.name}</span></span>
+                                )}
+                                {expandedAsset.location?.name && (
+                                  <span>Location: <span className={`font-medium ${isError ? "text-red-200" : "text-green-200"}`}>{expandedAsset.location.name}</span></span>
+                                )}
+                                {expandedAsset.assigned_to?.name && (
+                                  <span>Assigned to: <span className={`font-medium ${isError ? "text-red-200" : "text-green-200"}`}>{expandedAsset.assigned_to.name}</span></span>
+                                )}
+                              </div>
+                            )}
+                            {isError && scan.log?.length > 0 && (
+                              <div className="space-y-1">
+                                {scan.log.map((entry, j) => {
+                                  let msg = entry.msg;
+                                  try { const p = JSON.parse(msg); msg = p?.messages || p?.message || msg; } catch {}
+                                  return (
+                                    <div key={j} className="flex items-start gap-1.5 text-xs">
+                                      <span className={`mt-0.5 flex-shrink-0 font-bold ${entry.status === 0 ? "text-red-400" : "text-green-400"}`}>
+                                        {entry.status === 0 ? "✗" : "✓"}
+                                      </span>
+                                      <span className={`font-mono ${entry.status === 0 ? "text-red-300" : "text-green-300/70"}`}>{msg}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {isError && (
+                              <div className="pt-1.5 border-t border-red-500/10">
+                                <button
+                                  onClick={() => { setQuickEditScan(scan); setExpandedScanIndex(null); }}
+                                  className="flex items-center gap-1.5 text-xs font-medium text-pink-400 hover:text-white transition-colors"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
+                                  {scan.assetData ? "Quick Edit Asset" : "Add to Inventory"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
               {recentSearch.trim() &&
                 recentScans.filter((s) =>
@@ -650,6 +776,15 @@ export default function InventoryScanPage() {
           )}
         </div>
       </div>
+
+      {quickEditScan && (
+        <AssetQuickEditModal
+          serial={quickEditScan.serial}
+          assetData={quickEditScan.assetData}
+          onClose={() => setQuickEditScan(null)}
+          onSuccess={() => handleSingleScan(quickEditScan.serial, quickEditScan.tabId)}
+        />
+      )}
     </div>
   );
 }

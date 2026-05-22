@@ -80,7 +80,7 @@ export const ManageDevicePage = () => {
       return response.accessToken;
     } catch (error) {
       if (error instanceof InteractionRequiredAuthError) {
-        const response = await instance.acquireTokenPopup(request);
+        const response = await instance.acquireTokenPopup({ ...request, redirectUri: `${window.location.origin}/blank.html` });
         return response.accessToken;
       } else {
         throw error;

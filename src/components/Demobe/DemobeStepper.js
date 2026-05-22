@@ -49,7 +49,7 @@ export default function DemobeStepper() {
       return res.accessToken;
     } catch {
       try {
-        const res = await instance.acquireTokenPopup(request);
+        const res = await instance.acquireTokenPopup({ ...request, redirectUri: `${window.location.origin}/blank.html` });
         return res.accessToken;
       } catch {
         throw new Error("Session expired — please log in again.");

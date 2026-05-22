@@ -154,44 +154,26 @@ export default function ScanInput({
         </p>
       )}
 
-      {singleResult && (
+      {singleResult && singleResult.status !== "error" && (
         <div
-          className={`mt-3 flex items-center gap-2 px-4 py-2.5 rounded-lg ${
+          className={`mt-3 px-4 py-2.5 rounded-lg ${
             singleResult.status === "success"
               ? "bg-green-500/10 text-green-400 border border-green-500/20"
               : "bg-red-500/10 text-red-400 border border-red-500/20"
           }`}
         >
-          {singleResult.status === "success" ? (
-            <svg
-              className="w-4 h-4 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-          ) : (
-            <svg
-              className="w-4 h-4 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          )}
-          <span className="text-sm font-medium">{singleResult.message}</span>
+          <div className="flex items-center gap-2">
+            {singleResult.status === "success" ? (
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            <span className="text-sm font-medium">{singleResult.message}</span>
+          </div>
         </div>
       )}
 

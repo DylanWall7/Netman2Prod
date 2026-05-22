@@ -85,7 +85,7 @@ export default function ScanSettings({
       return res.accessToken;
     } catch {
       try {
-        const res = await instance.acquireTokenPopup(request);
+        const res = await instance.acquireTokenPopup({ ...request, redirectUri: `${window.location.origin}/blank.html` });
         return res.accessToken;
       } catch {
         throw new Error("Session expired — please log in again.");
@@ -216,9 +216,12 @@ export default function ScanSettings({
                 (l) => String(l.id) === String(key),
               );
               onSettingsChange({
-                locationId: key,
+                locationId: key ?? null,
                 locationName: loc?.name || "",
               });
+            }}
+            onInputChange={(value) => {
+              if (!value) onSettingsChange({ locationId: null, locationName: "" });
             }}
             size="sm"
             variant="bordered"
@@ -281,9 +284,12 @@ export default function ScanSettings({
               onSelectionChange={(key) => {
                 const loc = locations.find((l) => String(l.id) === String(key));
                 onSettingsChange({
-                  locationId: key,
+                  locationId: key ?? null,
                   locationName: loc?.name || "",
                 });
+              }}
+              onInputChange={(value) => {
+                if (!value) onSettingsChange({ locationId: null, locationName: "" });
               }}
               variant="bordered"
               classNames={{ base: "w-full" }}
@@ -359,9 +365,12 @@ export default function ScanSettings({
               onSelectionChange={(key) => {
                 const loc = locations.find((l) => String(l.id) === String(key));
                 onSettingsChange({
-                  locationId: key,
+                  locationId: key ?? null,
                   locationName: loc?.name || "",
                 });
+              }}
+              onInputChange={(value) => {
+                if (!value) onSettingsChange({ locationId: null, locationName: "" });
               }}
               variant="bordered"
               classNames={{ base: "w-full" }}
@@ -396,9 +405,12 @@ export default function ScanSettings({
               onSelectionChange={(key) => {
                 const loc = locations.find((l) => String(l.id) === String(key));
                 onSettingsChange({
-                  locationId: key,
+                  locationId: key ?? null,
                   locationName: loc?.name || "",
                 });
+              }}
+              onInputChange={(value) => {
+                if (!value) onSettingsChange({ locationId: null, locationName: "" });
               }}
               size="sm"
               variant="bordered"
@@ -488,9 +500,12 @@ export default function ScanSettings({
               onSelectionChange={(key) => {
                 const model = models.find((m) => String(m.id) === String(key));
                 onSettingsChange({
-                  modelId: key,
+                  modelId: key ?? null,
                   modelName: model?.name || "",
                 });
+              }}
+              onInputChange={(value) => {
+                if (!value) onSettingsChange({ modelId: null, modelName: "" });
               }}
               size="sm"
               variant="bordered"
