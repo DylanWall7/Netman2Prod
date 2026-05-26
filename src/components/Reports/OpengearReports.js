@@ -35,7 +35,7 @@ export default function OpengearReports() {
     } catch (silentError) {
       console.warn("Silent token acquisition failed, trying interactive:", silentError);
       try {
-        const response = await instance.acquireTokenPopup({ ...request, redirectUri: `${window.location.origin}/blank.html` });
+        const response = await instance.acquireTokenPopup(request);
         return response.accessToken;
       } catch (interactiveError) {
         console.error("Interactive token acquisition failed:", interactiveError);

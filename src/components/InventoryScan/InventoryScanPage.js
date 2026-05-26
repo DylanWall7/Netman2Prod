@@ -130,7 +130,7 @@ export default function InventoryScanPage() {
       return res.accessToken;
     } catch {
       try {
-        const res = await instance.acquireTokenPopup({ ...request, redirectUri: `${window.location.origin}/blank.html` });
+        const res = await instance.acquireTokenPopup(request);
         return res.accessToken;
       } catch {
         throw new Error("Session expired — please log in again.");

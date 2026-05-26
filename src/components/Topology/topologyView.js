@@ -1174,7 +1174,7 @@ export default function TopologyView() {
     } catch (silentErr) {
       console.warn("Silent token acquisition failed, trying popup:", silentErr);
       try {
-        const r = await instance.acquireTokenPopup({ ...request, redirectUri: `${window.location.origin}/blank.html` });
+        const r = await instance.acquireTokenPopup(request);
         return r.accessToken;
       } catch {
         throw new Error("Session expired — please log in again.");
