@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import { GizmoRequest } from "../../authConfig";
 import { Autocomplete, AutocompleteItem, Select, SelectItem } from "@nextui-org/react";
@@ -24,15 +24,19 @@ export default function AssetQuickEditModal({ serial, assetData, onClose, onSucc
   const [categoryId, setCategoryId] = useState("");
   const [modelId, setModelId] = useState("");
 
-  const getToken = useCallback(async () => {
+  const getToken = async () => {
     try {
       const res = await instance.acquireTokenSilent(request);
       return res.accessToken;
     } catch {
-      const res = await instance.acquireTokenPopup({ ...request, redirectUri: `${window.location.origin}/blank.html` });
-      return res.accessToken;
+      try {
+        const res = await instance.acquireTokenPopup({ ...request, redirectUri: `${window.location.origin}/blank.html` });
+        return res.accessToken;
+      } catch {
+        throw new Error("Session expired — please log in again.");
+      }
     }
-  }, [instance, request]);
+  };
 
   const safeArray = (data) => Array.isArray(data) ? data : data?.data || data?.rows || [];
 
