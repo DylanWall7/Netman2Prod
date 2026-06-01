@@ -8,8 +8,6 @@ import {
   SelectItem,
 } from "@nextui-org/react";
 
-const DEPOT_LOCATIONS = [{ id: 49, name: "KHONEDPO" }];
-
 function FetchError({ message, onRetry }) {
   return (
     <div className="flex items-center justify-between px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg">
@@ -205,34 +203,37 @@ export default function ScanSettings({
       <div className="space-y-3">
         {lockedBanner}
         <div className="dark text-foreground space-y-3">
-          <Autocomplete
-            label="Select Depot"
-            isDisabled={locked}
-            selectedKey={
-              settings.locationId ? String(settings.locationId) : null
-            }
-            onSelectionChange={(key) => {
-              const loc = DEPOT_LOCATIONS.find(
-                (l) => String(l.id) === String(key),
-              );
-              onSettingsChange({
-                locationId: key ?? null,
-                locationName: loc?.name || "",
-              });
-            }}
-            onInputChange={(value) => {
-              if (!value) onSettingsChange({ locationId: null, locationName: "" });
-            }}
-            size="sm"
-            variant="bordered"
-            classNames={{ base: "w-full" }}
-          >
-            {DEPOT_LOCATIONS.map((loc) => (
-              <AutocompleteItem key={String(loc.id)} value={String(loc.id)}>
-                {loc.name}
-              </AutocompleteItem>
-            ))}
-          </Autocomplete>
+          {errorLocations ? (
+            <FetchError message={errorLocations} onRetry={fetchLocations} />
+          ) : (
+            <Autocomplete
+              label="Select Depot Location"
+              isDisabled={locked || loadingLocations}
+              isLoading={loadingLocations}
+              selectedKey={
+                settings.locationId ? String(settings.locationId) : null
+              }
+              onSelectionChange={(key) => {
+                const loc = locations.find((l) => String(l.id) === String(key));
+                onSettingsChange({
+                  locationId: key ?? null,
+                  locationName: loc?.name || "",
+                });
+              }}
+              onInputChange={(value) => {
+                if (!value) onSettingsChange({ locationId: null, locationName: "" });
+              }}
+              size="sm"
+              variant="bordered"
+              classNames={{ base: "w-full" }}
+            >
+              {locations.map((loc) => (
+                <AutocompleteItem key={String(loc.id)} value={String(loc.id)}>
+                  {loc.name}
+                </AutocompleteItem>
+              ))}
+            </Autocomplete>
+          )}
 
           {errorMeta ? (
             <FetchError message={errorMeta} onRetry={fetchMeta} />
