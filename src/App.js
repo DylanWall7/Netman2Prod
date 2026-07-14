@@ -26,6 +26,9 @@ import ReportLandingPage from "./components/Reports/ReportLandingPage";
 import NetworkSearch from "./components/NetworkSearch/NetworkSearch";
 import TopologyView from "./components/Topology/topologyView";
 import InventoryScanPage from "./components/InventoryScan/InventoryScanPage";
+import DepotManagerHome from "./components/DepotOrders/DepotManagerHome";
+import DashboardPage from "./components/DepotOrders/DashboardPage";
+import ManagePage from "./components/DepotOrders/ManagePage";
 
 const Unauthorized = () => {
   return (
@@ -229,6 +232,30 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <InventoryScanPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="depot-orders"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer", "FieldServices"]}>
+                  <DepotManagerHome />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer", "FieldServices"]}>
+                  <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="manage"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <ManagePage />
                 </ProtectedRoute>
               }
             />

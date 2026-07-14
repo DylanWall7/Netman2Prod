@@ -47,5 +47,10 @@ module.exports = {
     },
   },
   darkMode: "class",
-  plugins: [nextui({})],
+  plugins: [
+    nextui({}),
+    function ({ addVariant }) {
+      addVariant("tv", ":fullscreen &");
+    },
+  ],
 };

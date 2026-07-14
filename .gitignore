@@ -3,3 +3,5 @@ cloud-init.sh
 authConfig.js
 data.js
 .env
+/build
+docs/
