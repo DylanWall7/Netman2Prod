@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import BackLink from "./BackLink";
 import POGearPanel from "./POGearPanel";
 import TicketQueuePanel from "./TicketQueuePanel";
+import { unlockAudio, playNewRequestSound } from "./alertSound";
 import {
   listRecords,
   getActive,
@@ -16,6 +17,7 @@ const POLL_INTERVAL_MS = 30000;
 export default function DashboardPage() {
   const getToken = useDepotOrdersToken();
   const containerRef = useRef(null);
+  const seenTicketIdsRef = useRef(null);
   const [records, setRecords] = useState([]);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -25,6 +27,12 @@ export default function DashboardPage() {
     try {
       const token = await getToken();
       const data = await listRecords(token);
+      const ticketIds = new Set(getTickets(data).map((t) => t.id));
+      if (seenTicketIdsRef.current) {
+        const hasNewTicket = [...ticketIds].some((id) => !seenTicketIdsRef.current.has(id));
+        if (hasNewTicket) playNewRequestSound();
+      }
+      seenTicketIdsRef.current = ticketIds;
       setRecords(data);
       setLastUpdated(new Date());
       setError(null);
@@ -46,6 +54,7 @@ export default function DashboardPage() {
   }, []);
 
   const toggleFullscreen = () => {
+    unlockAudio();
     if (document.fullscreenElement) {
       document.exitFullscreen();
     } else {
@@ -56,21 +65,25 @@ export default function DashboardPage() {
   const active = getActive(records);
 
   return (
-    <div ref={containerRef} className="h-screen overflow-hidden bg-pink-100 px-4 tv:px-10 py-4 tv:py-8 flex flex-col">
+    <div
+      ref={containerRef}
+      onClick={unlockAudio}
+      className="h-screen overflow-hidden bg-pink-100 px-4 tv:px-6 py-4 tv:py-5 flex flex-col"
+    >
       <div className="flex-shrink-0">
         {!isFullscreen && <BackLink />}
-        <div className="flex items-center justify-between mb-4 tv:mb-8">
+        <div className="flex items-center justify-between mb-4 tv:mb-5">
           <div>
-            <h1 className="text-2xl tv:text-6xl font-bold leading-tight">
+            <h1 className="text-2xl tv:text-4xl font-bold leading-tight">
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-pink-500">
                 Depot Dashboard
               </span>
             </h1>
             {lastUpdated && (
-              <p className="flex items-center gap-2 text-xs tv:text-lg text-gray-500 mt-1 tv:mt-2">
-                <span className="relative flex h-2 w-2 tv:h-3 tv:w-3 flex-shrink-0">
+              <p className="flex items-center gap-2 text-xs tv:text-sm text-gray-500 mt-1 tv:mt-1.5">
+                <span className="relative flex h-2 w-2 flex-shrink-0">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-500 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 tv:h-3 tv:w-3 bg-pink-500" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-pink-500" />
                 </span>
                 Last updated {lastUpdated.toLocaleTimeString()}
               </p>
@@ -78,7 +91,7 @@ export default function DashboardPage() {
           </div>
           <button
             onClick={toggleFullscreen}
-            className="px-4 py-2 tv:px-5 tv:py-2.5 tv:text-lg text-sm font-medium rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors flex-shrink-0"
+            className="px-4 py-2 tv:px-4 tv:py-2 tv:text-base text-sm font-medium rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors flex-shrink-0"
           >
             {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
           </button>
@@ -91,7 +104,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4 tv:gap-8">
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4 tv:gap-5">
         <POGearPanel pos={getPOs(active)} gearReturns={getGearReturns(active)} />
         <TicketQueuePanel tickets={getTickets(active)} />
       </div>

@@ -32,11 +32,11 @@ export default function DepotManagerHome() {
   return (
     <div className="mt-12 px-4">
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold leading-tight mb-2 pb-4 relative">
+        <h1 className="inline-block text-3xl font-bold leading-tight mb-2 pb-4 relative">
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-pink-500">
             Depot Manager
           </span>
-          <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-48 h-1 rounded-full bg-gradient-to-r from-pink-400 to-pink-500" />
+          <span className="absolute bottom-0 left-0 w-full h-1 rounded-full bg-gradient-to-r from-pink-400 to-pink-500" />
         </h1>
       </div>
 

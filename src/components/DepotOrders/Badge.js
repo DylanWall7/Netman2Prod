@@ -15,7 +15,7 @@ export default function Badge({ children, color = "gray", size = "sm" }) {
   if (size === "lg") {
     return (
       <span
-        className={`inline-flex items-center rounded-full font-bold uppercase tracking-wider px-2.5 py-1 text-xs tv:px-5 tv:py-2 tv:text-2xl ${COLOR_CLASSES[color] || COLOR_CLASSES.gray} ${GLOW_CLASSES[color] || ""}`}
+        className={`inline-flex items-center rounded-full font-bold uppercase tracking-wider px-2.5 py-1 text-xs tv:px-4 tv:py-1.5 tv:text-xl ${COLOR_CLASSES[color] || COLOR_CLASSES.gray} ${GLOW_CLASSES[color] || ""}`}
       >
         {children}
       </span>
