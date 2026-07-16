@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Badge from "./Badge";
 import SiteAutocomplete from "./SiteAutocomplete";
+import RichNotesEditor from "./RichNotesEditor";
+import RichNotesDisplay from "./RichNotesDisplay";
 import { formatDate, today } from "./dateHelpers";
 import { getPOs, getGearReturns, getActive, getCompleted } from "./depotOrdersApi";
 
@@ -95,12 +97,11 @@ function GearForm({ initial, onSave, onCancel }) {
           <option value="returned">Returned</option>
         </select>
       )}
-      <textarea
-        className={fieldClass()}
+      <RichNotesEditor
+        value={form.notes}
+        onChange={(html) => setForm((f) => ({ ...f, notes: html }))}
         placeholder="Notes — paste the list of gear that needs to come back"
         rows={4}
-        value={form.notes}
-        onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
       />
       <div className="flex gap-2 justify-end">
         <button onClick={onCancel} disabled={saving} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-60 disabled:cursor-not-allowed">
@@ -178,9 +179,10 @@ function GearItem({ item, onEdit, onAdvance, isBusy }) {
         </button>
       </div>
       {item.notes && (
-        <p className="mt-2 pt-2 border-t border-gray-600/50 text-xs text-gray-400 whitespace-pre-wrap">
-          {item.notes}
-        </p>
+        <RichNotesDisplay
+          html={item.notes}
+          className="mt-2 pt-2 border-t border-gray-600/50 text-xs text-gray-400 whitespace-pre-wrap"
+        />
       )}
     </div>
   );
@@ -270,6 +272,8 @@ export default function POGearManage({ records, onCreate, onUpdate }) {
 
   return (
     <div className="space-y-8">
+      {/* Manual PO tracking disabled — POs are now tracked via the weekly supplier CSV upload
+          (Supplier Orders page). Uncomment this section to bring manual PO entry back.
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-bold text-blue-400">Purchase Orders</h2>
@@ -306,6 +310,7 @@ export default function POGearManage({ records, onCreate, onUpdate }) {
           </div>
         )}
       </section>
+      */}
 
       <section>
         <div className="flex items-center justify-between mb-3">

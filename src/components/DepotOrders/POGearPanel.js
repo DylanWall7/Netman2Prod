@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import Badge from "./Badge";
+import RichNotesDisplay from "./RichNotesDisplay";
 import { formatDate } from "./dateHelpers";
 
 const PO_STATUS_COLOR = { ordered: "gray", shipped: "blue", received: "green" };
@@ -72,7 +73,10 @@ function GearCard({ item }) {
         <Badge color={GEAR_STATUS_COLOR[item.status] || "gray"} size="lg">{item.status}</Badge>
       </div>
       {item.notes && (
-        <p className="mt-2 pt-2 tv:mt-3 tv:pt-3 border-t border-gray-700 text-xs tv:text-lg text-gray-500 break-words line-clamp-3">{item.notes}</p>
+        <RichNotesDisplay
+          html={item.notes}
+          className="mt-2 pt-2 tv:mt-3 tv:pt-3 border-t border-gray-700 text-xs tv:text-lg text-gray-500 break-words whitespace-pre-wrap"
+        />
       )}
     </div>
   );

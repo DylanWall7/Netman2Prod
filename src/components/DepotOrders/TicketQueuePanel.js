@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import Badge from "./Badge";
+import RichNotesDisplay from "./RichNotesDisplay";
 import { formatDate, isOverdue } from "./dateHelpers";
 
 const PRIORITY_ORDER = { high: 0, med: 1, low: 2 };
@@ -27,6 +28,12 @@ function TicketCard({ ticket }) {
           </p>
         )}
       </div>
+      {ticket.description && (
+        <RichNotesDisplay
+          html={ticket.description}
+          className="mt-0.5 tv:mt-1.5 text-xs tv:text-lg text-gray-400 break-words whitespace-pre-wrap"
+        />
+      )}
       <p className="mt-0.5 tv:mt-1.5 text-xs tv:text-lg text-gray-500 break-words">
         {ticket.submittedBy}
         {ticket.assignee ? ` → ${ticket.assignee}` : ""}
@@ -38,6 +45,12 @@ function TicketCard({ ticket }) {
         </Badge>
         <Badge color={PRIORITY_COLOR[ticket.priority] || "gray"} size="lg">{ticket.priority}</Badge>
       </div>
+      {ticket.notes && (
+        <RichNotesDisplay
+          html={ticket.notes}
+          className="mt-2 pt-2 tv:mt-3 tv:pt-3 border-t border-gray-700 text-xs tv:text-lg text-gray-500 break-words whitespace-pre-wrap"
+        />
+      )}
     </div>
   );
 }

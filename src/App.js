@@ -29,6 +29,7 @@ import InventoryScanPage from "./components/InventoryScan/InventoryScanPage";
 import DepotManagerHome from "./components/DepotOrders/DepotManagerHome";
 import DashboardPage from "./components/DepotOrders/DashboardPage";
 import ManagePage from "./components/DepotOrders/ManagePage";
+import SupplierOrdersPage from "./components/DepotOrders/SupplierOrdersPage";
 
 const Unauthorized = () => {
   return (
@@ -256,6 +257,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <ManagePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="supplier-orders"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <SupplierOrdersPage />
                 </ProtectedRoute>
               }
             />

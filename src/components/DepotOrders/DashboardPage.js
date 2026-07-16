@@ -11,14 +11,29 @@ import {
   getTickets,
   useDepotOrdersToken,
 } from "./depotOrdersApi";
+import { listSupplierOrders, useSupplierOrdersToken } from "./supplierOrdersApi";
+import { isCompleted } from "./supplierOrdersCsv";
 
 const POLL_INTERVAL_MS = 30000;
 
+function toPOCard(order) {
+  return {
+    id: `supplier-${order.id}`,
+    poNumber: order.kiewit_po,
+    vendor: order.requestor,
+    siteCode: order.site_id,
+    expectedDate: order.order_date,
+    status: order.tracking ? "shipped" : "ordered",
+  };
+}
+
 export default function DashboardPage() {
   const getToken = useDepotOrdersToken();
+  const getSupplierOrdersToken = useSupplierOrdersToken();
   const containerRef = useRef(null);
   const seenTicketIdsRef = useRef(null);
   const [records, setRecords] = useState([]);
+  const [supplierOrders, setSupplierOrders] = useState([]);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -39,7 +54,14 @@ export default function DashboardPage() {
     } catch (err) {
       setError(err.message || "Failed to load dashboard data");
     }
-  }, [getToken]);
+
+    try {
+      const supplierToken = await getSupplierOrdersToken();
+      setSupplierOrders(await listSupplierOrders(supplierToken));
+    } catch (err) {
+      console.error("Failed to load supplier orders", err);
+    }
+  }, [getToken, getSupplierOrdersToken]);
 
   useEffect(() => {
     refresh();
@@ -63,6 +85,8 @@ export default function DashboardPage() {
   };
 
   const active = getActive(records);
+  const activeSupplierOrders = supplierOrders.filter((r) => !isCompleted(r.notes) && !r.received);
+  const pos = [...getPOs(active), ...activeSupplierOrders.map(toPOCard)];
 
   return (
     <div
@@ -105,7 +129,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4 tv:gap-5">
-        <POGearPanel pos={getPOs(active)} gearReturns={getGearReturns(active)} />
+        <POGearPanel pos={pos} gearReturns={getGearReturns(active)} />
         <TicketQueuePanel tickets={getTickets(active)} />
       </div>
     </div>

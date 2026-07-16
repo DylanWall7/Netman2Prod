@@ -5,8 +5,8 @@ import TicketManage from "./TicketManage";
 import { listRecords, createRecord, updateRecord, pruneCompleted, useDepotOrdersToken } from "./depotOrdersApi";
 
 const TABS = [
-  { id: "pogear", label: "PO / Gear Tracker" },
-  { id: "tickets", label: "Tickets" },
+  { id: "pogear", label: "Demobe Return Gear" },
+  { id: "tickets", label: "Depot Requests" },
 ];
 
 export default function ManagePage() {

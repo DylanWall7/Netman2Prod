@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useMsal } from "@azure/msal-react";
 import Badge from "./Badge";
+import RichNotesEditor from "./RichNotesEditor";
+import RichNotesDisplay from "./RichNotesDisplay";
 import { formatDate, isOverdue } from "./dateHelpers";
 import { getTickets, getActive, getCompleted } from "./depotOrdersApi";
 
@@ -35,12 +37,11 @@ function TicketForm({ initial, onSave, onCancel }) {
         value={form.title}
         onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
       />
-      <textarea
-        className={fieldClass()}
+      <RichNotesEditor
+        value={form.description}
+        onChange={(html) => setForm((f) => ({ ...f, description: html }))}
         placeholder="Details (optional)"
         rows={3}
-        value={form.description}
-        onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
       />
       <div className="grid grid-cols-2 gap-3">
         <select
@@ -59,12 +60,11 @@ function TicketForm({ initial, onSave, onCancel }) {
           onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
         />
       </div>
-      <textarea
-        className={fieldClass()}
+      <RichNotesEditor
+        value={form.notes}
+        onChange={(html) => setForm((f) => ({ ...f, notes: html }))}
         placeholder="Work notes — leave an update for whoever picks this up next"
         rows={3}
-        value={form.notes}
-        onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
       />
       <div className="flex gap-2 justify-end">
         <button onClick={onCancel} disabled={saving} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-60 disabled:cursor-not-allowed">
@@ -87,16 +87,17 @@ function TicketItem({ ticket, onEdit, onClaim, onComplete, isBusy }) {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-gray-100 truncate">{ticket.title}</p>
           {ticket.description && (
-            <p className="text-xs text-gray-500 mt-0.5">{ticket.description}</p>
+            <RichNotesDisplay html={ticket.description} className="text-xs text-gray-500 mt-0.5 whitespace-pre-wrap" />
           )}
           <p className="text-xs text-gray-600 mt-1">
             Submitted by {ticket.submittedBy}
             {ticket.assignee ? ` — claimed by ${ticket.assignee}` : ""}
           </p>
           {ticket.notes && (
-            <p className="mt-2 pt-2 border-t border-gray-600/50 text-xs text-gray-400 whitespace-pre-wrap">
-              {ticket.notes}
-            </p>
+            <RichNotesDisplay
+              html={ticket.notes}
+              className="mt-2 pt-2 border-t border-gray-600/50 text-xs text-gray-400 whitespace-pre-wrap"
+            />
           )}
         </div>
         <div className="flex flex-col items-end gap-2 flex-shrink-0">
