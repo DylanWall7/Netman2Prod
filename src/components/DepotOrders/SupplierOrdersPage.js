@@ -158,46 +158,94 @@ function OrderDetailModal({ order, onClose, onMarkReceived, markingReceived }) {
   );
 }
 
-function NewRow({ entry }) {
+function NewRow({ entry, checked, onToggle }) {
   const { csvRow } = entry;
   return (
-    <div className="px-4 py-3 bg-gray-700/50 rounded-lg">
-      <p className="text-sm font-semibold text-gray-100">
-        {csvRow.kiewit_po} — {csvRow.site_id} ({csvRow.requestor})
-      </p>
-      <p className="text-xs text-gray-500">
-        Quote {csvRow.Quote_Number} — {csvRow.order_date}
-      </p>
-      {csvRow.notes && <p className="mt-1 text-xs text-gray-400">{csvRow.notes}</p>}
-    </div>
+    <label className="flex items-start gap-3 px-4 py-3 bg-gray-700/50 rounded-lg cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        className="mt-1 flex-shrink-0 accent-pink-600"
+      />
+      <div>
+        <p className="text-sm font-semibold text-gray-100">
+          {csvRow.kiewit_po} — {csvRow.site_id} ({csvRow.requestor})
+        </p>
+        <p className="text-xs text-gray-500">
+          Quote {csvRow.Quote_Number} — {csvRow.order_date}
+        </p>
+        {csvRow.notes && <p className="mt-1 text-xs text-gray-400">{csvRow.notes}</p>}
+      </div>
+    </label>
   );
 }
 
-function UpdatedRow({ entry }) {
+function UpdatedRow({ entry, checked, onToggle }) {
   const { csvRow, changes } = entry;
+  const willBeCompleted = isCompleted(csvRow.notes);
   return (
-    <div className="px-4 py-3 bg-gray-700/50 rounded-lg">
-      <p className="text-sm font-semibold text-gray-100">
-        {csvRow.kiewit_po} — {csvRow.site_id}
-      </p>
-      <div className="mt-2 space-y-1">
-        {changes.map((c) => (
-          <p key={c.field} className="text-xs">
-            <span className="text-gray-500">{FIELD_LABELS[c.field]}:</span>{" "}
-            <span className="text-red-400 line-through">{c.from || "—"}</span>{" "}
-            <span className="text-gray-600">→</span>{" "}
-            <span className="text-green-400">{c.to || "—"}</span>
+    <label className="flex items-start gap-3 px-4 py-3 bg-gray-700/50 rounded-lg cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        className="mt-1 flex-shrink-0 accent-pink-600"
+      />
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold text-gray-100">
+            {csvRow.kiewit_po} — {csvRow.site_id}
           </p>
-        ))}
+          {willBeCompleted && <Badge color="green">Marking Completed</Badge>}
+        </div>
+        <div className="mt-2 space-y-1">
+          {changes.map((c) => (
+            <p key={c.field} className="text-xs">
+              <span className="text-gray-500">{FIELD_LABELS[c.field]}:</span>{" "}
+              <span className="text-red-400 line-through">{c.from || "—"}</span>{" "}
+              <span className="text-gray-600">→</span>{" "}
+              <span className="text-green-400">{c.to || "—"}</span>
+            </p>
+          ))}
+        </div>
       </div>
-    </div>
+    </label>
   );
+}
+
+const newRowKey = (entry) => `new:${entry.csvRow.kiewit_po}`;
+const updatedRowKey = (entry) => `updated:${entry.csvRow.kiewit_po}`;
+
+function allKeys(diff) {
+  return [...diff.newRows.map(newRowKey), ...diff.updatedRows.map(updatedRowKey)];
 }
 
 function ReviewPanel({ diff, applying, applyErrors, onApply, onCancel }) {
   const [showUnchanged, setShowUnchanged] = useState(false);
   const [showMissing, setShowMissing] = useState(false);
   const [showSkipped, setShowSkipped] = useState(false);
+  const [selected, setSelected] = useState(() => new Set(allKeys(diff)));
+
+  useEffect(() => {
+    setSelected(new Set(allKeys(diff)));
+  }, [diff]);
+
+  const toggle = (key) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleApplyClick = () => {
+    onApply(
+      diff.newRows.filter((e) => selected.has(newRowKey(e))),
+      diff.updatedRows.filter((e) => selected.has(updatedRowKey(e))),
+    );
+  };
 
   return (
     <div className="bg-gray-900 rounded-lg p-4 space-y-5 mb-5 border border-pink-500/30">
@@ -212,12 +260,12 @@ function ReviewPanel({ diff, applying, applyErrors, onApply, onCancel }) {
             Cancel
           </button>
           <button
-            onClick={onApply}
-            disabled={applying || (diff.newRows.length === 0 && diff.updatedRows.length === 0)}
+            onClick={handleApplyClick}
+            disabled={applying || selected.size === 0}
             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-pink-600 text-black hover:bg-pink-500 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5"
           >
             {applying && <span className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
-            {applying ? "Applying…" : "Apply All"}
+            {applying ? "Applying…" : `Apply Selected (${selected.size})`}
           </button>
         </div>
       </div>
@@ -239,7 +287,12 @@ function ReviewPanel({ diff, applying, applyErrors, onApply, onCancel }) {
         ) : (
           <div className="space-y-2">
             {diff.newRows.map((entry) => (
-              <NewRow key={entry.csvRow.kiewit_po} entry={entry} />
+              <NewRow
+                key={entry.csvRow.kiewit_po}
+                entry={entry}
+                checked={selected.has(newRowKey(entry))}
+                onToggle={() => toggle(newRowKey(entry))}
+              />
             ))}
           </div>
         )}
@@ -248,13 +301,23 @@ function ReviewPanel({ diff, applying, applyErrors, onApply, onCancel }) {
       <section>
         <h4 className="text-xs font-bold uppercase tracking-wider text-blue-400 mb-2">
           Updated ({diff.updatedRows.length})
+          {diff.updatedRows.some((e) => isCompleted(e.csvRow.notes)) && (
+            <span className="ml-2 text-green-400 normal-case tracking-normal">
+              — {diff.updatedRows.filter((e) => isCompleted(e.csvRow.notes)).length} marking completed
+            </span>
+          )}
         </h4>
         {diff.updatedRows.length === 0 ? (
           <p className="text-xs text-gray-600 italic">No updated orders</p>
         ) : (
           <div className="space-y-2">
             {diff.updatedRows.map((entry) => (
-              <UpdatedRow key={entry.csvRow.kiewit_po} entry={entry} />
+              <UpdatedRow
+                key={entry.csvRow.kiewit_po}
+                entry={entry}
+                checked={selected.has(updatedRowKey(entry))}
+                onToggle={() => toggle(updatedRowKey(entry))}
+              />
             ))}
           </div>
         )}
@@ -347,21 +410,21 @@ export default function SupplierOrdersPage() {
     setApplyErrors([]);
   };
 
-  const handleApply = async () => {
+  const handleApply = async (selectedNewRows, selectedUpdatedRows) => {
     setApplying(true);
     const errors = [];
     try {
       const token = await getToken();
 
       const results = await Promise.allSettled([
-        ...diff.newRows.map((entry) => {
+        ...selectedNewRows.map((entry) => {
           const payload = PERSISTED_FIELDS.concat("kiewit_po").reduce((acc, f) => {
             acc[f] = entry.csvRow[f];
             return acc;
           }, {});
           return createSupplierOrder(payload, token);
         }),
-        ...diff.updatedRows.map((entry) => {
+        ...selectedUpdatedRows.map((entry) => {
           const payload = PERSISTED_FIELDS.concat("kiewit_po").reduce((acc, f) => {
             acc[f] = entry.csvRow[f];
             return acc;

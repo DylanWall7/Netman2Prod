@@ -88,7 +88,7 @@ export function parseSupplierOrdersCsv(csvText) {
 }
 
 function matchKey(row) {
-  return `${row.kiewit_po}||${row.order_date}`;
+  return `${row.kiewit_po}||${row.order_date || ""}`;
 }
 
 export function computeSupplierOrdersDiff(csvRows, dbRows) {
