@@ -40,11 +40,11 @@ export function buildDeviceStagePlan(poTabResults, models) {
       continue;
     }
 
-    for (const item of tab.lineItems) {
-      if (isExcludedProductCode(item.product_code)) continue;
+    tab.lineItems.forEach((item, lineIndex) => {
+      if (isExcludedProductCode(item.product_code)) return;
 
       const serials = (item.serials || []).filter(isRealSerial);
-      if (serials.length === 0) continue;
+      if (serials.length === 0) return;
 
       activeItems.push({
         poNumber: tab.poNumber,
@@ -53,9 +53,10 @@ export function buildDeviceStagePlan(poTabResults, models) {
         quantity: item.quantity,
         shipmentStatus: item.shipment_status,
         serials,
+        lineIndex,
         modelResolution: resolveModelForProductCode(item.product_code, models),
       });
-    }
+    });
   }
 
   return { activeItems, skippedTabs };

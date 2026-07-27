@@ -46,11 +46,17 @@ function cellDateText(value) {
   return normalizeDate(cellText(value));
 }
 
+function stripLeadingS(serial) {
+  return /^s/i.test(serial) ? serial.slice(1) : serial;
+}
+
 function parseSerials(value) {
   if (value === undefined || value === null) return [];
   return String(value)
     .split(/\r?\n/)
     .map((s) => s.trim())
+    .filter(Boolean)
+    .map(stripLeadingS)
     .filter(Boolean);
 }
 

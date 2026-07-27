@@ -25,7 +25,7 @@ function orderKey(entry, prefix) {
 }
 
 function deviceKey(item) {
-  return `${item.poNumber}||${item.sheetName}||${item.productCode}`;
+  return `${item.poNumber}||${item.sheetName}||${item.productCode}||${item.lineIndex}`;
 }
 
 function itemNeedsAction(item, modelId, existingBySerial) {
@@ -129,7 +129,36 @@ function ModelPicker({ models, resolution, modelId, onChange }) {
   );
 }
 
+function SerialsPopup({ item, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+      <div
+        className="w-full max-w-md max-h-[80vh] min-h-0 overflow-y-auto bg-gray-800 rounded-xl shadow-2xl p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-bold text-gray-100">
+            {item.poNumber} — {item.productCode}
+            <span className="text-gray-500 font-normal"> ({item.serials.length} serial(s))</span>
+          </h4>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xl leading-none">
+            ×
+          </button>
+        </div>
+        <ul className="space-y-1 text-xs text-gray-300 font-mono">
+          {item.serials.map((serial) => (
+            <li key={serial} className="px-2 py-1 rounded bg-gray-900/60">
+              {serial}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 function DeviceRow({ item, models, checked, onToggle, modelId, onModelChange }) {
+  const [showSerials, setShowSerials] = useState(false);
   return (
     <tr className="text-gray-300 align-top">
       <td className="pr-3 py-2">
@@ -138,7 +167,15 @@ function DeviceRow({ item, models, checked, onToggle, modelId, onModelChange }) 
       <td className="pr-3 py-2 whitespace-nowrap">{item.poNumber}</td>
       <td className="pr-3 py-2 whitespace-nowrap">{item.productCode}</td>
       <td className="pr-3 py-2 whitespace-nowrap">{item.shipmentStatus}</td>
-      <td className="pr-3 py-2 whitespace-nowrap">{item.serials.length}</td>
+      <td className="pr-3 py-2 whitespace-nowrap">
+        <button
+          onClick={() => setShowSerials(true)}
+          className="underline decoration-dotted text-blue-400 hover:text-blue-300"
+        >
+          {item.serials.length}
+        </button>
+        {showSerials && <SerialsPopup item={item} onClose={() => setShowSerials(false)} />}
+      </td>
       <td className="pr-3 py-2 w-64">
         <ModelPicker models={models} resolution={item.modelResolution} modelId={modelId} onChange={onModelChange} />
       </td>
