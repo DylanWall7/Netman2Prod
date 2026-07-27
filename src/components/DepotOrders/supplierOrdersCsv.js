@@ -52,14 +52,15 @@ export function isCompleted(notes) {
   return typeof notes === "string" && notes.toLowerCase().includes("complete");
 }
 
-function normalizeDate(value) {
-  const match = typeof value === "string" && value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+export function normalizeDate(value) {
+  const match = typeof value === "string" && value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
   if (!match) return value;
-  const [, month, day, year] = match;
+  const [, month, day, rawYear] = match;
+  const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
-function normalizeCurrency(value) {
+export function normalizeCurrency(value) {
   if (typeof value !== "string") return value;
   const cleaned = value.replace(/[$,]/g, "").trim();
   return cleaned;

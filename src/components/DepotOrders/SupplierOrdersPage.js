@@ -3,20 +3,31 @@ import BackLink from "./BackLink";
 import Badge from "./Badge";
 import {
   listSupplierOrders,
-  createSupplierOrder,
   updateSupplierOrder,
+  deleteSupplierOrder,
   useSupplierOrdersToken,
 } from "./supplierOrdersApi";
-import {
-  parseSupplierOrdersCsv,
-  computeSupplierOrdersDiff,
-  isCompleted,
-  FIELD_LABELS,
-  PERSISTED_FIELDS,
-} from "./supplierOrdersCsv";
+import { isCompleted, PERSISTED_FIELDS } from "./supplierOrdersCsv";
 import { parseTrackingInfo } from "./supplierOrdersTracking";
+import { parsePOTabsWorkbook, parseMainSheetFromWorkbook } from "./poTabsParser";
+import { listSnipeitModels, listSnipeitHardwareByPO, useSnipeitToken } from "./snipeitApi";
+import UnifiedUploadModal from "./UnifiedUploadModal";
+import { formatDate } from "./dateHelpers";
 
-function OrdersTable({ rows, emptyLabel, onRowClick }) {
+const STATUS_BADGE_COLOR = {
+  "Pending Shipment": "amber",
+  "Delivered": "green",
+  "Unknown / Lost": "red",
+};
+
+function formatMoney(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const n = Number(value);
+  if (Number.isNaN(n)) return value;
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function OrdersTable({ rows, emptyLabel, onRowClick, sortDir, onToggleSort }) {
   if (rows.length === 0) {
     return <p className="text-sm text-gray-600 italic">{emptyLabel}</p>;
   }
@@ -28,10 +39,15 @@ function OrdersTable({ rows, emptyLabel, onRowClick }) {
             <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Site ID</th>
             <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Requestor</th>
             <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Kiewit PO</th>
-            <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Order Date</th>
+            <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">
+              <button onClick={onToggleSort} className="flex items-center gap-1 hover:text-gray-200">
+                Order Date {sortDir === "asc" ? "▲" : "▼"}
+              </button>
+            </th>
             <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Sub-Total $</th>
             <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Order Number</th>
             <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Shipped</th>
+            <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Received</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-700/60">
@@ -44,11 +60,14 @@ function OrdersTable({ rows, emptyLabel, onRowClick }) {
               <td className="px-4 py-2.5 whitespace-nowrap">{r.site_id}</td>
               <td className="px-4 py-2.5 whitespace-nowrap">{r.requestor}</td>
               <td className="px-4 py-2.5 whitespace-nowrap">{r.kiewit_po}</td>
-              <td className="px-4 py-2.5 whitespace-nowrap">{r.order_date}</td>
-              <td className="px-4 py-2.5 whitespace-nowrap">{r.sub_total}</td>
+              <td className="px-4 py-2.5 whitespace-nowrap">{formatDate(r.order_date)}</td>
+              <td className="px-4 py-2.5 whitespace-nowrap">{formatMoney(r.sub_total)}</td>
               <td className="px-4 py-2.5 whitespace-nowrap">{r.order_number}</td>
               <td className="px-4 py-2.5 whitespace-nowrap">
                 {r.tracking ? <Badge color="blue">Shipped</Badge> : <span className="text-gray-600">—</span>}
+              </td>
+              <td className="px-4 py-2.5 whitespace-nowrap">
+                {r.received ? <Badge color="green">Received</Badge> : <span className="text-gray-600">—</span>}
               </td>
             </tr>
           ))}
@@ -67,13 +86,88 @@ function DetailField({ label, value }) {
   );
 }
 
-function OrderDetailModal({ order, onClose, onMarkReceived, markingReceived }) {
+function DeviceTableModal({ devices, poNumber, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70">
+      <div
+        className="w-full max-w-6xl max-h-[92vh] min-h-0 overflow-y-auto bg-gray-800 rounded-xl shadow-2xl p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-lg font-bold text-gray-100">
+            Devices for PO {poNumber} <span className="text-gray-500 font-normal">({devices.length})</span>
+          </h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xl leading-none">
+            ×
+          </button>
+        </div>
+        <div className="overflow-x-auto rounded-lg border border-gray-700">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-900 text-gray-400">
+              <tr>
+                <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Serial</th>
+                <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Asset Tag</th>
+                <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Model</th>
+                <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Category</th>
+                <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700/60">
+              {devices.map((d) => (
+                <tr key={d.id} className="bg-gray-800/60 text-gray-200">
+                  <td className="px-4 py-2.5 whitespace-nowrap">{d.serial}</td>
+                  <td className="px-4 py-2.5 whitespace-nowrap">{d.asset_tag}</td>
+                  <td className="px-4 py-2.5 whitespace-nowrap">{d.model?.name}</td>
+                  <td className="px-4 py-2.5 whitespace-nowrap">{d.category?.name}</td>
+                  <td className="px-4 py-2.5 whitespace-nowrap">
+                    <Badge color={STATUS_BADGE_COLOR[d.status_label?.name] || "gray"}>
+                      {d.status_label?.name || "Unknown"}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderDetailModal({ order, onClose, onMarkReceived, markingReceived, onDelete, deleting }) {
   const tracking = parseTrackingInfo(order.tracking);
+  const getSnipeitToken = useSnipeitToken();
+  const [devices, setDevices] = useState(null);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [devicesError, setDevicesError] = useState(null);
+  const [showDeviceTable, setShowDeviceTable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoadingDevices(true);
+      setDevicesError(null);
+      try {
+        const token = await getSnipeitToken();
+        const result = await listSnipeitHardwareByPO(order.kiewit_po, token);
+        if (!cancelled) setDevices(result);
+      } catch (err) {
+        if (!cancelled) setDevicesError(err.message || "Failed to load devices");
+      } finally {
+        if (!cancelled) setLoadingDevices(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order.kiewit_po]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
       <div
-        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-gray-800 rounded-xl shadow-2xl p-6"
+        className="w-full max-w-6xl max-h-[92vh] min-h-0 overflow-y-auto bg-gray-800 rounded-xl shadow-2xl p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-5">
@@ -86,15 +180,15 @@ function OrderDetailModal({ order, onClose, onMarkReceived, markingReceived }) {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
           <DetailField label="Site ID" value={order.site_id} />
           <DetailField label="Requestor" value={order.requestor} />
           <DetailField label="Quote Number" value={order.Quote_Number} />
           <DetailField label="Kiewit PO" value={order.kiewit_po} />
-          <DetailField label="Order Date" value={order.order_date} />
-          <DetailField label="ETA for HW" value={order.eta_for_hw} />
-          <DetailField label="Sub-Total $" value={order.sub_total} />
-          <DetailField label="Remaining $ Amount" value={order.remaining_amount} />
+          <DetailField label="Order Date" value={order.order_date ? formatDate(order.order_date) : ""} />
+          <DetailField label="ETA for HW" value={order.eta_for_hw ? formatDate(order.eta_for_hw) : ""} />
+          <DetailField label="Sub-Total $" value={formatMoney(order.sub_total)} />
+          <DetailField label="Remaining $ Amount" value={formatMoney(order.remaining_amount)} />
           <DetailField label="Order Number" value={order.order_number} />
           <DetailField label="PO to Ingram" value={order.po_to_ingram} />
         </div>
@@ -129,12 +223,56 @@ function OrderDetailModal({ order, onClose, onMarkReceived, markingReceived }) {
           )}
         </div>
 
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Devices in Snipe-IT {devices ? `(${devices.length})` : ""}
+            </p>
+            {devices && devices.length > 0 && (
+              <button
+                onClick={() => setShowDeviceTable(true)}
+                className="text-xs text-pink-400 hover:text-pink-300"
+              >
+                View as table ⤢
+              </button>
+            )}
+          </div>
+          {loadingDevices ? (
+            <p className="text-sm text-gray-500 italic">Loading…</p>
+          ) : devicesError ? (
+            <p className="text-sm text-red-400">{devicesError}</p>
+          ) : !devices || devices.length === 0 ? (
+            <p className="text-sm text-gray-600 italic">No devices tagged with this PO yet</p>
+          ) : (
+            <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
+              {devices.map((d) => (
+                <div key={d.id} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-gray-300 truncate">
+                    {d.serial} <span className="text-gray-500">— {d.model?.name}</span>
+                  </span>
+                  <Badge color={STATUS_BADGE_COLOR[d.status_label?.name] || "gray"}>
+                    {d.status_label?.name || "Unknown"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="mb-6">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Notes</p>
           <p className="text-sm text-gray-300 whitespace-pre-wrap">{order.notes || "—"}</p>
         </div>
 
         <div className="flex justify-end gap-2">
+          <button
+            onClick={onDelete}
+            disabled={deleting || markingReceived}
+            className="mr-auto px-3 py-1.5 text-xs font-medium rounded-lg bg-red-900/60 text-red-300 hover:bg-red-800/60 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5"
+          >
+            {deleting && <span className="w-3 h-3 border-2 border-red-300/30 border-t-red-300 rounded-full animate-spin" />}
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
           <button onClick={onClose} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600">
             Close
           </button>
@@ -154,213 +292,9 @@ function OrderDetailModal({ order, onClose, onMarkReceived, markingReceived }) {
           )}
         </div>
       </div>
-    </div>
-  );
-}
 
-function NewRow({ entry, checked, onToggle }) {
-  const { csvRow } = entry;
-  return (
-    <label className="flex items-start gap-3 px-4 py-3 bg-gray-700/50 rounded-lg cursor-pointer">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onToggle}
-        className="mt-1 flex-shrink-0 accent-pink-600"
-      />
-      <div>
-        <p className="text-sm font-semibold text-gray-100">
-          {csvRow.kiewit_po} — {csvRow.site_id} ({csvRow.requestor})
-        </p>
-        <p className="text-xs text-gray-500">
-          Quote {csvRow.Quote_Number} — {csvRow.order_date}
-        </p>
-        {csvRow.notes && <p className="mt-1 text-xs text-gray-400">{csvRow.notes}</p>}
-      </div>
-    </label>
-  );
-}
-
-function UpdatedRow({ entry, checked, onToggle }) {
-  const { csvRow, changes } = entry;
-  const willBeCompleted = isCompleted(csvRow.notes);
-  return (
-    <label className="flex items-start gap-3 px-4 py-3 bg-gray-700/50 rounded-lg cursor-pointer">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onToggle}
-        className="mt-1 flex-shrink-0 accent-pink-600"
-      />
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-gray-100">
-            {csvRow.kiewit_po} — {csvRow.site_id}
-          </p>
-          {willBeCompleted && <Badge color="green">Marking Completed</Badge>}
-        </div>
-        <div className="mt-2 space-y-1">
-          {changes.map((c) => (
-            <p key={c.field} className="text-xs">
-              <span className="text-gray-500">{FIELD_LABELS[c.field]}:</span>{" "}
-              <span className="text-red-400 line-through">{c.from || "—"}</span>{" "}
-              <span className="text-gray-600">→</span>{" "}
-              <span className="text-green-400">{c.to || "—"}</span>
-            </p>
-          ))}
-        </div>
-      </div>
-    </label>
-  );
-}
-
-const newRowKey = (entry) => `new:${entry.csvRow.kiewit_po}`;
-const updatedRowKey = (entry) => `updated:${entry.csvRow.kiewit_po}`;
-
-function allKeys(diff) {
-  return [...diff.newRows.map(newRowKey), ...diff.updatedRows.map(updatedRowKey)];
-}
-
-function ReviewPanel({ diff, applying, applyErrors, onApply, onCancel }) {
-  const [showUnchanged, setShowUnchanged] = useState(false);
-  const [showMissing, setShowMissing] = useState(false);
-  const [showSkipped, setShowSkipped] = useState(false);
-  const [selected, setSelected] = useState(() => new Set(allKeys(diff)));
-
-  useEffect(() => {
-    setSelected(new Set(allKeys(diff)));
-  }, [diff]);
-
-  const toggle = (key) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const handleApplyClick = () => {
-    onApply(
-      diff.newRows.filter((e) => selected.has(newRowKey(e))),
-      diff.updatedRows.filter((e) => selected.has(updatedRowKey(e))),
-    );
-  };
-
-  return (
-    <div className="bg-gray-900 rounded-lg p-4 space-y-5 mb-5 border border-pink-500/30">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-gray-200">Review upload</h3>
-        <div className="flex gap-2">
-          <button
-            onClick={onCancel}
-            disabled={applying}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleApplyClick}
-            disabled={applying || selected.size === 0}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-pink-600 text-black hover:bg-pink-500 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5"
-          >
-            {applying && <span className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
-            {applying ? "Applying…" : `Apply Selected (${selected.size})`}
-          </button>
-        </div>
-      </div>
-
-      {applyErrors.length > 0 && (
-        <div className="px-3 py-2 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-xs space-y-1">
-          {applyErrors.map((e, i) => (
-            <p key={i}>{e}</p>
-          ))}
-        </div>
-      )}
-
-      <section>
-        <h4 className="text-xs font-bold uppercase tracking-wider text-green-400 mb-2">
-          New ({diff.newRows.length})
-        </h4>
-        {diff.newRows.length === 0 ? (
-          <p className="text-xs text-gray-600 italic">No new orders</p>
-        ) : (
-          <div className="space-y-2">
-            {diff.newRows.map((entry) => (
-              <NewRow
-                key={entry.csvRow.kiewit_po}
-                entry={entry}
-                checked={selected.has(newRowKey(entry))}
-                onToggle={() => toggle(newRowKey(entry))}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section>
-        <h4 className="text-xs font-bold uppercase tracking-wider text-blue-400 mb-2">
-          Updated ({diff.updatedRows.length})
-          {diff.updatedRows.some((e) => isCompleted(e.csvRow.notes)) && (
-            <span className="ml-2 text-green-400 normal-case tracking-normal">
-              — {diff.updatedRows.filter((e) => isCompleted(e.csvRow.notes)).length} marking completed
-            </span>
-          )}
-        </h4>
-        {diff.updatedRows.length === 0 ? (
-          <p className="text-xs text-gray-600 italic">No updated orders</p>
-        ) : (
-          <div className="space-y-2">
-            {diff.updatedRows.map((entry) => (
-              <UpdatedRow
-                key={entry.csvRow.kiewit_po}
-                entry={entry}
-                checked={selected.has(updatedRowKey(entry))}
-                onToggle={() => toggle(updatedRowKey(entry))}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section>
-        <button onClick={() => setShowUnchanged((v) => !v)} className="text-xs text-gray-500 hover:text-gray-300">
-          {showUnchanged ? "Hide" : "Show"} unchanged ({diff.unchangedRows.length})
-        </button>
-      </section>
-
-      {diff.skippedCompletedRows.length > 0 && (
-        <section>
-          <button onClick={() => setShowSkipped((v) => !v)} className="text-xs text-gray-500 hover:text-gray-300">
-            {showSkipped ? "Hide" : "Show"} skipped — already complete ({diff.skippedCompletedRows.length})
-          </button>
-          {showSkipped && (
-            <div className="mt-2 space-y-1">
-              {diff.skippedCompletedRows.map((r) => (
-                <p key={r.kiewit_po} className="text-xs text-gray-500">
-                  {r.kiewit_po} — {r.site_id}
-                </p>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {diff.missingRows.length > 0 && (
-        <section>
-          <button onClick={() => setShowMissing((v) => !v)} className="text-xs text-gray-500 hover:text-gray-300">
-            {showMissing ? "Hide" : "Show"} not in this file ({diff.missingRows.length})
-          </button>
-          {showMissing && (
-            <div className="mt-2 space-y-1">
-              {diff.missingRows.map((r) => (
-                <p key={r.id} className="text-xs text-gray-500">
-                  {r.kiewit_po} — {r.site_id}
-                </p>
-              ))}
-            </div>
-          )}
-        </section>
+      {showDeviceTable && devices && (
+        <DeviceTableModal devices={devices} poNumber={order.kiewit_po} onClose={() => setShowDeviceTable(false)} />
       )}
     </div>
   );
@@ -368,19 +302,24 @@ function ReviewPanel({ diff, applying, applyErrors, onApply, onCancel }) {
 
 export default function SupplierOrdersPage() {
   const getToken = useSupplierOrdersToken();
-  const fileInputRef = useRef(null);
+  const getSnipeitToken = useSnipeitToken();
 
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showCompleted, setShowCompleted] = useState(false);
 
-  const [diff, setDiff] = useState(null);
-  const [applying, setApplying] = useState(false);
-  const [applyErrors, setApplyErrors] = useState([]);
-
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [markingReceived, setMarkingReceived] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [sortDir, setSortDir] = useState("desc");
+  const [poTabResults, setPoTabResults] = useState(null);
+  const [mainSheetRows, setMainSheetRows] = useState(null);
+  const [snipeitModels, setSnipeitModels] = useState(null);
+  const [showUnifiedModal, setShowUnifiedModal] = useState(false);
+  const [loadingUnifiedUpload, setLoadingUnifiedUpload] = useState(false);
+  const unifiedFileInputRef = useRef(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -400,48 +339,22 @@ export default function SupplierOrdersPage() {
     refresh();
   }, [refresh]);
 
-  const handleFileChange = async (e) => {
+  const handleUnifiedFileChange = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    const text = await file.text();
-    const csvRows = parseSupplierOrdersCsv(text);
-    setDiff(computeSupplierOrdersDiff(csvRows, records));
-    setApplyErrors([]);
-  };
-
-  const handleApply = async (selectedNewRows, selectedUpdatedRows) => {
-    setApplying(true);
-    const errors = [];
+    const buffer = await file.arrayBuffer();
+    setMainSheetRows(parseMainSheetFromWorkbook(buffer));
+    setPoTabResults(parsePOTabsWorkbook(buffer));
+    setLoadingUnifiedUpload(true);
     try {
-      const token = await getToken();
-
-      const results = await Promise.allSettled([
-        ...selectedNewRows.map((entry) => {
-          const payload = PERSISTED_FIELDS.concat("kiewit_po").reduce((acc, f) => {
-            acc[f] = entry.csvRow[f];
-            return acc;
-          }, {});
-          return createSupplierOrder(payload, token);
-        }),
-        ...selectedUpdatedRows.map((entry) => {
-          const payload = PERSISTED_FIELDS.concat("kiewit_po").reduce((acc, f) => {
-            acc[f] = entry.csvRow[f];
-            return acc;
-          }, {});
-          return updateSupplierOrder(entry.id, payload, token);
-        }),
-      ]);
-
-      results.forEach((r) => {
-        if (r.status === "rejected") errors.push(r.reason?.message || "A row failed to save");
-      });
-
-      setApplyErrors(errors);
-      await refresh();
-      if (errors.length === 0) setDiff(null);
+      const token = await getSnipeitToken();
+      setSnipeitModels(await listSnipeitModels(token));
+      setShowUnifiedModal(true);
+    } catch (err) {
+      setError(err.message || "Failed to load Snipe-IT models");
     } finally {
-      setApplying(false);
+      setLoadingUnifiedUpload(false);
     }
   };
 
@@ -465,26 +378,78 @@ export default function SupplierOrdersPage() {
     }
   };
 
-  const activeRows = records.filter((r) => !isCompleted(r.notes));
-  const completedRows = records.filter((r) => isCompleted(r.notes));
+  const handleDelete = async () => {
+    if (!selectedOrder) return;
+    const confirmed = window.confirm(
+      `Delete Kiewit PO ${selectedOrder.kiewit_po} (${selectedOrder.site_id})? This removes it from the database entirely.`,
+    );
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      const token = await getToken();
+      await deleteSupplierOrder(selectedOrder.id, token);
+      await refresh();
+      setSelectedOrder(null);
+    } catch (err) {
+      setError(err.message || "Failed to delete order");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const prepareRows = (rows) => {
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? rows.filter((r) =>
+          [r.site_id, r.requestor, r.kiewit_po, r.order_number, r.Quote_Number].some((v) =>
+            String(v || "").toLowerCase().includes(q),
+          ),
+        )
+      : rows;
+    return [...filtered].sort((a, b) => {
+      const da = a.order_date || "";
+      const db = b.order_date || "";
+      return sortDir === "asc" ? da.localeCompare(db) : db.localeCompare(da);
+    });
+  };
+
+  const toggleSort = () => setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+
+  const activeRows = prepareRows(records.filter((r) => !isCompleted(r.notes)));
+  const completedRows = prepareRows(records.filter((r) => isCompleted(r.notes)));
 
   return (
     <div className="mt-8 px-4 pb-16">
       <div className="max-w-[1800px] mx-auto">
         <BackLink />
-        <div className="flex items-center justify-between mb-5">
-          <h1 className="text-3xl font-bold leading-tight">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+          <h1 className="inline-block text-3xl font-bold leading-tight pb-3 relative">
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-pink-500">
               Supplier Orders
             </span>
+            <span className="absolute bottom-0 left-0 w-full h-1 rounded-full bg-gradient-to-r from-pink-400 to-pink-500" />
           </h1>
-          <div>
-            <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search site, PO, requestor…"
+              className="w-64 px-3 py-1.5 rounded-lg bg-gray-800 text-gray-100 placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+            />
+            <input
+              ref={unifiedFileInputRef}
+              type="file"
+              accept=".xlsx"
+              className="hidden"
+              onChange={handleUnifiedFileChange}
+            />
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-pink-600 text-black hover:bg-pink-500"
+              onClick={() => unifiedFileInputRef.current?.click()}
+              disabled={loadingUnifiedUpload}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-pink-600 text-black hover:bg-pink-500 disabled:opacity-60"
             >
-              Upload CSV
+              {loadingUnifiedUpload ? "Loading…" : "Upload Spreadsheet"}
             </button>
           </div>
         </div>
@@ -496,23 +461,19 @@ export default function SupplierOrdersPage() {
             </div>
           )}
 
-          {diff && (
-            <ReviewPanel
-              diff={diff}
-              applying={applying}
-              applyErrors={applyErrors}
-              onApply={handleApply}
-              onCancel={() => setDiff(null)}
-            />
-          )}
-
           {loading ? (
             <p className="text-sm text-gray-500 text-center py-10">Loading…</p>
           ) : (
             <div className="space-y-6">
               <section>
                 <h2 className="text-lg font-bold text-pink-400 mb-3">Active Orders ({activeRows.length})</h2>
-                <OrdersTable rows={activeRows} emptyLabel="No active orders" onRowClick={setSelectedOrder} />
+                <OrdersTable
+                  rows={activeRows}
+                  emptyLabel={search ? "No matching active orders" : "No active orders"}
+                  onRowClick={setSelectedOrder}
+                  sortDir={sortDir}
+                  onToggleSort={toggleSort}
+                />
               </section>
 
               {completedRows.length > 0 && (
@@ -522,7 +483,13 @@ export default function SupplierOrdersPage() {
                   </button>
                   {showCompleted && (
                     <div className="mt-3">
-                      <OrdersTable rows={completedRows} emptyLabel="No completed orders" onRowClick={setSelectedOrder} />
+                      <OrdersTable
+                        rows={completedRows}
+                        emptyLabel={search ? "No matching completed orders" : "No completed orders"}
+                        onRowClick={setSelectedOrder}
+                        sortDir={sortDir}
+                        onToggleSort={toggleSort}
+                      />
                     </div>
                   )}
                 </section>
@@ -538,6 +505,19 @@ export default function SupplierOrdersPage() {
           onClose={() => setSelectedOrder(null)}
           onMarkReceived={handleMarkReceived}
           markingReceived={markingReceived}
+          onDelete={handleDelete}
+          deleting={deleting}
+        />
+      )}
+
+      {showUnifiedModal && mainSheetRows && poTabResults && snipeitModels && (
+        <UnifiedUploadModal
+          csvRows={mainSheetRows}
+          poTabResults={poTabResults}
+          models={snipeitModels}
+          records={records}
+          onClose={() => setShowUnifiedModal(false)}
+          onApplied={refresh}
         />
       )}
     </div>

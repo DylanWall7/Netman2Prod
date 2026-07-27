@@ -42,6 +42,17 @@ export async function updateSupplierOrder(id, row, token) {
   });
 }
 
+export async function deleteSupplierOrder(id, token) {
+  const res = await fetch(`${BASE_URL}/${id}/`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Request failed (${res.status})${body ? `: ${body}` : ""}`);
+  }
+}
+
 export function useSupplierOrdersToken() {
   const { instance, accounts } = useMsal();
 

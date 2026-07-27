@@ -8,7 +8,8 @@ export function today() {
 
 export function formatDate(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, {
+  const value = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso}T00:00:00` : iso;
+  return new Date(value).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
