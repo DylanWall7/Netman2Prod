@@ -23,7 +23,9 @@ import DHCPManager from "./components/ManageDHCP/DHCPManager";
 import DHCPScopeDetail from "./components/ManageDHCP/DHCPScopeDetail";
 import OpengearReports from "./components/Reports/OpengearReports";
 import ReportLandingPage from "./components/Reports/ReportLandingPage";
+import NetworkSearchHome from "./components/NetworkSearch/NetworkSearchHome";
 import NetworkSearch from "./components/NetworkSearch/NetworkSearch";
+import DeviceOutputsBySite from "./components/NetworkSearch/DeviceOutputsBySite";
 import TopologyView from "./components/Topology/topologyView";
 import InventoryScanPage from "./components/InventoryScan/InventoryScanPage";
 import DepotManagerHome from "./components/DepotOrders/DepotManagerHome";
@@ -202,7 +204,23 @@ function App() {
               path="networksearch"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <NetworkSearchHome />
+                </ProtectedRoute>
+              }
+            ></Route>
+            <Route
+              path="device-search"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
                   <NetworkSearch />
+                </ProtectedRoute>
+              }
+            ></Route>
+            <Route
+              path="device-outputs"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <DeviceOutputsBySite />
                 </ProtectedRoute>
               }
             ></Route>

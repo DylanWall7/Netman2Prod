@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useMsal } from "@azure/msal-react";
 import { GizmoRequest } from "../../authConfig";
 import { Input, Button } from "@nextui-org/react";
+import NetworkSearchBackLink from "./NetworkSearchBackLink";
 
 export default function NetworkSearch() {
   const NetworkSearchURL = `https://${process.env.REACT_APP_API_BASEURL}/api/management/search`;
@@ -103,6 +104,7 @@ export default function NetworkSearch() {
   return (
     <div className="p-6 text-gray-100">
       <div className="max-w-6xl mx-auto">
+        <NetworkSearchBackLink />
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 leading-tight mb-2 pb-4 relative">
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-pink-500">
