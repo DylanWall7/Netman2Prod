@@ -37,6 +37,22 @@ export async function listNetboxDevicesForSite(siteId, token) {
   return safeList(await res.json());
 }
 
+// Multiple components on this page (site list, device outputs, compare) each acquire
+// their own token independently. If more than one needs an interactive refresh at the
+// same time, MSAL only allows one popup at once — a second call fails immediately with
+// "interaction_in_progress". Sharing the in-flight popup promise here means a second
+// caller just waits on the first popup's result instead of trying to open its own.
+let pendingInteractiveToken = null;
+
+function acquireTokenInteractive(instance, request) {
+  if (!pendingInteractiveToken) {
+    pendingInteractiveToken = instance.acquireTokenPopup(request).finally(() => {
+      pendingInteractiveToken = null;
+    });
+  }
+  return pendingInteractiveToken;
+}
+
 export function useNetworkSearchToken() {
   const { instance, accounts } = useMsal();
 
@@ -46,7 +62,7 @@ export function useNetworkSearchToken() {
       const res = await instance.acquireTokenSilent(request);
       return res.accessToken;
     } catch {
-      const res = await instance.acquireTokenPopup(request);
+      const res = await acquireTokenInteractive(instance, request);
       return res.accessToken;
     }
   }, [instance, accounts]);

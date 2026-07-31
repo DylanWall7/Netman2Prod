@@ -5,3 +5,4 @@ data.js
 .env
 /build
 docs/
+.superpowers/

@@ -243,6 +243,19 @@ export const PageLayout = (props) => {
       ),
     },
     {
+      to: "/diagrams",
+      label: "Site Diagrams",
+      show: isEngineer,
+      external: false,
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+          <path d="M12 3L3 7.5L12 12L21 7.5L12 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M3 12L12 16.5L21 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M3 16.5L12 21L21 16.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+    {
       to: "/validate",
       label: "Validation",
       show: isEngineer,

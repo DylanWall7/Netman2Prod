@@ -27,6 +27,7 @@ import NetworkSearchHome from "./components/NetworkSearch/NetworkSearchHome";
 import NetworkSearch from "./components/NetworkSearch/NetworkSearch";
 import DeviceOutputsBySite from "./components/NetworkSearch/DeviceOutputsBySite";
 import TopologyView from "./components/Topology/topologyView";
+import SiteDiagramsView from "./components/SiteDiagrams/SiteDiagramsView";
 import InventoryScanPage from "./components/InventoryScan/InventoryScanPage";
 import DepotManagerHome from "./components/DepotOrders/DepotManagerHome";
 import DashboardPage from "./components/DepotOrders/DashboardPage";
@@ -229,6 +230,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <TopologyView />
+                </ProtectedRoute>
+              }
+            ></Route>
+            <Route
+              path="diagrams"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <SiteDiagramsView />
                 </ProtectedRoute>
               }
             ></Route>
