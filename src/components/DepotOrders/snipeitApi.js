@@ -17,6 +17,13 @@ function safeArray(data) {
   return Array.isArray(data) ? data : data?.data || data?.rows || [];
 }
 
+function customFieldValue(device, dbColumnName) {
+  const fields = device?.custom_fields;
+  if (!fields) return undefined;
+  const entry = Object.values(fields).find((f) => f?.field === dbColumnName);
+  return entry?.value;
+}
+
 async function request(url, options) {
   const res = await fetch(url, options);
   const body = await res.json().catch(() => ({}));
@@ -35,7 +42,10 @@ export async function listSnipeitModels(token) {
 export async function listSnipeitHardwareByPO(poNumber, token) {
   const url = `${BASE_URL}/hardware?${PO_NUMBER_CUSTOM_FIELD}=${encodeURIComponent(poNumber)}`;
   const body = await request(url, { headers: authHeaders(token) });
-  return safeArray(body);
+  const rows = safeArray(body);
+  // Snipe-IT/the proxy doesn't reliably honor this filter param server-side, so
+  // re-filter client-side against the actual custom field value as a safety net.
+  return rows.filter((d) => String(customFieldValue(d, PO_NUMBER_CUSTOM_FIELD) ?? "") === String(poNumber ?? ""));
 }
 
 export async function listSnipeitHardwareByModel(modelId, token) {

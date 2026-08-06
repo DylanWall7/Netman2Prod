@@ -17,7 +17,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { listSnapshots, getSnapshot, listNetboxSites, useNetworkSearchToken } from "./siteDiagramsApi";
+import { generateDiagram, listNetboxSites, useNetworkSearchToken } from "./siteDiagramsApi";
 import { buildSiteDiagramTopology, computeVisible, getDistinctLocations, NODE_W, NODE_H } from "./topologyBuild";
 
 function HoverEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data, markerEnd }) {
@@ -123,6 +123,7 @@ function DeviceNode({ data, selected, accentColor = "#3b82f6", dashed = false })
   const isOnline = data.status === "online";
   const nw = data.nodeWidth ?? NODE_W;
   const handles = data.sourceHandles ?? [];
+  const targetHandles = data.targetHandles ?? [];
   const glow = data.highlighted
     ? `0 0 0 2px ${accentColor}, 0 0 16px ${accentColor}88, 0 4px 20px rgba(0,0,0,.5)`
     : "0 4px 20px rgba(0,0,0,.5)";
@@ -153,7 +154,42 @@ function DeviceNode({ data, selected, accentColor = "#3b82f6", dashed = false })
           transition: "box-shadow 0.15s ease",
         }}
       >
-        <Handle type="target" position={Position.Top} style={{ background: accentColor, width: 8, height: 8 }} />
+        {targetHandles.length > 0 ? (
+          targetHandles.map((h) => (
+            <Handle
+              key={h.id}
+              id={h.id}
+              type="target"
+              position={Position.Top}
+              style={{ left: `${h.leftPct}%`, background: accentColor, width: 8, height: 8 }}
+            />
+          ))
+        ) : (
+          <Handle type="target" position={Position.Top} style={{ background: accentColor, width: 8, height: 8 }} />
+        )}
+        {/* Peer links (e.g. between two same-rank redundant core routers) connect via the
+            sides instead of top/bottom, so they don't tangle with the hierarchy edges that
+            fan out below every node. */}
+        <Handle
+          id="peer-right-source"
+          type="source"
+          position={Position.Right}
+          style={
+            data.hasPeer
+              ? { background: accentColor, width: 8, height: 8, top: "50%" }
+              : { opacity: 0, pointerEvents: "none", top: "50%" }
+          }
+        />
+        <Handle
+          id="peer-left-target"
+          type="target"
+          position={Position.Left}
+          style={
+            data.hasPeer
+              ? { background: accentColor, width: 8, height: 8, top: "50%" }
+              : { opacity: 0, pointerEvents: "none", top: "50%" }
+          }
+        />
         {!data.isCollapsed && handles.length > 0 ? (
           handles.map((h) => (
             <Handle
@@ -250,11 +286,10 @@ export default function SiteDiagramsView() {
   const [selectedSite, setSelectedSite] = useState(null);
   const [error, setError] = useState(null);
 
-  const [snapshots, setSnapshots] = useState([]);
-  const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false);
-  const [selectedSnapshotId, setSelectedSnapshotId] = useState(null);
-  const [isLoadingSnapshotDetail, setIsLoadingSnapshotDetail] = useState(false);
-  const latestSnapshotRequestRef = useRef(null);
+  const [isLoadingDiagram, setIsLoadingDiagram] = useState(false);
+  const [unlinked, setUnlinked] = useState([]);
+  const [generatedAt, setGeneratedAt] = useState(null);
+  const latestRequestRef = useRef(null);
 
   const [rawData, setRawData] = useState(EMPTY_RAW);
   const [allLocations, setAllLocations] = useState([]);
@@ -288,55 +323,62 @@ export default function SiteDiagramsView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const loadDiagram = useCallback(
+    async (site) => {
+      const requestId = site.id;
+      latestRequestRef.current = requestId;
+      setIsLoadingDiagram(true);
+      setError(null);
+      try {
+        const token = await getToken();
+        const diagram = await generateDiagram(site.id, token);
+        if (latestRequestRef.current !== requestId) return;
+        const diagramNodes = diagram.nodes ?? [];
+        const { nodes: n, edges: e, childrenMap: cm } = buildSiteDiagramTopology(diagramNodes, diagram.links);
+        // Determine "isolated" from the edges actually resolved, not the API's own
+        // `unlinked` list — that flag can go stale (e.g. a device gains a real link
+        // in `links` but the backend's precomputed `unlinked` array isn't updated to
+        // match), which would otherwise strip a connected device out of the canvas
+        // for no visible reason.
+        const connectedIds = new Set();
+        e.forEach((edge) => {
+          connectedIds.add(edge.source);
+          connectedIds.add(edge.target);
+        });
+        const linkedNodes = n.filter((node) => connectedIds.has(node.id));
+        // `buildSiteDiagramTopology` normalizes ids to strings (falling back through
+        // netbox_id/id/mist_id/name) for React Flow, but `diagramNodes` here still
+        // has the API's raw shape — mirror that same id resolution so a device isn't
+        // misclassified as isolated just because of a raw/string or id-field mismatch.
+        const isolatedNodes = diagramNodes.filter(
+          (node) => !connectedIds.has(String(node.netbox_id ?? node.id ?? node.mist_id ?? node.name)),
+        );
+        const locations = getDistinctLocations(diagramNodes);
+        setRawData({ nodes: linkedNodes, edges: e, childrenMap: cm });
+        setAllLocations(locations);
+        setSelectedLocationKeys(new Set(locations));
+        setCollapsedIds(new Set());
+        setUnlinked(isolatedNodes);
+        setGeneratedAt(new Date());
+      } catch (err) {
+        if (latestRequestRef.current === requestId) setError(err.message || "Failed to generate diagram");
+      } finally {
+        if (latestRequestRef.current === requestId) setIsLoadingDiagram(false);
+      }
+    },
+    [getToken],
+  );
+
   useEffect(() => {
     if (!selectedSite) return;
-    let cancelled = false;
-    setIsLoadingSnapshots(true);
-    setError(null);
-    setSnapshots([]);
-    setSelectedSnapshotId(null);
     setRawData(EMPTY_RAW);
     setAllLocations([]);
     setSelectedLocationKeys(new Set());
     setCollapsedIds(new Set());
-    (async () => {
-      try {
-        const data = await listSnapshots(selectedSite.id);
-        if (!cancelled) setSnapshots(data);
-      } catch (err) {
-        if (!cancelled) setError(err.message || "Failed to load snapshots");
-      } finally {
-        if (!cancelled) setIsLoadingSnapshots(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    setUnlinked([]);
+    loadDiagram(selectedSite);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSite]);
-
-  const handleSelectSnapshot = useCallback(
-    async (snapshotId) => {
-      setSelectedSnapshotId(snapshotId);
-      setIsLoadingSnapshotDetail(true);
-      setError(null);
-      latestSnapshotRequestRef.current = snapshotId;
-      try {
-        const detail = await getSnapshot(selectedSite.id, snapshotId);
-        if (latestSnapshotRequestRef.current !== snapshotId) return;
-        const { nodes: n, edges: e, childrenMap: cm } = buildSiteDiagramTopology(detail.nodes, detail.links);
-        const locations = getDistinctLocations(detail.nodes);
-        setRawData({ nodes: n, edges: e, childrenMap: cm });
-        setAllLocations(locations);
-        setSelectedLocationKeys(new Set(locations));
-        setCollapsedIds(new Set());
-      } catch (err) {
-        if (latestSnapshotRequestRef.current === snapshotId) setError(err.message || "Failed to load snapshot");
-      } finally {
-        if (latestSnapshotRequestRef.current === snapshotId) setIsLoadingSnapshotDetail(false);
-      }
-    },
-    [selectedSite],
-  );
 
   useEffect(() => {
     if (!rawData.nodes.length) {
@@ -433,7 +475,7 @@ export default function SiteDiagramsView() {
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-pink-500">Site Diagrams</span>
           <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-1 rounded-full bg-gradient-to-r from-pink-400 to-pink-500" />
         </h1>
-        <p className="text-sm text-pink-400">Browse historical topology snapshots by site</p>
+        <p className="text-sm text-pink-400">Generate a live topology diagram for a site</p>
       </div>
 
       {error && (
@@ -446,7 +488,7 @@ export default function SiteDiagramsView() {
         {sidebarCollapsed ? (
           <button
             onClick={() => setSidebarCollapsed(false)}
-            title="Show site, snapshot, and location filters"
+            title="Show site and location filters"
             className="shrink-0 h-10 w-8 flex items-center justify-center rounded border border-gray-700 bg-gray-900 text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
           >
             »
@@ -485,34 +527,17 @@ export default function SiteDiagramsView() {
           </Autocomplete>
 
           {selectedSite && (
-            <div>
-              <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Snapshots</h2>
-              {isLoadingSnapshots ? (
-                <p className="text-xs text-gray-500">Loading…</p>
-              ) : snapshots.length === 0 ? (
-                <p className="text-xs text-gray-600 italic">No snapshots for this site.</p>
-              ) : (
-                <div className="space-y-1">
-                  {snapshots.map((snap) => {
-                    const isActive = snap.id === selectedSnapshotId;
-                    return (
-                      <button
-                        key={snap.id}
-                        onClick={() => handleSelectSnapshot(snap.id)}
-                        className={`w-full text-left text-xs px-3 py-2 rounded border transition-colors ${
-                          isActive
-                            ? "bg-pink-500/20 border-pink-500 text-pink-200"
-                            : "bg-gray-900 border-gray-700 text-gray-300 hover:border-gray-500"
-                        }`}
-                      >
-                        {new Date(snap.takenAt).toLocaleString()}
-                        {isActive && isLoadingSnapshotDetail && <span className="ml-2 text-gray-500">loading…</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <button
+              onClick={() => loadDiagram(selectedSite)}
+              disabled={isLoadingDiagram}
+              className="w-full text-xs px-3 py-2 rounded border border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white transition-colors disabled:opacity-50"
+            >
+              {isLoadingDiagram ? "Generating…" : "Regenerate diagram"}
+            </button>
+          )}
+
+          {generatedAt && (
+            <p className="text-[11px] text-gray-600">Generated {generatedAt.toLocaleTimeString()}</p>
           )}
 
           {allLocations.length > 0 && (
@@ -538,7 +563,7 @@ export default function SiteDiagramsView() {
           {nodes.length > 0 && (
             <div className="flex items-center justify-between mb-2 px-1 gap-3">
               <p className="text-xs text-gray-500 shrink-0">
-                {rawData.nodes.length} device{rawData.nodes.length !== 1 ? "s" : ""} in snapshot
+                {rawData.nodes.length} device{rawData.nodes.length !== 1 ? "s" : ""} in site
                 {collapsedIds.size > 0 && (
                   <span className="text-blue-400 ml-2">
                     ({collapsedIds.size} node{collapsedIds.size !== 1 ? "s" : ""} collapsed)
@@ -581,7 +606,7 @@ export default function SiteDiagramsView() {
           )}
 
           <div style={{ height: "72vh" }} className="rounded-xl border border-gray-700 overflow-hidden">
-            {isLoadingSnapshotDetail && rawData.nodes.length === 0 ? (
+            {isLoadingDiagram && rawData.nodes.length === 0 ? (
               <div className="flex justify-center items-center h-full">
                 <span className="w-6 h-6 border-2 border-pink-400/30 border-t-pink-400 rounded-full animate-spin" />
               </div>
@@ -589,13 +614,9 @@ export default function SiteDiagramsView() {
               <div className="flex justify-center items-center h-full">
                 <p className="text-gray-600 text-sm">Select a site to get started</p>
               </div>
-            ) : !selectedSnapshotId ? (
-              <div className="flex justify-center items-center h-full">
-                <p className="text-gray-600 text-sm">Select a snapshot to view its topology</p>
-              </div>
             ) : nodes.length === 0 ? (
               <div className="flex justify-center items-center h-full">
-                <p className="text-gray-500 text-sm">No devices in this snapshot.</p>
+                <p className="text-gray-500 text-sm">No devices found for this site.</p>
               </div>
             ) : (
               <ReactFlow
@@ -659,6 +680,29 @@ export default function SiteDiagramsView() {
               </ReactFlow>
             )}
           </div>
+
+          {unlinked.length > 0 && (
+            <div className="mt-6">
+              <h2 className="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-gray-500" />
+                No Link Data ({unlinked.length})
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                {unlinked.map((d) => (
+                  <div
+                    key={d.id ?? d.name}
+                    className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs space-y-0.5"
+                  >
+                    <div className="font-semibold text-gray-300 truncate">{d.name}</div>
+                    <div className="text-gray-500 truncate">{d.model || "—"}</div>
+                    <div className={d.status === "online" ? "text-green-400" : "text-red-400"}>
+                      {d.status === "online" ? "Online" : "Offline"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

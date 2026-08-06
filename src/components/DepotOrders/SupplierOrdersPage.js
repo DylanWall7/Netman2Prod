@@ -238,7 +238,10 @@ function OrderDetailModal({ order, onClose, onMarkReceived, markingReceived, onD
             )}
           </div>
           {loadingDevices ? (
-            <p className="text-sm text-gray-500 italic">Loading…</p>
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <span className="w-4 h-4 border-2 border-gray-500/30 border-t-gray-300 rounded-full animate-spin" />
+              Loading devices…
+            </div>
           ) : devicesError ? (
             <p className="text-sm text-red-400">{devicesError}</p>
           ) : !devices || devices.length === 0 ? (

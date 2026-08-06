@@ -2,22 +2,18 @@ import {
   listNetboxSites,
   useNetworkSearchToken,
 } from "../NetworkSearch/deviceOutputsApi";
-import { MOCK_SNAPSHOTS, getMockSnapshotDetail } from "./mockData";
 
-const MOCK_DELAY_MS = 400;
-
-function delay(value) {
-  return new Promise((resolve) =>
-    setTimeout(() => resolve(value), MOCK_DELAY_MS),
-  );
-}
+const BASE_URL = `https://${process.env.REACT_APP_API_BASEURL}/api`;
 
 export { listNetboxSites, useNetworkSearchToken };
 
-export async function listSnapshots(siteId) {
-  return delay(MOCK_SNAPSHOTS.map((s) => ({ ...s, siteId })));
-}
-
-export async function getSnapshot(siteId, snapshotId) {
-  return delay(getMockSnapshotDetail(snapshotId));
+export async function generateDiagram(siteId, token) {
+  const url = `${BASE_URL}/diagrams/generate/${encodeURIComponent(siteId)}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to generate diagram (${res.status})`);
+  }
+  return res.json();
 }
