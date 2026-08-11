@@ -233,14 +233,14 @@ function App() {
                 </ProtectedRoute>
               }
             ></Route>
-            {/* <Route
+            <Route
               path="diagrams"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <SiteDiagramsView />
                 </ProtectedRoute>
               }
-            ></Route> */}
+            ></Route>
             {/* <Route path="dhcpmanager" element={<DHCPManager />} />
             <Route path="dhcpmanager/scope" element={<DHCPScopeDetail />} /> */}
             {/* <Route path="ogtemplate" element={<OgTemplate />} /> */}
