@@ -33,6 +33,8 @@ import DepotManagerHome from "./components/DepotOrders/DepotManagerHome";
 import DashboardPage from "./components/DepotOrders/DashboardPage";
 import ManagePage from "./components/DepotOrders/ManagePage";
 import SupplierOrdersPage from "./components/DepotOrders/SupplierOrdersPage";
+import SiteDashboardPage from "./components/SiteDashboard/SiteDashboardPage";
+import SiteSearchPage from "./components/SiteDashboard/SiteSearchPage";
 
 const Unauthorized = () => {
   return (
@@ -266,15 +268,15 @@ function App() {
             <Route
               path="depot-orders"
               element={
-                <ProtectedRoute allowedRoles={["Engineer", "FieldServices"]}>
+                <ProtectedRoute allowedRoles={["Engineer"]}>
                   <DepotManagerHome />
                 </ProtectedRoute>
               }
             />
             <Route
-              path="dashboard"
+              path="depot/dashboard"
               element={
-                <ProtectedRoute allowedRoles={["Engineer", "FieldServices"]}>
+                <ProtectedRoute allowedRoles={["Engineer" ]}>
                   <DashboardPage />
                 </ProtectedRoute>
               }
@@ -295,6 +297,22 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            {/* <Route
+              path="dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <SiteSearchPage />
+                </ProtectedRoute>
+              }
+            /> */}
+            {/* <Route
+              path=":siteCode/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <SiteDashboardPage />
+                </ProtectedRoute>
+              }
+            /> */}
             <Route path="*" element={<NoMatch />} />
           </Routes>
         </AuthenticatedTemplate>

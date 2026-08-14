@@ -37,22 +37,6 @@ export async function listNetboxDevicesForSite(siteId, token) {
   return safeList(await res.json());
 }
 
-// Multiple components on this page (site list, device outputs, compare) each acquire
-// their own token independently. If more than one needs an interactive refresh at the
-// same time, MSAL only allows one popup at once — a second call fails immediately with
-// "interaction_in_progress". Sharing the in-flight popup promise here means a second
-// caller just waits on the first popup's result instead of trying to open its own.
-let pendingInteractiveToken = null;
-
-function acquireTokenInteractive(instance, request) {
-  if (!pendingInteractiveToken) {
-    pendingInteractiveToken = instance.acquireTokenPopup(request).finally(() => {
-      pendingInteractiveToken = null;
-    });
-  }
-  return pendingInteractiveToken;
-}
-
 export function useNetworkSearchToken() {
   const { instance, accounts } = useMsal();
 
@@ -62,8 +46,14 @@ export function useNetworkSearchToken() {
       const res = await instance.acquireTokenSilent(request);
       return res.accessToken;
     } catch {
-      const res = await acquireTokenInteractive(instance, request);
-      return res.accessToken;
+      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so
+      // a popup just loads the whole app inside itself instead of closing (known MSAL issue,
+      // worsened by browsers partitioning storage between popup and opener). Redirect reuses
+      // the already-registered URI, no Azure changes needed. Navigates the tab away, so this
+      // never meaningfully returns — the user lands back in the app freshly authenticated
+      // and just retries whatever they were doing.
+      await instance.acquireTokenRedirect(request);
+      return null;
     }
   }, [instance, accounts]);
 }

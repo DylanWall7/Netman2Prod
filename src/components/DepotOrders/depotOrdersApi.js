@@ -92,8 +92,13 @@ export function useDepotOrdersToken() {
       const res = await instance.acquireTokenSilent(request);
       return res.accessToken;
     } catch {
-      const res = await instance.acquireTokenPopup(request);
-      return res.accessToken;
+      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so
+      // a popup just loads the whole app inside itself instead of closing. Redirect reuses
+      // the already-registered URI (no Azure changes needed) and navigates the tab away, so
+      // this never meaningfully returns — the user lands back freshly authenticated and
+      // just retries whatever they were doing.
+      await instance.acquireTokenRedirect(request);
+      return null;
     }
   }, [instance, accounts]);
 }

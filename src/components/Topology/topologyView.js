@@ -1172,13 +1172,14 @@ export default function TopologyView() {
       const r = await instance.acquireTokenSilent(request);
       return r.accessToken;
     } catch (silentErr) {
-      console.warn("Silent token acquisition failed, trying popup:", silentErr);
-      try {
-        const r = await instance.acquireTokenPopup(request);
-        return r.accessToken;
-      } catch {
-        throw new Error("Session expired — please log in again.");
-      }
+      console.warn("Silent token acquisition failed, redirecting to re-auth:", silentErr);
+      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so
+      // a popup just loads the whole app inside itself instead of closing. Redirect reuses
+      // the already-registered URI (no Azure changes needed) and navigates the tab away, so
+      // this never meaningfully returns — the user lands back freshly authenticated and
+      // just retries whatever they were doing.
+      await instance.acquireTokenRedirect(request);
+      return null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instance]);

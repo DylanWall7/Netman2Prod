@@ -1,5 +1,9 @@
 import { useEffect, useRef } from "react";
 
+function escapeHtml(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function ToolbarButton({ onClick, title, children }) {
   return (
     <button
@@ -30,6 +34,27 @@ export default function RichNotesEditor({ value, onChange, placeholder, rows = 3
     onChange(ref.current?.innerHTML || "");
   };
 
+  // Pasting a multi-row Excel selection into a bare contentEditable lets the browser
+  // insert whatever HTML the clipboard provides (often a <table>, or one line with no
+  // real breaks) — unusable for line-by-line automation downstream. Force plain text
+  // instead, split on rows, and rebuild each row as its own <div> so every paste
+  // produces one predictable line per device with tab-separated cells turned into spaces.
+  const handlePaste = (e) => {
+    const clipboard = e.clipboardData || window.clipboardData;
+    const text = clipboard?.getData("text/plain") || "";
+    if (!text) return;
+    e.preventDefault();
+    const lines = text
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .map((line) => line.replace(/\t+/g, " ").replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+    if (lines.length === 0) return;
+    const html = lines.map((line) => `<div>${escapeHtml(line)}</div>`).join("");
+    document.execCommand("insertHTML", false, html);
+    onChange(ref.current?.innerHTML || "");
+  };
+
   return (
     <div className="rounded-lg bg-gray-700 focus-within:ring-2 focus-within:ring-pink-500">
       <div className="flex gap-1 px-2 py-1.5 border-b border-gray-600/60">
@@ -49,6 +74,7 @@ export default function RichNotesEditor({ value, onChange, placeholder, rows = 3
           contentEditable
           suppressContentEditableWarning
           onInput={(e) => onChange(e.currentTarget.innerHTML)}
+          onPaste={handlePaste}
           style={{ minHeight: `${rows * 1.5}rem` }}
           className="px-3 py-2 text-sm text-gray-100 focus:outline-none whitespace-pre-wrap"
         />

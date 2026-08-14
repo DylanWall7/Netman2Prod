@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Badge from "./Badge";
 import SiteAutocomplete from "./SiteAutocomplete";
 import RichNotesEditor from "./RichNotesEditor";
 import RichNotesDisplay from "./RichNotesDisplay";
 import { formatDate, today } from "./dateHelpers";
 import { getPOs, getGearReturns, getActive, getCompleted } from "./depotOrdersApi";
+import { useSnipeitToken, listSnipeitLocations, listSnipeitModels, getSnipeitAssetBySerial } from "./snipeitApi";
+import { checkAndStrikeReturnedGear, buildModelExclusionSet } from "./gearReturnCheck";
 
 const PO_STATUS_COLOR = { ordered: "gray", shipped: "blue", received: "green" };
 const GEAR_STATUS_COLOR = { out: "amber", returned: "green" };
@@ -150,7 +152,7 @@ function POItem({ po, onEdit, onAdvance, isBusy }) {
   );
 }
 
-function GearItem({ item, onEdit, onAdvance, isBusy }) {
+function GearItem({ item, onEdit, onAdvance, onCheck, isBusy, isChecking, checkResult }) {
   return (
     <div className="px-4 py-3 bg-gray-700/50 rounded-lg">
       <div className="flex items-center gap-3">
@@ -164,6 +166,16 @@ function GearItem({ item, onEdit, onAdvance, isBusy }) {
           {formatDate(item.expectedReturnDate)}
         </p>
         <Badge color={GEAR_STATUS_COLOR[item.status] || "gray"}>{item.status}</Badge>
+        {item.status === "out" && item.notes && (
+          <button
+            onClick={() => onCheck(item)}
+            disabled={isBusy || isChecking}
+            className="px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-600/80 text-white hover:bg-blue-600 flex-shrink-0 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5"
+          >
+            {isChecking && <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+            {isChecking ? "Checking…" : "Check Snipe-IT"}
+          </button>
+        )}
         {item.status === "out" && (
           <button
             onClick={() => onAdvance(item, "returned")}
@@ -184,6 +196,11 @@ function GearItem({ item, onEdit, onAdvance, isBusy }) {
           className="mt-2 pt-2 border-t border-gray-600/50 text-xs text-gray-400 whitespace-pre-wrap"
         />
       )}
+      {checkResult && (
+        <p className={`mt-1.5 text-xs ${checkResult.error ? "text-red-400" : "text-blue-300"}`}>
+          {checkResult.error || checkResult.message}
+        </p>
+      )}
     </div>
   );
 }
@@ -196,6 +213,10 @@ export default function POGearManage({ records, onCreate, onUpdate }) {
   const [showCompletedPO, setShowCompletedPO] = useState(false);
   const [showCompletedGear, setShowCompletedGear] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [checkingId, setCheckingId] = useState(null);
+  const [checkResults, setCheckResults] = useState({});
+  const getSnipeitToken = useSnipeitToken();
+  const snipeitMetaRef = useRef(null);
 
   const pos = getPOs(records);
   const gear = getGearReturns(records);
@@ -270,6 +291,44 @@ export default function POGearManage({ records, onCreate, onUpdate }) {
     }
   };
 
+  const checkSnipeit = async (item) => {
+    setCheckingId(item.id);
+    setCheckResults((r) => ({ ...r, [item.id]: null }));
+    try {
+      const token = await getSnipeitToken();
+      if (!snipeitMetaRef.current) {
+        const [locations, models] = await Promise.all([listSnipeitLocations(token), listSnipeitModels(token)]);
+        snipeitMetaRef.current = { locations, modelExclusionSet: buildModelExclusionSet(models) };
+      }
+      const { locations, modelExclusionSet } = snipeitMetaRef.current;
+
+      const outcome = await checkAndStrikeReturnedGear(item.notes, {
+        siteName: item.site,
+        locations,
+        modelExclusionSet,
+        lookupBySerial: (serial) => getSnipeitAssetBySerial(serial, token),
+      });
+
+      if (outcome.html !== item.notes) {
+        await onUpdate(item.id, { ...item, notes: outcome.html });
+      }
+
+      const parts = [];
+      if (outcome.struckLines) parts.push(`${outcome.struckLines} confirmed moved off site`);
+      if (outcome.unstruckLines) parts.push(`${outcome.unstruckLines} reverted (still at site)`);
+      if (outcome.ambiguousLines) parts.push(`${outcome.ambiguousLines} ambiguous`);
+      if (outcome.notFoundLines) parts.push(`${outcome.notFoundLines} not found`);
+      if (outcome.unresolvedLines) parts.push(`${outcome.unresolvedLines} unresolved`);
+      const message =
+        outcome.checkedLines === 0 ? "Nothing to check" : `Checked ${outcome.checkedLines} — ${parts.join(", ") || "no changes"}`;
+      setCheckResults((r) => ({ ...r, [item.id]: { message } }));
+    } catch (err) {
+      setCheckResults((r) => ({ ...r, [item.id]: { error: err.message || "Check failed" } }));
+    } finally {
+      setCheckingId(null);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Manual PO tracking disabled — POs are now tracked via the weekly supplier CSV upload
@@ -329,7 +388,16 @@ export default function POGearManage({ records, onCreate, onUpdate }) {
         ) : (
           <div className="space-y-2">
             {activeGear.map((item) => (
-              <GearItem key={item.id} item={item} onEdit={setEditingGear} onAdvance={advanceGear} isBusy={busyId === item.id} />
+              <GearItem
+                key={item.id}
+                item={item}
+                onEdit={setEditingGear}
+                onAdvance={advanceGear}
+                onCheck={checkSnipeit}
+                isBusy={busyId === item.id}
+                isChecking={checkingId === item.id}
+                checkResult={checkResults[item.id]}
+              />
             ))}
           </div>
         )}

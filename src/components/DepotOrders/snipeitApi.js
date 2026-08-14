@@ -48,6 +48,11 @@ export async function listSnipeitHardwareByPO(poNumber, token) {
   return rows.filter((d) => String(customFieldValue(d, PO_NUMBER_CUSTOM_FIELD) ?? "") === String(poNumber ?? ""));
 }
 
+export async function listSnipeitLocations(token) {
+  const body = await request(`${BASE_URL}/locations?limit=500`, { headers: authHeaders(token) });
+  return safeArray(body);
+}
+
 export async function listSnipeitHardwareByModel(modelId, token) {
   const url = `${BASE_URL}/hardware?model_id=${encodeURIComponent(modelId)}&limit=500`;
   const body = await request(url, { headers: authHeaders(token) });
@@ -88,8 +93,13 @@ export function useSnipeitToken() {
       const res = await instance.acquireTokenSilent(request);
       return res.accessToken;
     } catch {
-      const res = await instance.acquireTokenPopup(request);
-      return res.accessToken;
+      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so
+      // a popup just loads the whole app inside itself instead of closing. Redirect reuses
+      // the already-registered URI (no Azure changes needed) and navigates the tab away, so
+      // this never meaningfully returns — the user lands back freshly authenticated and
+      // just retries whatever they were doing.
+      await instance.acquireTokenRedirect(request);
+      return null;
     }
   }, [instance, accounts]);
 }
