@@ -156,15 +156,41 @@ function tokenizeGroups(groups) {
   return stream;
 }
 
-// Falls back to "one source line = one block" (a no-op) when no token anywhere matches
-// the site code, so records with no reliable site code pass through unchanged rather
-// than guessing.
-function groupIntoDeviceBlocks(groups, siteName) {
-  const siteCode = String(siteName || "").trim().toUpperCase();
+// The record's own "Site" field isn't reliable — it's often blank — so the site code
+// is read straight out of the device names instead: every hostname in one record
+// shares the same first-8-character prefix (that's the whole naming convention), so
+// whichever 8-char prefix repeats across multiple non-MAC, non-numeric tokens is it.
+// Requiring at least 2 occurrences keeps a lone serial/model that happens to share a
+// prefix with nothing else from being mistaken for a site code.
+function inferSiteCode(tokens) {
+  const counts = new Map();
+  tokens.forEach((token) => {
+    if (MAC_RE.test(token)) return;
+    if (token.length < SITE_CODE_LENGTH) return;
+    if (/^\d+$/.test(token)) return;
+    const prefix = token.slice(0, SITE_CODE_LENGTH).toUpperCase();
+    counts.set(prefix, (counts.get(prefix) || 0) + 1);
+  });
+  let bestPrefix = null;
+  let bestCount = 1;
+  counts.forEach((count, prefix) => {
+    if (count > bestCount) {
+      bestCount = count;
+      bestPrefix = prefix;
+    }
+  });
+  return bestPrefix;
+}
+
+// Falls back to "one source line = one block" (a no-op) when no site code can be
+// inferred at all, so unrecognizable content passes through unchanged rather than
+// guessing.
+function groupIntoDeviceBlocks(groups) {
   const stream = tokenizeGroups(groups);
+  const siteCode = inferSiteCode(stream.map((entry) => entry.token));
   const isHostnameToken = (entry) => siteCode && entry.token.toUpperCase().startsWith(siteCode);
 
-  if (siteCode && stream.some(isHostnameToken)) {
+  if (siteCode) {
     const blocks = [];
     let current = null;
     stream.forEach((entry) => {
@@ -210,14 +236,23 @@ function candidateTokens(restTokens, modelExclusionSet) {
     .filter((t) => !modelExclusionSet.has(t.toUpperCase()));
 }
 
-// null = can't determine (no hostname site code and no fallback site to compare against)
+// null = can't determine either way — leaves the line untouched rather than guessing.
+// Missing location data must NOT default to "moved off": that was the actual bug —
+// devices checked out to a person (not a location record) can come back from
+// byserial with location=null even while genuinely still checked out at the site,
+// and defaulting unknown to "moved off" was quietly confirming an already-wrong
+// strike as correct instead of leaving it alone.
 function isStillAtOriginalSite(asset, { hostname, siteLocation }) {
   const locationName = String(asset?.location?.name || "").trim().toUpperCase();
+  const assignedToName = String(asset?.assigned_to?.name || "").trim().toUpperCase();
+  const assignedToIsLocation = asset?.assigned_to?.type === "location";
+
   if (hostname) {
     const expectedCode = hostname.trim().slice(0, SITE_CODE_LENGTH).toUpperCase();
     if (!expectedCode) return null;
-    if (!locationName) return false;
-    return locationName.slice(0, SITE_CODE_LENGTH) === expectedCode;
+    if (locationName) return locationName.slice(0, SITE_CODE_LENGTH) === expectedCode;
+    if (assignedToIsLocation && assignedToName) return assignedToName.slice(0, SITE_CODE_LENGTH) === expectedCode;
+    return null;
   }
   if (siteLocation) {
     return (asset?.location?.id ?? null) === siteLocation.id;
@@ -236,6 +271,7 @@ export async function checkAndStrikeReturnedGear(notesHtml, { siteName, location
     ambiguousLines: 0,
     notFoundLines: 0,
     unresolvedLines: 0,
+    debug: [],
   };
 
   const siteLocation = resolveLocationByName(locations, siteName);
@@ -244,7 +280,7 @@ export async function checkAndStrikeReturnedGear(notesHtml, { siteName, location
   rawContainer.innerHTML = notesHtml || "";
   normalizeNewlines(rawContainer);
   const rawGroups = collectLineGroups(rawContainer);
-  const blocks = groupIntoDeviceBlocks(rawGroups, siteName);
+  const blocks = groupIntoDeviceBlocks(rawGroups);
   const reformattedHtml = buildReformattedHtml(blocks);
 
   const container = document.createElement("div");
@@ -276,30 +312,58 @@ export async function checkAndStrikeReturnedGear(notesHtml, { siteName, location
   for (const info of lineInfos) {
     if (!info) continue;
     result.totalLines += 1;
-    if (info.candidates.length === 0) continue;
+    const lineText = groupText(info.group);
+    if (info.candidates.length === 0) {
+      result.debug.push({ line: lineText, hostname: info.hostname, candidates: info.candidates, outcome: "no-candidates" });
+      continue;
+    }
     result.checkedLines += 1;
 
     const resolved = info.candidates.map((token) => ({ token, asset: cache.get(token) })).filter((l) => l.asset);
 
     if (resolved.length !== 1) {
+      result.debug.push({
+        line: lineText,
+        hostname: info.hostname,
+        candidates: info.candidates,
+        resolved: resolved.map((r) => r.token),
+        outcome: resolved.length === 0 ? "not-found" : "ambiguous",
+      });
       if (resolved.length === 0) result.notFoundLines += 1;
       else result.ambiguousLines += 1;
       continue;
     }
 
-    const stillAtOriginalSite = isStillAtOriginalSite(resolved[0].asset, { hostname: info.hostname, siteLocation });
+    const asset = resolved[0].asset;
+    const stillAtOriginalSite = isStillAtOriginalSite(asset, { hostname: info.hostname, siteLocation });
+    const currentlyStruck = isGroupStruck(info.group);
+    const debugEntry = {
+      line: lineText,
+      hostname: info.hostname,
+      serial: resolved[0].token,
+      assetLocation: asset?.location?.name ?? null,
+      assignedTo: asset?.assigned_to?.name ?? null,
+      assignedToType: asset?.assigned_to?.type ?? null,
+      stillAtOriginalSite,
+      currentlyStruck,
+    };
+
     if (stillAtOriginalSite === null) {
       result.unresolvedLines += 1;
+      result.debug.push({ ...debugEntry, outcome: "unresolved" });
       continue;
     }
 
-    const currentlyStruck = isGroupStruck(info.group);
     if (stillAtOriginalSite && currentlyStruck) {
       unstrikeGroup(info.group);
       result.unstruckLines += 1;
+      result.debug.push({ ...debugEntry, outcome: "unstruck" });
     } else if (!stillAtOriginalSite && !currentlyStruck) {
       strikeGroup(container, info.group);
       result.struckLines += 1;
+      result.debug.push({ ...debugEntry, outcome: "struck" });
+    } else {
+      result.debug.push({ ...debugEntry, outcome: "no-change" });
     }
   }
 

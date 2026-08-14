@@ -309,6 +309,9 @@ export default function POGearManage({ records, onCreate, onUpdate }) {
         lookupBySerial: (serial) => getSnipeitAssetBySerial(serial, token),
       });
 
+      // eslint-disable-next-line no-console
+      console.table(outcome.debug);
+
       if (outcome.html !== item.notes) {
         await onUpdate(item.id, { ...item, notes: outcome.html });
       }
