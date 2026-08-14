@@ -137,44 +137,66 @@ function escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Groups raw source lines into one block per device. A line counts as a hostname line
-// (device boundary) when it starts with the record's own site code — recognizing real
-// content instead of relying on blank-line placement, which isn't consistent (see
-// header comment). Falls back to "one source line = one block" (a no-op) when no line
-// in the whole box matches the site code, so already-clean single-line content and
-// records with no reliable site code both pass through unchanged.
+// Flattens every source line into individual whitespace-separated tokens, each tagged
+// with whether its source line was struck. Device boundaries can't be trusted at the
+// line level — some pastes land as one token per line, others as everything on a
+// single line with no breaks at all, so the only reliable signal in either case is the
+// token content itself: a token that starts with the record's own site code is a
+// hostname and marks the start of a new device.
+function tokenizeGroups(groups) {
+  const stream = [];
+  groups.forEach((group) => {
+    const struck = isGroupStruck(group);
+    groupText(group)
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .forEach((token) => stream.push({ token, struck }));
+  });
+  return stream;
+}
+
+// Falls back to "one source line = one block" (a no-op) when no token anywhere matches
+// the site code, so records with no reliable site code pass through unchanged rather
+// than guessing.
 function groupIntoDeviceBlocks(groups, siteName) {
   const siteCode = String(siteName || "").trim().toUpperCase();
-  const nonBlank = groups.filter((g) => groupText(g).trim());
-  const isHostnameLine = (g) => siteCode && groupText(g).trim().toUpperCase().startsWith(siteCode);
+  const stream = tokenizeGroups(groups);
+  const isHostnameToken = (entry) => siteCode && entry.token.toUpperCase().startsWith(siteCode);
 
-  if (siteCode && nonBlank.some(isHostnameLine)) {
+  if (siteCode && stream.some(isHostnameToken)) {
     const blocks = [];
     let current = null;
-    nonBlank.forEach((g) => {
-      if (isHostnameLine(g)) {
+    stream.forEach((entry) => {
+      if (isHostnameToken(entry)) {
         if (current) blocks.push(current);
-        current = [g];
+        current = [entry];
       } else if (current) {
-        current.push(g);
+        current.push(entry);
       }
-      // lines before the first recognized hostname have no device context — dropped
+      // tokens before the first recognized hostname have no device context — dropped
     });
     if (current) blocks.push(current);
     return blocks;
   }
 
-  return nonBlank.map((g) => [g]);
+  return groups
+    .filter((g) => groupText(g).trim())
+    .map((g) => {
+      const struck = isGroupStruck(g);
+      return groupText(g)
+        .split(/\s+/)
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .map((token) => ({ token, struck }));
+    });
 }
 
 function buildReformattedHtml(blocks) {
   return blocks
     .map((block) => {
-      const text = block
-        .map((g) => groupText(g).trim())
-        .filter(Boolean)
-        .join(" ");
-      const struck = block.some((g) => isGroupStruck(g));
+      const text = block.map((e) => e.token).join(" ");
+      const struck = block.some((e) => e.struck);
       const safe = escapeHtml(text);
       return `<div>${struck ? `<s>${safe}</s>` : safe}</div>`;
     })
