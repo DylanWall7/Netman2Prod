@@ -251,30 +251,35 @@ export async function checkAndStrikeReturnedGear(notesHtml, { siteName, location
   container.innerHTML = reformattedHtml;
   const groups = collectLineGroups(container);
 
-  const cache = new Map();
-  const resolveToken = (token) => {
-    if (!cache.has(token)) {
-      cache.set(token, Promise.resolve(lookupBySerial(token)).catch(() => null));
-    }
-    return cache.get(token);
-  };
-
-  for (const group of groups) {
+  // Work out every line's candidates first, then fire every unique lookup at once
+  // instead of awaiting line-by-line — a 20-device list was making 20+ sequential
+  // round trips before; now it's a single parallel batch.
+  const lineInfos = groups.map((group) => {
     const text = groupText(group);
-    if (!text.trim()) continue;
-    result.totalLines += 1;
-
+    if (!text.trim()) return null;
     const tokens = text.split(/\s+/).map((t) => t.trim()).filter(Boolean);
     const hostname = tokens.length > 1 ? tokens[0] : null;
     const rest = hostname ? tokens.slice(1) : tokens;
-    const candidates = candidateTokens(rest, modelExclusionSet);
-    if (candidates.length === 0) continue;
+    return { group, hostname, candidates: candidateTokens(rest, modelExclusionSet) };
+  });
+
+  const uniqueTokens = new Set();
+  lineInfos.forEach((info) => info?.candidates.forEach((t) => uniqueTokens.add(t)));
+
+  const cache = new Map();
+  await Promise.all(
+    Array.from(uniqueTokens).map(async (token) => {
+      cache.set(token, await Promise.resolve(lookupBySerial(token)).catch(() => null));
+    }),
+  );
+
+  for (const info of lineInfos) {
+    if (!info) continue;
+    result.totalLines += 1;
+    if (info.candidates.length === 0) continue;
     result.checkedLines += 1;
 
-    const lookups = await Promise.all(
-      candidates.map(async (token) => ({ token, asset: await resolveToken(token) })),
-    );
-    const resolved = lookups.filter((l) => l.asset);
+    const resolved = info.candidates.map((token) => ({ token, asset: cache.get(token) })).filter((l) => l.asset);
 
     if (resolved.length !== 1) {
       if (resolved.length === 0) result.notFoundLines += 1;
@@ -282,18 +287,18 @@ export async function checkAndStrikeReturnedGear(notesHtml, { siteName, location
       continue;
     }
 
-    const stillAtOriginalSite = isStillAtOriginalSite(resolved[0].asset, { hostname, siteLocation });
+    const stillAtOriginalSite = isStillAtOriginalSite(resolved[0].asset, { hostname: info.hostname, siteLocation });
     if (stillAtOriginalSite === null) {
       result.unresolvedLines += 1;
       continue;
     }
 
-    const currentlyStruck = isGroupStruck(group);
+    const currentlyStruck = isGroupStruck(info.group);
     if (stillAtOriginalSite && currentlyStruck) {
-      unstrikeGroup(group);
+      unstrikeGroup(info.group);
       result.unstruckLines += 1;
     } else if (!stillAtOriginalSite && !currentlyStruck) {
-      strikeGroup(container, group);
+      strikeGroup(container, info.group);
       result.struckLines += 1;
     }
   }

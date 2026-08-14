@@ -382,23 +382,26 @@ export default function POGearManage({ records, onCreate, onUpdate }) {
           </button>
         </div>
         {showAddGear && <GearForm onSave={saveGear} onCancel={() => setShowAddGear(false)} />}
-        {editingGear && <GearForm initial={editingGear} onSave={saveGear} onCancel={() => setEditingGear(null)} />}
         {activeGear.length === 0 ? (
           <p className="text-sm text-gray-600 italic">No gear out</p>
         ) : (
           <div className="space-y-2">
-            {activeGear.map((item) => (
-              <GearItem
-                key={item.id}
-                item={item}
-                onEdit={setEditingGear}
-                onAdvance={advanceGear}
-                onCheck={checkSnipeit}
-                isBusy={busyId === item.id}
-                isChecking={checkingId === item.id}
-                checkResult={checkResults[item.id]}
-              />
-            ))}
+            {activeGear.map((item) =>
+              editingGear?.id === item.id ? (
+                <GearForm key={item.id} initial={editingGear} onSave={saveGear} onCancel={() => setEditingGear(null)} />
+              ) : (
+                <GearItem
+                  key={item.id}
+                  item={item}
+                  onEdit={setEditingGear}
+                  onAdvance={advanceGear}
+                  onCheck={checkSnipeit}
+                  isBusy={busyId === item.id}
+                  isChecking={checkingId === item.id}
+                  checkResult={checkResults[item.id]}
+                />
+              ),
+            )}
           </div>
         )}
         {completedGear.length > 0 && (
@@ -408,9 +411,13 @@ export default function POGearManage({ records, onCreate, onUpdate }) {
             </button>
             {showCompletedGear && (
               <div className="space-y-2 mt-2">
-                {completedGear.map((item) => (
-                  <GearItem key={item.id} item={item} onEdit={setEditingGear} onAdvance={advanceGear} isBusy={busyId === item.id} />
-                ))}
+                {completedGear.map((item) =>
+                  editingGear?.id === item.id ? (
+                    <GearForm key={item.id} initial={editingGear} onSave={saveGear} onCancel={() => setEditingGear(null)} />
+                  ) : (
+                    <GearItem key={item.id} item={item} onEdit={setEditingGear} onAdvance={advanceGear} isBusy={busyId === item.id} />
+                  ),
+                )}
               </div>
             )}
           </div>
