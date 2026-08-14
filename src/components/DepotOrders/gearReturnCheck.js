@@ -4,12 +4,15 @@
 // line if a device someone already marked back is confirmed still checked out at the
 // original site — the strike shouldn't have been there.
 //
-// The notes box is a contentEditable blob with no structured fields, so lines are
-// walked at the DOM level. Each line is expected to look like:
-//   <hostname> [mac] <serial> [model]
-// where <hostname>'s first 8 characters are the site code the device belongs to
-// (e.g. "EASNYCHPWAP0101" -> "EASNYCHP"). Only the serial is ever looked up in
-// Snipe-IT — the hostname and model tokens are never sent to byserial.
+// In practice managers paste this in from all kinds of Excel shapes — one token per
+// line, four columns on one line, blank lines between devices, blank lines standing in
+// for a missing column, none of it consistent. So before anything else runs, the notes
+// are reformatted into one canonical line per device ("<hostname> [mac] <serial>
+// [model]"), grouped by recognizing that every hostname starts with the record's own
+// site code — not by blank lines, which turned out to also mark missing fields (e.g.
+// OOB devices with no MAC) and can't be trusted as a device boundary on their own.
+// Only the serial is ever looked up in Snipe-IT — the hostname and model tokens are
+// never sent to byserial.
 //
 // Identification stays conservative: a line is only ever touched when exactly one
 // remaining token resolves to a real, existing Snipe-IT asset. Anything ambiguous
@@ -130,6 +133,54 @@ function unstrikeGroup(group) {
   });
 }
 
+function escapeHtml(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Groups raw source lines into one block per device. A line counts as a hostname line
+// (device boundary) when it starts with the record's own site code — recognizing real
+// content instead of relying on blank-line placement, which isn't consistent (see
+// header comment). Falls back to "one source line = one block" (a no-op) when no line
+// in the whole box matches the site code, so already-clean single-line content and
+// records with no reliable site code both pass through unchanged.
+function groupIntoDeviceBlocks(groups, siteName) {
+  const siteCode = String(siteName || "").trim().toUpperCase();
+  const nonBlank = groups.filter((g) => groupText(g).trim());
+  const isHostnameLine = (g) => siteCode && groupText(g).trim().toUpperCase().startsWith(siteCode);
+
+  if (siteCode && nonBlank.some(isHostnameLine)) {
+    const blocks = [];
+    let current = null;
+    nonBlank.forEach((g) => {
+      if (isHostnameLine(g)) {
+        if (current) blocks.push(current);
+        current = [g];
+      } else if (current) {
+        current.push(g);
+      }
+      // lines before the first recognized hostname have no device context — dropped
+    });
+    if (current) blocks.push(current);
+    return blocks;
+  }
+
+  return nonBlank.map((g) => [g]);
+}
+
+function buildReformattedHtml(blocks) {
+  return blocks
+    .map((block) => {
+      const text = block
+        .map((g) => groupText(g).trim())
+        .filter(Boolean)
+        .join(" ");
+      const struck = block.some((g) => isGroupStruck(g));
+      const safe = escapeHtml(text);
+      return `<div>${struck ? `<s>${safe}</s>` : safe}</div>`;
+    })
+    .join("");
+}
+
 function candidateTokens(restTokens, modelExclusionSet) {
   return restTokens
     .filter((t) => !MAC_RE.test(t))
@@ -167,9 +218,15 @@ export async function checkAndStrikeReturnedGear(notesHtml, { siteName, location
 
   const siteLocation = resolveLocationByName(locations, siteName);
 
+  const rawContainer = document.createElement("div");
+  rawContainer.innerHTML = notesHtml || "";
+  normalizeNewlines(rawContainer);
+  const rawGroups = collectLineGroups(rawContainer);
+  const blocks = groupIntoDeviceBlocks(rawGroups, siteName);
+  const reformattedHtml = buildReformattedHtml(blocks);
+
   const container = document.createElement("div");
-  container.innerHTML = notesHtml || "";
-  normalizeNewlines(container);
+  container.innerHTML = reformattedHtml;
   const groups = collectLineGroups(container);
 
   const cache = new Map();
