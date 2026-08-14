@@ -81,9 +81,25 @@ function collectLineGroups(container) {
   return groups;
 }
 
+// A plain .textContent read silently drops <br> line breaks (they contribute empty
+// text), gluing whatever sat on either side together with zero separator — a real
+// risk once normalizeNewlines can leave <br> nested inside a single top-level <div>
+// rather than as a sibling. Walk manually and treat every <br>, nested or not, as a
+// space instead.
+function textWithBreaksAsSpaces(node) {
+  if (node.nodeType === 3) return node.nodeValue || "";
+  if (node.nodeType !== 1) return "";
+  if (node.tagName === "BR") return " ";
+  let text = "";
+  Array.from(node.childNodes).forEach((child) => {
+    text += textWithBreaksAsSpaces(child);
+  });
+  return text;
+}
+
 function groupText(group) {
-  if (group.kind === "div") return group.node.textContent || "";
-  return group.nodes.map((n) => n.textContent || "").join("");
+  if (group.kind === "div") return textWithBreaksAsSpaces(group.node);
+  return group.nodes.map((n) => textWithBreaksAsSpaces(n)).join("");
 }
 
 function strikeCoveredLength(node) {
@@ -156,6 +172,40 @@ function tokenizeGroups(groups) {
   return stream;
 }
 
+// Some pastes glue the tail of one device's serial straight onto the front of the
+// next device's hostname with no separator at all (e.g.
+// "A073922060D1CSOCCAAQUWAP0103"), which whitespace-splitting can never pull apart.
+// A hostname has a recognizable shape wherever it sits — an 8-char site code
+// immediately followed by one of the device-type markers seen in every record so far
+// — so scan every token for that shape and cut the token at each match's start,
+// regardless of position. A token with a match only at position 0 (already clean)
+// or no match at all (a MAC/serial/model) is returned untouched.
+const DEVICE_TYPE_MARKERS = "WAP|SWA|RWA|OOB";
+const EMBEDDED_HOSTNAME_RE = new RegExp(`[A-Z0-9]{${SITE_CODE_LENGTH}}(?:${DEVICE_TYPE_MARKERS})\\d{1,4}`, "gi");
+
+function splitFusedTokens(stream) {
+  const result = [];
+  stream.forEach(({ token, struck }) => {
+    EMBEDDED_HOSTNAME_RE.lastIndex = 0;
+    const matchStarts = [];
+    let m;
+    while ((m = EMBEDDED_HOSTNAME_RE.exec(token))) matchStarts.push(m.index);
+
+    if (matchStarts.length === 0 || (matchStarts.length === 1 && matchStarts[0] === 0)) {
+      result.push({ token, struck });
+      return;
+    }
+
+    let cursor = 0;
+    matchStarts.forEach((idx) => {
+      if (idx > cursor) result.push({ token: token.slice(cursor, idx), struck });
+      cursor = idx;
+    });
+    result.push({ token: token.slice(cursor), struck });
+  });
+  return result;
+}
+
 // The record's own "Site" field isn't reliable — it's often blank — so the site code
 // is read straight out of the device names instead: every hostname in one record
 // shares the same first-8-character prefix (that's the whole naming convention), so
@@ -186,7 +236,7 @@ function inferSiteCode(tokens) {
 // inferred at all, so unrecognizable content passes through unchanged rather than
 // guessing.
 function groupIntoDeviceBlocks(groups) {
-  const stream = tokenizeGroups(groups);
+  const stream = splitFusedTokens(tokenizeGroups(groups));
   const siteCode = inferSiteCode(stream.map((entry) => entry.token));
   const isHostnameToken = (entry) => siteCode && entry.token.toUpperCase().startsWith(siteCode);
 
@@ -271,7 +321,6 @@ export async function checkAndStrikeReturnedGear(notesHtml, { siteName, location
     ambiguousLines: 0,
     notFoundLines: 0,
     unresolvedLines: 0,
-    debug: [],
   };
 
   const siteLocation = resolveLocationByName(locations, siteName);
@@ -312,58 +361,30 @@ export async function checkAndStrikeReturnedGear(notesHtml, { siteName, location
   for (const info of lineInfos) {
     if (!info) continue;
     result.totalLines += 1;
-    const lineText = groupText(info.group);
-    if (info.candidates.length === 0) {
-      result.debug.push({ line: lineText, hostname: info.hostname, candidates: info.candidates, outcome: "no-candidates" });
-      continue;
-    }
+    if (info.candidates.length === 0) continue;
     result.checkedLines += 1;
 
     const resolved = info.candidates.map((token) => ({ token, asset: cache.get(token) })).filter((l) => l.asset);
 
     if (resolved.length !== 1) {
-      result.debug.push({
-        line: lineText,
-        hostname: info.hostname,
-        candidates: info.candidates,
-        resolved: resolved.map((r) => r.token),
-        outcome: resolved.length === 0 ? "not-found" : "ambiguous",
-      });
       if (resolved.length === 0) result.notFoundLines += 1;
       else result.ambiguousLines += 1;
       continue;
     }
 
-    const asset = resolved[0].asset;
-    const stillAtOriginalSite = isStillAtOriginalSite(asset, { hostname: info.hostname, siteLocation });
-    const currentlyStruck = isGroupStruck(info.group);
-    const debugEntry = {
-      line: lineText,
-      hostname: info.hostname,
-      serial: resolved[0].token,
-      assetLocation: asset?.location?.name ?? null,
-      assignedTo: asset?.assigned_to?.name ?? null,
-      assignedToType: asset?.assigned_to?.type ?? null,
-      stillAtOriginalSite,
-      currentlyStruck,
-    };
-
+    const stillAtOriginalSite = isStillAtOriginalSite(resolved[0].asset, { hostname: info.hostname, siteLocation });
     if (stillAtOriginalSite === null) {
       result.unresolvedLines += 1;
-      result.debug.push({ ...debugEntry, outcome: "unresolved" });
       continue;
     }
 
+    const currentlyStruck = isGroupStruck(info.group);
     if (stillAtOriginalSite && currentlyStruck) {
       unstrikeGroup(info.group);
       result.unstruckLines += 1;
-      result.debug.push({ ...debugEntry, outcome: "unstruck" });
     } else if (!stillAtOriginalSite && !currentlyStruck) {
       strikeGroup(container, info.group);
       result.struckLines += 1;
-      result.debug.push({ ...debugEntry, outcome: "struck" });
-    } else {
-      result.debug.push({ ...debugEntry, outcome: "no-change" });
     }
   }
 
