@@ -20,7 +20,7 @@ import LogsPage from "./components/LogPage/LogFile";
 import MobeBenchTable from "./components/Workbench/WorkbenchList";
 import { ManageDevicePage } from "./components/ManageDevice/ManageDevicePage";
 import DHCPManager from "./components/ManageDHCP/DHCPManager";
-import DHCPScopeDetail from "./components/ManageDHCP/DHCPScopeDetail";
+import DHCPSiteSelect from "./components/ManageDHCP/DHCPSiteSelect";
 import OpengearReports from "./components/Reports/OpengearReports";
 import ReportLandingPage from "./components/Reports/ReportLandingPage";
 import NetworkSearchHome from "./components/NetworkSearch/NetworkSearchHome";
@@ -235,16 +235,30 @@ function App() {
                 </ProtectedRoute>
               }
             ></Route>
-            {/* <Route
+            <Route
               path="diagrams"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <SiteDiagramsView />
                 </ProtectedRoute>
               }
-            ></Route> */}
-            {/* <Route path="dhcpmanager" element={<DHCPManager />} />
-            <Route path="dhcpmanager/scope" element={<DHCPScopeDetail />} /> */}
+            ></Route>
+            <Route
+              path="dhcp"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <DHCPSiteSelect />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="dhcp/:siteCode"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <DHCPManager />
+                </ProtectedRoute>
+              }
+            />
             {/* <Route path="ogtemplate" element={<OgTemplate />} /> */}
             {/* <Route
               path="mistassigntool/:siteCode"
@@ -297,22 +311,22 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            {/* <Route
+            <Route
               path="dashboard"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <SiteSearchPage />
                 </ProtectedRoute>
               }
-            /> */}
-            {/* <Route
+            />
+            <Route
               path=":siteCode/dashboard"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <SiteDashboardPage />
                 </ProtectedRoute>
               }
-            /> */}
+            />
             <Route path="*" element={<NoMatch />} />
           </Routes>
         </AuthenticatedTemplate>

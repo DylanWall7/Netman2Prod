@@ -87,7 +87,7 @@ export default function ScanSettings({
       // the already-registered URI (no Azure changes needed) and navigates the tab away, so
       // this never meaningfully returns — the user lands back freshly authenticated and
       // just retries whatever they were doing.
-      await instance.acquireTokenRedirect(request);
+      await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
       return null;
     }
   };
@@ -103,13 +103,16 @@ export default function ScanSettings({
       const res = await fetch(`${baseUrl}/api/snipeit/locations`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok)
+      // A 2xx status doesn't guarantee a JSON body — parse defensively before trusting it,
+      // same as DepotOrders/snipeitApi.js does for this same backend.
+      const body = await res.json().catch(() => null);
+      if (!res.ok || body === null)
         throw new Error(
           res.status === 401
             ? "Session expired — please log in again."
             : `Failed to load locations (${res.status})`,
         );
-      setLocations(safeArray(await res.json()));
+      setLocations(safeArray(body));
     } catch (err) {
       setErrorLocations(err.message || "Failed to load locations");
     } finally {
@@ -127,20 +130,26 @@ export default function ScanSettings({
         fetch(`${baseUrl}/api/snipeit/categories`, { headers }),
         fetch(`${baseUrl}/api/snipeit/statuslabels`, { headers }),
       ]);
-      if (!catRes.ok)
+      // A 2xx status doesn't guarantee a JSON body — parse defensively before trusting it,
+      // same as DepotOrders/snipeitApi.js does for this same backend.
+      const [catBody, statusBody] = await Promise.all([
+        catRes.json().catch(() => null),
+        statusRes.json().catch(() => null),
+      ]);
+      if (!catRes.ok || catBody === null)
         throw new Error(
           catRes.status === 401
             ? "Session expired — please log in again."
             : `Failed to load categories (${catRes.status})`,
         );
-      if (!statusRes.ok)
+      if (!statusRes.ok || statusBody === null)
         throw new Error(
           statusRes.status === 401
             ? "Session expired — please log in again."
             : `Failed to load status labels (${statusRes.status})`,
         );
-      setCategories(safeArray(await catRes.json()));
-      setStatusLabels(safeArray(await statusRes.json()));
+      setCategories(safeArray(catBody));
+      setStatusLabels(safeArray(statusBody));
     } catch (err) {
       setErrorMeta(err.message || "Failed to load categories/status labels");
     } finally {
@@ -163,13 +172,16 @@ export default function ScanSettings({
           headers: { Authorization: `Bearer ${token}` },
         },
       );
-      if (!res.ok)
+      // A 2xx status doesn't guarantee a JSON body — parse defensively before trusting it,
+      // same as DepotOrders/snipeitApi.js does for this same backend.
+      const body = await res.json().catch(() => null);
+      if (!res.ok || body === null)
         throw new Error(
           res.status === 401
             ? "Session expired — please log in again."
             : `Failed to load models (${res.status})`,
         );
-      setModels(safeArray(await res.json()));
+      setModels(safeArray(body));
     } catch (err) {
       setErrorModels(err.message || "Failed to load models");
     } finally {

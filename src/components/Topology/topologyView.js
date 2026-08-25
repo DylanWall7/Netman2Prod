@@ -1178,7 +1178,7 @@ export default function TopologyView() {
       // the already-registered URI (no Azure changes needed) and navigates the tab away, so
       // this never meaningfully returns — the user lands back freshly authenticated and
       // just retries whatever they were doing.
-      await instance.acquireTokenRedirect(request);
+      await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
       return null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -52,7 +52,7 @@ export function useNetworkSearchToken() {
       // the already-registered URI, no Azure changes needed. Navigates the tab away, so this
       // never meaningfully returns — the user lands back in the app freshly authenticated
       // and just retries whatever they were doing.
-      await instance.acquireTokenRedirect(request);
+      await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
       return null;
     }
   }, [instance, accounts]);

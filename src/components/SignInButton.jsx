@@ -3,11 +3,11 @@ import { useMsal } from "@azure/msal-react";
 import { loginRequest } from "../authConfig";
 import { Button, ButtonGroup } from "@nextui-org/react";
 function handleLogin(instance) {
-  instance.loginRedirect(loginRequest).catch((e) => {
-    console.error(e);
-    // instance.aquireTokenRedirect(loginRequest);
-    // localStorage.setItem("msal.idtoken", e);
-  });
+  instance
+    .loginRedirect({ ...loginRequest, redirectStartPage: window.location.href })
+    .catch((e) => {
+      console.error(e);
+    });
 }
 
 /**

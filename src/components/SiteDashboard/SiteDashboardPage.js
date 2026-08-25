@@ -17,6 +17,18 @@ import {
   getSnowLocation,
   useSiteDashboardToken,
 } from "./siteDashboardApi";
+import { getSnipeitAssetBySerial } from "../DepotOrders/snipeitApi";
+
+const NETBOX_UI_BASE_URL = "https://netbox.kiewit.com";
+const SNIPEIT_UI_BASE_URL = "https://netinv.kiewitplaza.com";
+
+const MIST_LINKABLE_TYPES = new Set(["switch", "gateway", "router", "ap"]);
+
+function mistDetailUrl(mistId, type, mistSiteId) {
+  const orgId = process.env.REACT_APP_MIST_ORG_ID;
+  const mistType = type === "gateway" || type === "router" ? "gateway" : type === "ap" ? "ap" : "switch";
+  return `https://manage.mist.com/admin/?org_id=${orgId}#!${mistType}/detail/${mistId}/${mistSiteId ?? ""}`;
+}
 
 function ComingSoonCard({ title, note }) {
   return (
@@ -31,8 +43,6 @@ function SkeletonBar({ className }) {
   return <div className={`animate-pulse bg-gray-800 rounded ${className}`} />;
 }
 
-// Placeholder shaped like a text-and-fields card (Location, ServiceNow, DHCP, etc.) — shown
-// while that section's own fetch is still in flight, independent of the rest of the page.
 function SkeletonCard({ lines = 3 }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
@@ -44,8 +54,6 @@ function SkeletonCard({ lines = 3 }) {
   );
 }
 
-// Placeholder shaped like a table card (All Devices, summary strip) — a header bar plus a
-// few row-shaped bars.
 function SkeletonTable({ rows = 4 }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
@@ -59,9 +67,7 @@ function SkeletonTable({ rows = 4 }) {
   );
 }
 
-// Real Kia response shape: { id, subnet (already includes CIDR, e.g. "10.145.240.0/22"),
-// sharedNetworkName }. No name/gateway/leases fields — much leaner than the mock UI data
-// elsewhere in the app suggested.
+// Real Kia response shape only has { id, subnet, sharedNetworkName } — no name/gateway/leases.
 function KiaScopeTable({ scopes }) {
   if (scopes.length === 0) return <p className="text-xs text-gray-600 italic">No scopes found.</p>;
   return (
@@ -86,9 +92,8 @@ function KiaScopeTable({ scopes }) {
   );
 }
 
-// Gizmo (legacy) shape isn't confirmed yet — mirrors only the fields DemobeStepper.js
-// already trusts from real gizmo responses (scopeID/scopeId + name), rather than assuming
-// it matches Kia's shape.
+// Mirrors only the fields DemobeStepper.js trusts from real Gizmo responses — its shape
+// isn't otherwise confirmed.
 function GizmoScopeTable({ scopes }) {
   if (scopes.length === 0) return <p className="text-xs text-gray-600 italic">No scopes found.</p>;
   return (
@@ -116,8 +121,6 @@ function GizmoScopeTable({ scopes }) {
   );
 }
 
-// Older sites' scopes live in a legacy system ("Gizmo") this app can only read — labeled
-// distinctly from the newer "Kia" scopes so it's clear those can't be managed here.
 function DhcpScopesCard({ dhcpScopes, error }) {
   const kia = dhcpScopes?.kia ?? [];
   const gizmo = dhcpScopes?.gizmo ?? [];
@@ -189,9 +192,6 @@ function OpengearConnectionRow({ label, conn }) {
   );
 }
 
-// The Opengear status endpoint has no site filter — it returns every device across the org,
-// matched here by the site-code prefix. Some sites have more than one Opengear, so each gets
-// its own name header inside this one compact card rather than a full-width section each.
 function OpengearCard({ devices, error }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 max-w-sm">
@@ -217,10 +217,9 @@ function OpengearCard({ devices, error }) {
   );
 }
 
-// Three sources, none of which share a common ID — name is the only field consistently
-// present across Netbox/Diagram/Mist, so it's the merge key. Each source reports a
-// different subset of fields under different names — first non-empty value wins per field.
-function mergeDevicesByName(netboxDevices, diagramDevices, mistDevices, mistSiteId) {
+// Name is the only field consistently present across all sources, so it's the merge key —
+// first non-empty value wins per field.
+function mergeDevicesByName(netboxDevices, diagramDevices, mistDevices, mistSiteId, opengearDevices = []) {
   const map = new Map();
   const upsert = (rawName, fields) => {
     const name = (rawName || "").trim();
@@ -242,18 +241,17 @@ function mergeDevicesByName(netboxDevices, diagramDevices, mistDevices, mistSite
         inMist: null,
         version: null,
         uptime: null,
+        netboxId: null,
+        mistId: null,
       };
     Object.keys(fields).forEach((k) => {
       if (!existing[k] && fields[k]) existing[k] = fields[k];
     });
     map.set(key, existing);
   };
-  // Mist first, then Diagram, then Netbox last — "first non-empty wins" above means
-  // whichever source runs first gets priority when sources disagree or one has gaps.
+  // Mist devices are always Juniper hardware by definition — a structural default, not a
+  // guess, for the vendor field Mist's summary doesn't itself report.
   mistDevices.forEach((d) =>
-    // Mist's summary doesn't report a vendor field, but everything under Mist management is
-    // Juniper hardware by definition (legacy Mist-branded APs or Juniper EX/SRX gear), so
-    // this is a safe structural default, not a guess about ambiguous data.
     upsert(d.name, {
       model: d.model,
       ip: d.ip,
@@ -264,6 +262,7 @@ function mergeDevicesByName(netboxDevices, diagramDevices, mistDevices, mistSite
       vendor: "Juniper",
       version: d.version,
       uptime: d.uptime,
+      mistId: d.id,
     }),
   );
   diagramDevices.forEach((d) =>
@@ -280,7 +279,13 @@ function mergeDevicesByName(netboxDevices, diagramDevices, mistDevices, mistSite
       polling: d.custom_fields?.POLLING === true ? "Enabled" : d.custom_fields?.POLLING === false ? "Disabled" : null,
       alert: d.custom_fields?.ALERT,
       inMist,
+      netboxId: d.id,
     });
+  });
+  // Opengear devices aren't Mist/diagram-managed, so this is usually the only status source
+  // for them — fills the gap left by "Unknown" rather than overriding a real one.
+  opengearDevices.forEach((og) => {
+    upsert(og.name, { status: og.snmp ? (og.snmp.status === 1 ? "connected" : "disconnected") : null });
   });
   return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -321,15 +326,71 @@ function loadVisibleColumns() {
   try {
     const raw = localStorage.getItem(DEVICE_COLUMNS_STORAGE_KEY);
     if (raw) return new Set(JSON.parse(raw));
-  } catch {
-    // Malformed/unavailable storage — fall back to defaults below.
-  }
+  } catch {}
   return DEFAULT_VISIBLE_COLUMNS;
 }
 
 function formatCell(value, column) {
   const formatted = column.format ? column.format(value) : value;
   return formatted || "—";
+}
+
+// "connected" is the only online value Mist/the diagram endpoint report — devices with no
+// live status source stay an explicit "Unknown" rather than being shown as down.
+function StatusBadge({ status }) {
+  if (!status) {
+    return <span className="text-gray-600 text-xs">Unknown</span>;
+  }
+  const online = status === "connected";
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${online ? "text-green-400" : "text-red-400"}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${online ? "bg-green-500" : "bg-red-500"}`} />
+      {online ? "Online" : status}
+    </span>
+  );
+}
+
+function DeviceLinks({ device, mistSiteId, snipeitStatus, onSnipeitClick }) {
+  const linkClass =
+    "text-[10px] px-1.5 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-blue-400 hover:border-blue-500 transition-colors";
+  const canMist = device.mistId && MIST_LINKABLE_TYPES.has(device.type);
+  return (
+    <div className="flex items-center gap-1">
+      {device.netboxId ? (
+        <a
+          href={`${NETBOX_UI_BASE_URL}/dcim/devices/${device.netboxId}/`}
+          target="_blank"
+          rel="noreferrer"
+          title="Open in Netbox"
+          className={linkClass}
+        >
+          Netbox
+        </a>
+      ) : null}
+      {canMist ? (
+        <a
+          href={mistDetailUrl(device.mistId, device.type, mistSiteId)}
+          target="_blank"
+          rel="noreferrer"
+          title="Open in Mist"
+          className={linkClass}
+        >
+          Mist
+        </a>
+      ) : null}
+      {device.serial ? (
+        <button
+          type="button"
+          onClick={() => onSnipeitClick(device)}
+          disabled={snipeitStatus === "loading"}
+          title={snipeitStatus === "error" ? "Not found in Snipeit" : "Open in Snipeit"}
+          className={`${linkClass} disabled:opacity-50`}
+        >
+          {snipeitStatus === "loading" ? "…" : snipeitStatus === "error" ? "Not found" : "Snipeit"}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function toCsv(rows, columns) {
@@ -354,10 +415,7 @@ function downloadCsv(filename, csv) {
   URL.revokeObjectURL(url);
 }
 
-// Netbox devices load as part of the main site fetch; diagram/Mist devices load
-// independently in the background (each needs an ID only available once the main fetch
-// resolves) and merge into this table as they arrive — neither blocks the page or each other.
-function AllDevicesCard({ netboxDevices, diagram, mist, mistSiteId, siteCode }) {
+function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSiteId, siteCode, getToken }) {  
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortKey, setSortKey] = useState("name");
@@ -365,15 +423,33 @@ function AllDevicesCard({ netboxDevices, diagram, mist, mistSiteId, siteCode }) 
   const [visibleColumns, setVisibleColumns] = useState(loadVisibleColumns);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
+  const [snipeitStatus, setSnipeitStatus] = useState({});
+
+  // Looked up by serial on click (not prefetched per row) — tab opens synchronously so
+  // popup blockers don't kill it while the lookup is in flight.
+  const handleSnipeitClick = async (device) => {
+    const win = window.open("", "_blank");
+    setSnipeitStatus((prev) => ({ ...prev, [device.name]: "loading" }));
+    try {
+      const token = await getToken();
+      const asset = await getSnipeitAssetBySerial(device.serial, token);
+      if (!asset?.id) throw new Error("Not found");
+      if (win) win.location = `${SNIPEIT_UI_BASE_URL}/hardware/${asset.id}`;
+      setSnipeitStatus((prev) => ({ ...prev, [device.name]: null }));
+    } catch {
+      win?.close();
+      setSnipeitStatus((prev) => ({ ...prev, [device.name]: "error" }));
+      setTimeout(() => setSnipeitStatus((prev) => ({ ...prev, [device.name]: null })), 3000);
+    }
+  };
 
   const merged = useMemo(
-    () => mergeDevicesByName(netboxDevices, diagram.devices, mist.devices, mistSiteId),
-    [netboxDevices, diagram.devices, mist.devices, mistSiteId],
+    () => mergeDevicesByName(netboxDevices, diagram.devices, mist.devices, mistSiteId, opengearDevices),
+    [netboxDevices, diagram.devices, mist.devices, mistSiteId, opengearDevices],
   );
 
-  // Stack members are named like "KSCVICHCSWA0201_0"/"_1" under a base switch
-  // "KSCVICHCSWA0201" — group them under the base device instead of listing every member
-  // as its own flat row, only when that base name actually exists as a device itself.
+  // Stack members are named like "KSCVICHCSWA0201_0"/"_1" — grouped under the base device
+  // only when that base name actually exists as a device itself.
   const grouped = useMemo(() => {
     const byName = new Map(merged.map((d) => [d.name, d]));
     const childrenByParent = new Map();
@@ -426,9 +502,7 @@ function AllDevicesCard({ netboxDevices, diagram, mist, mistSiteId, siteCode }) 
       else next.add(key);
       try {
         localStorage.setItem(DEVICE_COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
-      } catch {
-        // Storage unavailable (private browsing, quota) — selection just won't persist.
-      }
+      } catch {}
       return next;
     });
   };
@@ -542,6 +616,7 @@ function AllDevicesCard({ netboxDevices, diagram, mist, mistSiteId, siteCode }) 
                   {sortKey === c.key && (sortDir === "asc" ? " ▲" : " ▼")}
                 </th>
               ))}
+              <th className="text-left px-4 py-2.5 whitespace-nowrap">Links</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
@@ -568,11 +643,21 @@ function AllDevicesCard({ netboxDevices, diagram, mist, mistSiteId, siteCode }) 
                             {d.name}
                             {hasChildren && <span className="text-[10px] text-gray-600">({d.children.length})</span>}
                           </span>
+                        ) : c.key === "status" ? (
+                          <StatusBadge status={d.status} />
                         ) : (
                           formatCell(d[c.key], c)
                         )}
                       </td>
                     ))}
+                    <td className="px-4 py-2.5">
+                      <DeviceLinks
+                        device={d}
+                        mistSiteId={mistSiteId}
+                        snipeitStatus={snipeitStatus[d.name]}
+                        onSnipeitClick={handleSnipeitClick}
+                      />
+                    </td>
                   </tr>
                 );
                 if (!isOpen) return [parentRow];
@@ -580,16 +665,30 @@ function AllDevicesCard({ netboxDevices, diagram, mist, mistSiteId, siteCode }) 
                   <tr key={child.name} className="text-gray-400 bg-gray-950/40 hover:bg-gray-800/40">
                     {columns.map((c) => (
                       <td key={c.key} className={`px-4 py-2 ${c.key === "name" ? "pl-10" : ""}`}>
-                        {c.key === "name" ? child.name : formatCell(child[c.key], c)}
+                        {c.key === "name" ? (
+                          child.name
+                        ) : c.key === "status" ? (
+                          <StatusBadge status={child.status} />
+                        ) : (
+                          formatCell(child[c.key], c)
+                        )}
                       </td>
                     ))}
+                    <td className="px-4 py-2">
+                      <DeviceLinks
+                        device={child}
+                        mistSiteId={mistSiteId}
+                        snipeitStatus={snipeitStatus[child.name]}
+                        onSnipeitClick={handleSnipeitClick}
+                      />
+                    </td>
                   </tr>
                 ));
                 return [parentRow, ...childRows];
               })
             ) : (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-6 text-center text-gray-500 italic">
+                <td colSpan={columns.length + 1} className="px-4 py-6 text-center text-gray-500 italic">
                   No devices found.
                 </td>
               </tr>
@@ -607,28 +706,31 @@ function boolLabel(v) {
   return null;
 }
 
-// ServiceNow reference fields (contact, company, region, etc.) come back as an empty
-// string when unset but as { link, value } when populated — never render one of those
-// objects directly, always pull the resolved value out first.
+// ServiceNow reference fields come back as "" when unset but { link, value } when populated.
 function resolveScalar(v) {
   if (v && typeof v === "object") return v.value || "";
   return v ?? "";
 }
 
-function Field({ label, value }) {
+// Appending T00:00:00 forces local-time parsing so a date-only string like "2026-07-01"
+// doesn't shift a day earlier in negative-UTC-offset timezones.
+function formatFullDate(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function Field({ label, value, format }) {
   const resolved = resolveScalar(value);
   if (!resolved) return null;
   return (
     <div>
       <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className="text-sm text-gray-200">{resolved}</p>
+      <p className="text-sm text-gray-200">{format ? format(resolved) : resolved}</p>
     </div>
   );
 }
 
-// Raw ServiceNow location records carry a lot of internal/financial fields (budgets,
-// WBS numbers, sys_* metadata, unresolved user/company references) that don't matter for
-// an outage dashboard — this pulls out just the fields worth showing.
 function SnowLocationCard({ location, error }) {
   let body;
   if (error) {
@@ -663,14 +765,14 @@ function SnowLocationCard({ location, error }) {
           <Field label="Active" value={boolLabel(get("u_active"))} />
           <Field label="Time Zone" value={location.time_zone} />
           <Field label="Phone" value={location.phone} />
-          <Field label="Mobilization Date" value={location.u_mob_date} />
-          <Field label="Demobilization Date" value={location.u_demob_date} />
+          <Field label="Mobilization Date" value={location.u_mob_date} format={formatFullDate} />
+          <Field label="Demobilization Date" value={location.u_demob_date} format={formatFullDate} />
         </div>
 
         {hasAddress && (
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Address</p>
-            <p className="text-sm text-gray-200">
+            <p className="text-sm text-gray-200 uppercase">
               {streetLine || "—"}
               {streetTwo ? `, ${streetTwo}` : ""}
               <br />
@@ -705,9 +807,8 @@ function SnowLocationCard({ location, error }) {
   );
 }
 
-// ServiceNow's own latitude/longitude fields are often blank, but u_lat_long_url (a
-// Google Maps link) reliably has them embedded in its query string when the pair above
-// is empty — fall back to parsing that instead of giving up.
+// lat/long are often blank, but u_lat_long_url (a Google Maps link) reliably has them
+// embedded in its query string — fall back to parsing that.
 function extractCoords(location) {
   if (!location) return null;
   const lat = parseFloat(resolveScalar(location.latitude));
@@ -771,17 +872,16 @@ const WEATHER_EMOJI = {
   99: "⛈️",
 };
 
-// Same customIcon pattern as src/components/Map/MapCluster.js — Leaflet's default marker
-// icon path breaks under CRA's webpack bundling, so a remote iconUrl sidesteps that.
+// Leaflet's default marker icon path breaks under CRA's webpack bundling — a remote iconUrl
+// sidesteps that (same pattern as Map/MapCluster.js).
 const siteMarkerIcon = new Icon({
   iconUrl: "https://cdn-icons-png.flaticon.com/512/447/447031.png",
   iconSize: [28, 28],
   iconAnchor: [14, 28],
 });
 
-// RainViewer's radar tiles are only generated up to zoom 7 (confirmed via their API docs) —
-// "512" requests double pixel-density tiles at that ceiling for the sharpest legitimate
-// image, since there's no real data to show beyond it regardless of tile size.
+// RainViewer generates radar tiles only up to zoom 7 — "512" gets double pixel-density
+// tiles for the sharpest image at that ceiling.
 function buildRadarTileUrl(frame) {
   if (!frame) return null;
   return `${frame.host}${frame.path}/512/{z}/{x}/{y}/2/1_1.png`;
@@ -805,7 +905,6 @@ function SiteMap({ coords, height, zoom = 15, scrollWheelZoom = false, radarUrl 
   );
 }
 
-// Same overlay pattern as NetworkSearch/DeviceOutputsModal.js and CompareModal.js.
 function SiteMapModal({ coords, radarUrl, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
@@ -835,7 +934,6 @@ function formatDayLabel(dateStr, { weekday } = {}) {
     : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-// News-style "last few days" popout — same overlay pattern as SiteMapModal.
 function WeatherHistoryModal({ dailyWeather, onClose }) {
   const days = dailyWeather.slice(-5);
   return (
@@ -897,8 +995,7 @@ function SiteLocationCard({ location }) {
       .catch((err) => {
         if (!cancelled) setWeatherError(err.message || "Failed to load weather");
       });
-    // Best-effort — no error state surfaced for this one, since it's a bonus hint, not
-    // core dashboard data, and shouldn't compete with the weather error banner above.
+    // Best-effort — a bonus hint, not core data, so no error state surfaced for it.
     getRecentDailyWeather(coords.lat, coords.lon)
       .then((days) => {
         if (!cancelled) setDailyWeather(days);
@@ -1023,9 +1120,9 @@ export default function SiteDashboardPage() {
   const [mistLoading, setMistLoading] = useState(false);
   const [mistError, setMistError] = useState(null);
 
-  // These three are independent of each other — each renders its own section the moment it
-  // resolves instead of the whole page waiting on whichever is slowest. They still share one
-  // token fetch so switching sites doesn't trigger three separate MSAL popups.
+  // Each section renders as soon as its own fetch resolves rather than waiting on the
+  // slowest — they still share one token fetch so switching sites doesn't trigger repeat
+  // MSAL popups.
   useEffect(() => {
     let cancelled = false;
     setDataLoading(true);
@@ -1092,10 +1189,8 @@ export default function SiteDashboardPage() {
           if (!cancelled) setDhcpLoading(false);
         });
 
-      // No site filter on this endpoint, and Opengear names don't match the site code
-      // exactly — same convention as switches/APs elsewhere in this app (e.g. "KSCVICHC" in
-      // "KSCVICHCSWA0201"), where the site code is always the first 8 characters of the
-      // device name. Keep every match since some sites have more than one Opengear.
+      // Site code is always the first 8 characters of the device name (e.g. "KSCVICHC" in
+      // "KSCVICHCSWA0201") — keep every match since some sites have more than one Opengear.
       getOpengearDevices(token)
         .then((all) => {
           if (cancelled) return;
@@ -1121,10 +1216,8 @@ export default function SiteDashboardPage() {
   const devices = data?.devices || [];
   const mistSiteId = mistSite?.id;
 
-  // Independent of the main fetch and of each other — neither the diagram nor Mist device
-  // list should hold up the rest of the page. Diagram devices need a Netbox site ID, but
-  // resolved via its own lookup (/api/netbox/sites) rather than data.netboxbsite.id, since
-  // that field isn't confirmed to be in the same ID space the diagrams endpoint expects.
+  // Resolved via its own lookup rather than data.netboxbsite.id, which isn't confirmed to be
+  // in the same ID space the diagrams endpoint expects.
   useEffect(() => {
     if (!siteCode) {
       setDiagramDevices([]);
@@ -1281,8 +1374,10 @@ export default function SiteDashboardPage() {
             netboxDevices={devices}
             diagram={{ devices: diagramDevices, loading: diagramLoading, error: diagramError }}
             mist={{ devices: mistDevices, loading: mistLoading, error: mistError }}
+            opengearDevices={opengearDevices}
             mistSiteId={mistSite?.id}
             siteCode={siteCode}
+            getToken={getToken}
           />
         </>
       ))}

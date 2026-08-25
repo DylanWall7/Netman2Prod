@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GizmoRequest } from "../../authConfig";
 import {
   InteractionRequiredAuthError,
@@ -50,29 +50,6 @@ export const ManageDevicePage = () => {
       setIsLoading(false);
     }
   }
-  useEffect(() => {
-    if (inProgress === InteractionStatus.None && accounts.length === 0) {
-      instance.ssoSilent(request).catch(() => {
-        instance.loginRedirect(request);
-      });
-    }
-  }, [inProgress, accounts, instance]);
-
-  useEffect(() => {
-    (async () => {
-      setIsLoading(true);
-
-      try {
-        const token = await instance
-          .acquireTokenSilent(request)
-          .then((r) => r.accessToken);
-        await GetAllSites({ token });
-      } catch (err) {
-        setSiteLoadError(err.message || "Failed to load sites — please try again.");
-        setIsLoading(false);
-      }
-    })();
-  }, [accounts.length === 0]);
 
   async function getAccessToken(instance, request) {
     try {
@@ -85,12 +62,47 @@ export const ManageDevicePage = () => {
         // reuses the already-registered URI (no Azure changes needed) and navigates the tab
         // away, so this never meaningfully returns — the user lands back freshly
         // authenticated and just retries whatever they were doing.
-        await instance.acquireTokenRedirect(request);
+        await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
         return null;
       }
       throw error;
     }
   }
+
+  // Guarded with a ref so a re-render mid-redirect (e.g. `inProgress` settling to `None`
+  // a tick before `accounts` reflects a just-cached account) can't fire ssoSilent/loginRedirect
+  // a second time and bounce the user through two redirect round-trips instead of one.
+  const ssoAttempted = useRef(false);
+  useEffect(() => {
+    if (ssoAttempted.current) return;
+    if (inProgress === InteractionStatus.None && accounts.length === 0) {
+      ssoAttempted.current = true;
+      instance.ssoSilent(request).catch(() => {
+        instance.loginRedirect({ ...request, redirectStartPage: window.location.href });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inProgress, accounts, instance]);
+
+  useEffect(() => {
+    // No account yet means we're either mid sign-in (the effect above will redirect) or
+    // about to be — acquiring a token here too would just fail with no account to use, so
+    // wait for an account instead of racing the sign-in flow.
+    if (accounts.length === 0) return;
+    (async () => {
+      setIsLoading(true);
+      setSiteLoadError(null);
+      try {
+        const token = await getAccessToken(instance, request);
+        if (token) await GetAllSites({ token });
+        else setIsLoading(false); // falling back to a redirect — page is about to navigate away
+      } catch (err) {
+        setSiteLoadError(err.message || "Failed to load sites — please try again.");
+        setIsLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts.length]);
 
   const handleGetDevices = async () => {
     setNetboxLoading(true);
