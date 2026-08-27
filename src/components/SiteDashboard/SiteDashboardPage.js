@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import { Autocomplete, AutocompleteItem } from "@nextui-org/react";
 import { MapContainer, TileLayer, Marker } from "react-leaflet";
 import { Icon } from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -12,9 +13,11 @@ import {
   getMistDevices,
   getNetboxSiteIdByCode,
   getOpengearDevices,
+  getOpengearSummary,
   getRecentDailyWeather,
   getSiteDashboardData,
   getSnowLocation,
+  listSites,
   useSiteDashboardToken,
 } from "./siteDashboardApi";
 import { getSnipeitAssetBySerial } from "../DepotOrders/snipeitApi";
@@ -67,36 +70,18 @@ function SkeletonTable({ rows = 4 }) {
   );
 }
 
-// Status/source styling mirrors ManageDHCP/DHCPManager.js so a scope reads the same way in
-// both places. Each row is exactly one server's deployment of a subnet (see getScopesForSite) —
+// Source styling mirrors ManageDHCP/DHCPManager.js so a scope reads the same way in both
+// places. Each row is exactly one server's deployment of a subnet (see getScopesForSite) —
 // a subnet on both Gizmo and Kea produces two rows here, not one merged row.
-const DHCP_STATUS_STYLES = {
-  active: { dot: "bg-green-400", label: "Active" },
-  inactive: { dot: "bg-gray-500", label: "Inactive" },
-  warning: { dot: "bg-yellow-400", label: "Warning" },
-  error: { dot: "bg-red-400", label: "Error" },
-  unknown: { dot: "bg-gray-500", label: "Status unknown" },
-  not_deployed: { dot: "bg-gray-600", label: "Not deployed" },
-};
-
 function dhcpSourceLabel(scope) {
   if (scope.hasGizmo) return "Gizmo";
   if (scope.hasKea) return "Kea";
   return null;
 }
 
-// "Active" is the unremarkable default and "unknown" just means no status
-// data exists (true for every Kea scope) — neither is worth calling out.
-// Only show a status when it's actually notable: Gizmo's real "Inactive",
-// warning, error, or not_deployed.
-const QUIET_DHCP_STATUSES = new Set(["active", "unknown"]);
-
 function DhcpScopeRow({ scope }) {
-  const statusStyle = DHCP_STATUS_STYLES[scope.status] || DHCP_STATUS_STYLES.unknown;
-  const showStatus = !QUIET_DHCP_STATUSES.has(scope.status);
   const source = dhcpSourceLabel(scope);
   const hasRange = scope.start !== "—" || scope.end !== "—";
-  const dns = Array.isArray(scope.dns) && scope.dns.length > 0 ? scope.dns.join(", ") : "—";
   return (
     <tr className="text-gray-300 align-top">
       <td className="px-2 py-2">
@@ -121,21 +106,10 @@ function DhcpScopeRow({ scope }) {
           <span className="text-xs text-gray-600">—</span>
         )}
       </td>
-      <td className="px-2 py-2 whitespace-nowrap">
-        {showStatus ? (
-          <span className="inline-flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
-            {statusStyle.label}
-          </span>
-        ) : (
-          <span className="text-gray-600">—</span>
-        )}
-      </td>
       <td className="px-2 py-2 font-mono text-xs text-gray-400 whitespace-nowrap">
         {hasRange ? `${scope.start} – ${scope.end}` : "—"}
       </td>
       <td className="px-2 py-2 font-mono text-xs text-gray-400">{scope.gateway}</td>
-      <td className="px-2 py-2 font-mono text-xs text-gray-400">{dns}</td>
       <td className="px-2 py-2 text-xs text-gray-400 whitespace-nowrap">
         {scope.leases} leased / {scope.reservations} reserved
       </td>
@@ -178,10 +152,8 @@ function DhcpScopesCard({ siteCode, scopes, error }) {
               <tr>
                 <th className="text-left px-2 py-1.5">Scope</th>
                 <th className="text-left px-2 py-1.5">Source</th>
-                <th className="text-left px-2 py-1.5">Status</th>
                 <th className="text-left px-2 py-1.5">Range</th>
                 <th className="text-left px-2 py-1.5">Gateway</th>
-                <th className="text-left px-2 py-1.5">DNS</th>
                 <th className="text-left px-2 py-1.5">Leases / Reservations</th>
                 <th className="text-left px-2 py-1.5">Utilization</th>
               </tr>
@@ -199,12 +171,18 @@ function DhcpScopesCard({ siteCode, scopes, error }) {
 }
 
 // icmp = 4G connection, snmp = Wired connection, same labeling as OpengearReports.js.
-function OpengearConnectionRow({ label, conn }) {
+// loading is distinct from !conn: loading means the status call just hasn't resolved yet,
+// while !conn (once loaded) means the connection is genuinely not configured — conflating
+// the two would flash a false "Not Configured" while the slower of the two Opengear calls
+// is still in flight.
+function OpengearConnectionRow({ label, conn, loading }) {
   const isActive = conn?.status === 1;
   return (
     <div className="flex items-center justify-between gap-2 text-xs py-1.5">
       <span className="text-gray-400 shrink-0 w-12">{label}</span>
-      {!conn ? (
+      {loading ? (
+        <span className="ml-auto w-20 h-3 rounded bg-gray-800 animate-pulse" />
+      ) : !conn ? (
         <span className="text-yellow-400 ml-auto">Not Configured</span>
       ) : (
         <>
@@ -234,9 +212,48 @@ function OpengearConnectionRow({ label, conn }) {
   );
 }
 
-function OpengearCard({ devices, error }) {
+// Inventory fields from the summary endpoint. Wired/Cell IP are shown even though
+// OpengearConnectionRow already shows the LibreNMS-monitored IP+status for each
+// connection — the two can disagree (e.g. LibreNMS says "Not Configured" while the
+// summary endpoint has a real wiredip), and that mismatch is itself the useful signal:
+// it tells someone whether they're looking at a real config/wiring issue or just a
+// monitoring gap.
+function OpengearInventoryFields({ device, loading }) {
+  const fields = [
+    ["Wired IP", device.wiredip],
+    ["Cell IP", device.cellip],
+    ["Model", device.model],
+    ["Serial", device.serial],
+    ["Firmware", device.version],
+    ["MAC", device.mac],
+    ["IMEI", device.imei],
+    ["ICCID", device.iccid],
+  ].filter(([, value]) => value);
+  // The summary call hasn't resolved yet for this device (it showed up via the status call
+  // instead) — show a placeholder rather than silently rendering nothing.
+  if (fields.length === 0 && loading) {
+    return (
+      <div className="mt-1.5 pt-1.5 border-t border-gray-800/60">
+        <span className="block w-32 h-3 rounded bg-gray-800 animate-pulse" />
+      </div>
+    );
+  }
+  if (fields.length === 0) return null;
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 max-w-sm">
+    <div className="mt-1.5 pt-1.5 border-t border-gray-800/60 space-y-1">
+      {fields.map(([label, value]) => (
+        <div key={label} className="flex items-center justify-between gap-2 text-[11px]">
+          <span className="text-gray-500">{label}</span>
+          <span className="text-gray-300 font-mono truncate">{value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OpengearCard({ devices, error, statusLoading, summaryLoading }) {
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 w-full max-w-sm flex-shrink-0">
       <h3 className="text-sm font-semibold text-gray-400 mb-3">Opengear</h3>
       {error ? (
         <p className="text-xs text-red-400">{error}</p>
@@ -246,11 +263,24 @@ function OpengearCard({ devices, error }) {
         <div className="space-y-3">
           {devices.map((og, idx) => (
             <div key={og.name ?? idx}>
-              <p className="text-sm font-medium text-gray-200">{og.name || "Unknown"}</p>
+              {og.netboxid ? (
+                <a
+                  href={`${NETBOX_UI_BASE_URL}/dcim/devices/${og.netboxid}/`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-medium text-gray-200 hover:text-blue-400 transition-colors"
+                >
+                  {og.name || "Unknown"}
+                </a>
+              ) : (
+                <p className="text-sm font-medium text-gray-200">{og.name || "Unknown"}</p>
+              )}
+              <p className="text-[10px] text-gray-500 uppercase tracking-wide mt-1">LibreNMS Status</p>
               <div className="divide-y divide-gray-800">
-                <OpengearConnectionRow label="4G" conn={og.icmp} />
-                <OpengearConnectionRow label="Wired" conn={og.snmp} />
+                <OpengearConnectionRow label="4G" conn={og.icmp} loading={statusLoading} />
+                <OpengearConnectionRow label="Wired" conn={og.snmp} loading={statusLoading} />
               </div>
+              <OpengearInventoryFields device={og} loading={summaryLoading} />
             </div>
           ))}
         </div>
@@ -560,7 +590,22 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-        <h3 className="text-sm font-semibold text-gray-400">All Devices</h3>
+        <div className="flex items-center gap-4">
+          <h3 className="text-sm font-semibold text-gray-400">All Devices</h3>
+          <div className="flex items-center gap-4 text-[11px]">
+            <span className="text-gray-500">
+              Netbox: <span className="text-gray-300 font-medium">{netboxDevices.length}</span>
+            </span>
+            <span className="text-gray-500">
+              Mist Site:{" "}
+              {mistSiteId ? (
+                <span className="text-green-400 font-medium">Found</span>
+              ) : (
+                <span className="text-red-400 font-medium">Not Found</span>
+              )}
+            </span>
+          </div>
+        </div>
         <div className="flex items-center gap-3 text-[11px] text-gray-500">
           {diagram.loading && (
             <span className="flex items-center gap-1.5">
@@ -842,7 +887,7 @@ function SnowLocationCard({ location, error }) {
     );
   }
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 h-full">
       <h3 className="text-sm font-semibold text-gray-400 mb-3">ServiceNow Location</h3>
       {body}
     </div>
@@ -1142,6 +1187,44 @@ export default function SiteDashboardPage() {
   const { siteCode: rawSiteCode } = useParams();
   const siteCode = (rawSiteCode || "").trim().toUpperCase();
   const getToken = useSiteDashboardToken();
+  const navigate = useNavigate();
+
+  // Inline site switcher — lets an engineer jump to another site's dashboard
+  // without leaving this page and re-navigating through site search.
+  const [sites, setSites] = useState([]);
+  const [sitesLoading, setSitesLoading] = useState(false);
+  const [siteInput, setSiteInput] = useState(siteCode || "");
+
+  useEffect(() => {
+    setSiteInput(siteCode || "");
+  }, [siteCode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setSitesLoading(true);
+      try {
+        const token = await getToken();
+        if (!token || cancelled) return;
+        const data = await listSites(token);
+        if (!cancelled) setSites(data);
+      } catch {
+        // Non-critical: the switcher just has no options if this fails. The
+        // page's actual dashboard data loads independently and isn't blocked by it.
+      } finally {
+        if (!cancelled) setSitesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const goToSite = (code) => {
+    const trimmed = (code || "").trim();
+    if (trimmed && trimmed !== siteCode) navigate(`/${trimmed}/dashboard`);
+  };
 
   const [data, setData] = useState(null);
   const [dataLoading, setDataLoading] = useState(true);
@@ -1152,9 +1235,39 @@ export default function SiteDashboardPage() {
   const [dhcpScopes, setDhcpScopes] = useState([]);
   const [dhcpLoading, setDhcpLoading] = useState(true);
   const [dhcpError, setDhcpError] = useState(null);
-  const [opengearDevices, setOpengearDevices] = useState([]);
+  // Split into two independent lists, each filtered by site prefix on its own, and unioned
+  // by name below — whichever of the two calls resolves first is what determines the initial
+  // device list (a name can come from either source), rather than always waiting on summary
+  // specifically. A name-only entry from whichever source hasn't arrived yet just renders
+  // with its fields absent/skeletoned until that call catches up.
+  const [opengearSummaryDevices, setOpengearSummaryDevices] = useState([]);
   const [opengearLoading, setOpengearLoading] = useState(true);
   const [opengearError, setOpengearError] = useState(null);
+  const [opengearStatusDevices, setOpengearStatusDevices] = useState([]);
+  const [opengearStatusLoading, setOpengearStatusLoading] = useState(true);
+  const opengearDevices = useMemo(() => {
+    const summaryByName = new Map(opengearSummaryDevices.map((s) => [(s.name || "").toUpperCase(), s]));
+    const statusByName = new Map(opengearStatusDevices.map((s) => [(s.name || "").toUpperCase(), s]));
+    const names = new Set([...summaryByName.keys(), ...statusByName.keys()]);
+    return Array.from(names)
+      .map((key) => {
+        const summary = summaryByName.get(key);
+        const status = statusByName.get(key);
+        return {
+          ...summary,
+          name: summary?.name || status?.name,
+          icmp: status?.icmp ?? null,
+          snmp: status?.snmp ?? null,
+        };
+      })
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }, [opengearSummaryDevices, opengearStatusDevices]);
+  // Only block the card entirely while NEITHER source has produced anything yet — as soon as
+  // either one has a device to show, the card mounts and shows per-field skeletons for
+  // whichever piece (inventory vs. live status) is still pending. A summary error surfaces
+  // immediately rather than waiting on the status call too.
+  const opengearInitialLoading =
+    !opengearError && (opengearLoading || opengearStatusLoading) && opengearDevices.length === 0;
   const [diagramDevices, setDiagramDevices] = useState([]);
   const [diagramLoading, setDiagramLoading] = useState(false);
   const [diagramError, setDiagramError] = useState(null);
@@ -1177,8 +1290,10 @@ export default function SiteDashboardPage() {
     setDhcpScopes(null);
     setDhcpError(null);
     setOpengearLoading(true);
-    setOpengearDevices([]);
+    setOpengearSummaryDevices([]);
     setOpengearError(null);
+    setOpengearStatusLoading(true);
+    setOpengearStatusDevices([]);
     (async () => {
       let token;
       try {
@@ -1194,6 +1309,7 @@ export default function SiteDashboardPage() {
         setDhcpLoading(false);
         setOpengearError(message);
         setOpengearLoading(false);
+        setOpengearStatusLoading(false);
         return;
       }
       if (cancelled) return;
@@ -1233,18 +1349,43 @@ export default function SiteDashboardPage() {
 
       // Site code is always the first 8 characters of the device name (e.g. "KSCVICHC" in
       // "KSCVICHCSWA0201") — keep every match since some sites have more than one Opengear.
-      getOpengearDevices(token)
-        .then((all) => {
+      // Confirmed 2026-08-27: the summary endpoint (netmanid, netboxid, name, model, serial,
+      // wiredip, cellip, version, imei, mac, iccid) is the real device inventory; the status
+      // endpoint has no inventory info of its own — it's only used for icmp/snmp, the live
+      // connection state from the network monitoring tool.
+      //
+      // These two are fetched independently (not Promise.all'd), and each is filtered by site
+      // prefix on its own — whichever resolves first (it varies) populates opengearDevices via
+      // the name-union in the useMemo above, instead of always waiting on summary specifically.
+      const opengearPrefix = siteCode.slice(0, 8);
+
+      getOpengearSummary(token)
+        .then((summaryAll) => {
           if (cancelled) return;
-          const prefix = siteCode.slice(0, 8);
-          const matches = all.filter((og) => (og.name || "").toUpperCase().slice(0, 8) === prefix);
-          setOpengearDevices(matches);
+          const matches = (summaryAll || []).filter((og) => (og.name || "").toUpperCase().slice(0, 8) === opengearPrefix);
+          setOpengearSummaryDevices(matches);
         })
         .catch((err) => {
           if (!cancelled) setOpengearError(err.message || "Failed to load Opengear devices");
         })
         .finally(() => {
           if (!cancelled) setOpengearLoading(false);
+        });
+
+      getOpengearDevices(token)
+        .then((statusAll) => {
+          if (cancelled) return;
+          const matches = (statusAll || []).filter((og) => (og.name || "").toUpperCase().slice(0, 8) === opengearPrefix);
+          setOpengearStatusDevices(matches);
+        })
+        .catch(() => {
+          // Non-critical — the summary-derived device list still renders fine without live
+          // status; treat "failed" the same as "loaded, nothing found" rather than leaving
+          // the skeleton showing forever.
+          if (!cancelled) setOpengearStatusDevices([]);
+        })
+        .finally(() => {
+          if (!cancelled) setOpengearStatusLoading(false);
         });
     })();
     return () => {
@@ -1329,7 +1470,38 @@ export default function SiteDashboardPage() {
           </span>
           <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-1 rounded-full bg-gradient-to-r from-pink-400 to-pink-500" />
         </h1>
-        <p className="text-sm text-pink-400">Site Dashboard</p>
+        <p className="text-sm text-pink-400 mb-4">Site Dashboard</p>
+        <div className="dark text-foreground max-w-xs mx-auto">
+          <Autocomplete
+            size="sm"
+            label="Site Code"
+            menuTrigger="input"
+            placeholder="Search sites…"
+            variant="bordered"
+            isLoading={sitesLoading}
+            allowsCustomValue
+            inputValue={siteInput}
+            onInputChange={setSiteInput}
+            onSelectionChange={(key) => {
+              if (key) {
+                // Set immediately rather than waiting on the siteCode-driven effect —
+                // the library's own post-selection state update can otherwise race it
+                // and leave the input showing blank/placeholder after navigating.
+                setSiteInput(key);
+                goToSite(key);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !sites.some((s) => s.name === siteInput)) goToSite(siteInput);
+            }}
+          >
+            {sites.map((site) => (
+              <AutocompleteItem key={site.name} value={site.name}>
+                {site.name || "No Site Code"}
+              </AutocompleteItem>
+            ))}
+          </Autocomplete>
+        </div>
       </div>
 
       {error && (
@@ -1344,7 +1516,7 @@ export default function SiteDashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {snowLoading ? (
           <>
             <SkeletonCard lines={4} />
@@ -1358,26 +1530,34 @@ export default function SiteDashboardPage() {
         )}
       </div>
 
-      {dhcpLoading ? (
-        <SkeletonTable rows={3} />
-      ) : (
-        <DhcpScopesCard siteCode={siteCode} scopes={dhcpScopes} error={dhcpError} />
-      )}
-
-      {opengearLoading ? (
-        <SkeletonTable rows={2} />
-      ) : (
-        <OpengearCard devices={opengearDevices} error={opengearError} />
-      )}
+      <div className="flex flex-col lg:flex-row gap-4">
+        {opengearInitialLoading ? (
+          <SkeletonTable rows={2} />
+        ) : (
+          <OpengearCard
+            devices={opengearDevices}
+            error={opengearError}
+            statusLoading={opengearStatusLoading}
+            summaryLoading={opengearLoading}
+          />
+        )}
+        <div className="lg:flex-1 lg:min-w-0">
+          {dhcpLoading ? (
+            <SkeletonTable rows={3} />
+          ) : (
+            <DhcpScopesCard siteCode={siteCode} scopes={dhcpScopes} error={dhcpError} />
+          )}
+        </div>
+      </div>
 
       {dataLoading ? (
         <>
           <SkeletonTable rows={1} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <ComingSoonCard title="Circuits" note="Circuit info isn't wired up yet — needs the ServiceNow endpoint." />
+            <ComingSoonCard title="Circuits" note="Work in progress." />
             <ComingSoonCard
               title="Recent Tickets / Outages"
-              note="Ticket and outage history isn't wired up yet — needs the ServiceNow endpoint."
+              note="Work in progress."
             />
           </div>
           <SkeletonTable rows={5} />
@@ -1385,34 +1565,11 @@ export default function SiteDashboardPage() {
       ) : (
         data && (
         <>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Region</p>
-              <p className="text-sm text-gray-200">{netboxSite?.region?.name || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Group</p>
-              <p className="text-sm text-gray-200">{netboxSite?.group?.name || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Devices</p>
-              <p className="text-sm text-gray-200">{devices.length}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Mist Site</p>
-              {mistSite ? (
-                <span className="text-green-400 text-sm font-medium">Found</span>
-              ) : (
-                <span className="text-red-400 text-sm font-medium">Not Found</span>
-              )}
-            </div>
-          </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <ComingSoonCard title="Circuits" note="Circuit info isn't wired up yet — needs the ServiceNow endpoint." />
+            <ComingSoonCard title="Circuits" note="Work in progress." />
             <ComingSoonCard
               title="Recent Tickets / Outages"
-              note="Ticket and outage history isn't wired up yet — needs the ServiceNow endpoint."
+              note="Work in progress."
             />
           </div>
 

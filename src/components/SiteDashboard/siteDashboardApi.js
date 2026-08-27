@@ -429,6 +429,20 @@ export async function getOpengearDevices(token) {
   return Array.isArray(body) ? body : (body?.data ?? []);
 }
 
+// Real Opengear inventory list (confirmed 2026-08-27): { netmanid, netboxid, name, model,
+// serial, wiredip, cellip, version, imei, mac, iccid } — this is the actual device list/
+// metadata source, unlike reports/opengear/status, which only has live connection state
+// (no inventory fields of its own). No site filter param exists — org-wide, matched by name.
+export async function getOpengearSummary(token) {
+  const res = await fetch(`${API_ROOT}/devices/opengear/summary`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to load Opengear summary (${res.status})`);
+  const body = await res.json();
+  console.log("[Opengear summary] response:", body);
+  return Array.isArray(body) ? body : (body?.data ?? []);
+}
+
 export async function getLatestRadarFrame() {
   const res = await fetch("https://api.rainviewer.com/public/weather-maps.json");
   if (!res.ok) throw new Error(`Failed to load radar data (${res.status})`);

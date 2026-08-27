@@ -311,22 +311,22 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            {/* <Route
+            <Route
               path="dashboard"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <SiteSearchPage />
                 </ProtectedRoute>
               }
-            /> */}
-            {/* <Route
+            />
+            <Route
               path=":siteCode/dashboard"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <SiteDashboardPage />
                 </ProtectedRoute>
               }
-            /> */}
+            />
             <Route path="*" element={<NoMatch />} />
           </Routes>
         </AuthenticatedTemplate>

@@ -363,11 +363,15 @@ const DHCPManager = () => {
             placeholder="Search sites…"
             variant="bordered"
             isLoading={sitesLoading}
+            isDisabled={scopesLoading}
             allowsCustomValue
             inputValue={siteInput}
             onInputChange={setSiteInput}
             onSelectionChange={(key) => {
-              if (key) goToSite(key);
+              if (key) {
+                setSiteInput(key);
+                goToSite(key);
+              }
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !sites.some((s) => s.name === siteInput)) goToSite(siteInput);
