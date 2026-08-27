@@ -10,8 +10,12 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ClipboardIcon,
+  ExclamationTriangleIcon,
+  CheckIcon,
 } from "@heroicons/react/24/solid";
+import { ServerStackIcon } from "@heroicons/react/24/outline";
 import { useMsal } from "@azure/msal-react";
+import Badge from "../DepotOrders/Badge";
 
 export const ManageDevicePage = () => {
   const { instance, accounts, inProgress } = useMsal();
@@ -25,9 +29,11 @@ export const ManageDevicePage = () => {
   const [siteList, setSiteList] = useState([]);
   const [siteCodeSelected, setSiteCodeSelected] = useState("");
   const [getDeviceData, setGetDeviceData] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerms, setSearchTerms] = useState({});
   const [siteLoadError, setSiteLoadError] = useState(null);
   const [deviceLoadError, setDeviceLoadError] = useState(null);
+  const [copiedKey, setCopiedKey] = useState(null);
+  const copiedTimeoutRef = useRef(null);
 
   const url = `https://${process.env.REACT_APP_API_BASEURL}/api/management/netbox/sites/`;
   const GetDevicesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/management/netbox/${siteCodeSelected}/devices/`;
@@ -131,21 +137,22 @@ export const ManageDevicePage = () => {
       setNetboxLoading(false);
     }
   };
-  function copyToClipboard(text) {
+  function copyToClipboard(text, key) {
+    if (!text) return;
     navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
+    copiedTimeoutRef.current = setTimeout(() => setCopiedKey(null), 1500);
   }
 
   return (
     <>
-      <div className=" text-gray-100 flex flex-col items-center">
+      <div className="text-gray-100 flex flex-col items-center pb-20">
         <div className="max-w-3xl text-center mt-16">
-          <h1 className="text-3xl font-bold leading-tight mb-2 pb-4 relative">
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-pink-500">
-              Manage Devices
-            </span>
-            <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-32 h-1 rounded-full bg-gradient-to-r from-pink-400 to-pink-500"></span>
+          <h1 className="text-3xl font-bold leading-tight mb-2 text-gray-100">
+            Manage Devices
           </h1>
-          <p className="text-sm text-pink-400 mb-8">
+          <p className="text-sm text-gray-400 mb-8">
             Manage individual devices in Netbox.
           </p>
         </div>
@@ -180,7 +187,7 @@ export const ManageDevicePage = () => {
             <Button
               isLoading={netboxLoading}
               onPress={handleGetDevices}
-              className="bg-pink-600 "
+              className="bg-pink-600 text-black font-semibold hover:bg-pink-700 hover:text-pink-600 transition-colors"
             >
               Search Devices
             </Button>
@@ -200,36 +207,45 @@ export const ManageDevicePage = () => {
         )}
 
         <div className="w-full max-w-6xl space-y-8">
+          {netboxLoading && (
+            <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+              <div
+                className="h-8 w-8 rounded-full border-2 border-gray-700 border-t-pink-500 animate-spin"
+                role="status"
+                aria-label="Loading devices"
+              />
+              <p className="text-gray-400 text-sm">Loading devices…</p>
+            </div>
+          )}
+
           {(!getDeviceData || getDeviceData.length === 0) && !netboxLoading && !deviceLoadError && (
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-              <div className="relative">
-                <div className="text-6xl relative z-10">🚧</div>
+              <div className="w-16 h-16 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center">
+                <ServerStackIcon className="w-8 h-8 text-gray-500" />
               </div>
 
               <p className="text-gray-400 text-sm max-w-sm">
                 Looks like no site is selected — choose one to start managing
                 devices.
               </p>
-
-              <div className="mt-4 flex items-center space-x-2 text-xs text-gray-500"></div>
             </div>
           )}
 
           {getDeviceData.map((siteItem, index) => {
-            const site = siteItem.data?.netboxbsite;
+            const site = siteItem.data?.netboxsite;
             const mist = siteItem.data?.mistsite;
             const devices = siteItem.data?.devices || [];
 
             return (
               <div
                 key={index}
-                className="bg-gray-900 border border-gray-800 rounded-xl shadow-lg p-6"
+                className="bg-gray-900 border border-gray-700 rounded-xl p-6"
               >
                 {/* Site Info */}
                 <div className="mb-4 border-b border-gray-800 pb-3 flex justify-between items-center">
                   <div>
                     <h2 className="text-2xl font-semibold text-pink-400">
-                      {site?.name || "Unknown Site"}
+                      {site?.display || "Unknown Site"}
                     </h2>
                     {/* <p className="text-sm text-gray-500">
                       Region: {site?.region?.name || "N/A"} | Group:{" "}
@@ -238,22 +254,24 @@ export const ManageDevicePage = () => {
                   </div>
                   <div>
                     {mist ? (
-                      <span className="text-green-400 text-sm font-medium">
-                        MIST SITE FOUND
-                      </span>
+                      <Badge color="green">Mist site found</Badge>
                     ) : (
-                      <span className="text-red-400 text-sm font-medium">
-                        MIST SITE NOT FOUND
-                      </span>
+                      <Badge color="red">Mist site not found</Badge>
                     )}
                   </div>
                 </div>
                 <div className="w-full max-w-md mb-6">
+                  <label htmlFor={`device-search-${index}`} className="sr-only">
+                    Search devices by name
+                  </label>
                   <input
+                    id={`device-search-${index}`}
                     type="text"
                     placeholder="Search devices by name..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={searchTerms[index] || ""}
+                    onChange={(e) =>
+                      setSearchTerms((prev) => ({ ...prev, [index]: e.target.value }))
+                    }
                     className="w-full px-4 py-2 rounded-lg bg-gray-800 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all"
                   />
                 </div>
@@ -280,7 +298,7 @@ export const ManageDevicePage = () => {
                           .filter((device) =>
                             device.name
                               ?.toLowerCase()
-                              .includes(searchTerm.toLowerCase())
+                              .includes((searchTerms[index] || "").toLowerCase())
                           )
                           .map((device, idx) => {
                             const inMist =
@@ -288,7 +306,7 @@ export const ManageDevicePage = () => {
                               device.custom?.mistdevicesite === mist?.id;
                             const wrongSite =
                               device.custom?.mistdevicesite !== mist?.id &&
-                              device.device_type.manufacturer?.name ===
+                              device.device_type?.manufacturer?.name ===
                                 "Juniper";
 
                             return (
@@ -308,14 +326,26 @@ export const ManageDevicePage = () => {
                                 <td className="px-4 py-3">
                                   {wrongSite ? (
                                     <div>
-                                      <div className="relative group inline-block">
-                                        <span className="text-yellow-400 cursor-pointer pr-3">
+                                      <div className="relative group inline-flex items-center gap-1.5">
+                                        <ExclamationTriangleIcon
+                                          className="w-4 h-4 text-yellow-400 flex-shrink-0"
+                                          aria-hidden="true"
+                                        />
+                                        <span
+                                          tabIndex={0}
+                                          aria-describedby={`wrong-site-tip-${index}-${idx}`}
+                                          className="text-yellow-400 cursor-pointer pr-3 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-pink-500"
+                                        >
                                           {device.serial || "—"}
                                         </span>
 
-                                        <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 w-max rounded-md bg-gray-800 text-yellow-400 text-md px-3 py-1 opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-lg border border-gray-700">
+                                        <div
+                                          id={`wrong-site-tip-${index}-${idx}`}
+                                          role="tooltip"
+                                          className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 w-max rounded-md bg-gray-800 text-yellow-400 text-md px-3 py-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all duration-300 shadow-lg border border-gray-700"
+                                        >
                                           <span>
-                                            Device is assigned to the the wrong
+                                            Device is assigned to the wrong
                                             site in Mist!
                                           </span>
                                         </div>
@@ -323,12 +353,18 @@ export const ManageDevicePage = () => {
                                       <Button
                                         isIconOnly
                                         size="sm"
+                                        isDisabled={!device.serial}
+                                        aria-label="Copy serial number"
                                         onPress={() =>
-                                          copyToClipboard(device.serial)
+                                          copyToClipboard(device.serial, `${index}-${idx}`)
                                         }
                                         className="bg-gray-700 text-white "
                                       >
-                                        <ClipboardIcon className="w-4 h-4" />
+                                        {copiedKey === `${index}-${idx}` ? (
+                                          <CheckIcon className="w-4 h-4 text-green-400" />
+                                        ) : (
+                                          <ClipboardIcon className="w-4 h-4" />
+                                        )}
                                       </Button>
                                     </div>
                                   ) : (
@@ -339,32 +375,54 @@ export const ManageDevicePage = () => {
                                       <Button
                                         isIconOnly
                                         size="sm"
+                                        isDisabled={!device.serial}
+                                        aria-label="Copy serial number"
                                         onPress={() =>
-                                          copyToClipboard(device.serial)
+                                          copyToClipboard(device.serial, `${index}-${idx}`)
                                         }
                                         className="bg-gray-700 text-white "
                                       >
-                                        <ClipboardIcon className="w-4 h-4" />
+                                        {copiedKey === `${index}-${idx}` ? (
+                                          <CheckIcon className="w-4 h-4 text-green-400" />
+                                        ) : (
+                                          <ClipboardIcon className="w-4 h-4" />
+                                        )}
                                       </Button>
                                     </div>
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
-                                  {device.custom_fields?.POLLING === true
-                                    ? "Enabled"
-                                    : device.custom_fields?.POLLING === false
-                                    ? "Disabled"
-                                    : "—"}
+                                  {device.custom_fields?.POLLING === true ? (
+                                    <Badge color="green">Enabled</Badge>
+                                  ) : device.custom_fields?.POLLING === false ? (
+                                    <Badge color="gray">Disabled</Badge>
+                                  ) : (
+                                    "—"
+                                  )}
                                 </td>
                                 <td className="px-4 py-3">
-                                  {device.custom_fields?.ALERT || "—"}
+                                  {device.custom_fields?.ALERT === true ? (
+                                    <Badge color="green">Enabled</Badge>
+                                  ) : device.custom_fields?.ALERT === false ? (
+                                    <Badge color="gray">Disabled</Badge>
+                                  ) : (
+                                    "—"
+                                  )}
                                 </td>
 
                                 <td className="px-4 py-3 text-center">
                                   {inMist ? (
-                                    <CheckCircleIcon className="h-6 w-6 text-green-500 mx-auto" />
+                                    <CheckCircleIcon
+                                      className="h-6 w-6 text-green-500 mx-auto"
+                                      role="img"
+                                      aria-label="In Mist"
+                                    />
                                   ) : (
-                                    <XCircleIcon className="h-6 w-6 text-red-500 mx-auto" />
+                                    <XCircleIcon
+                                      className="h-6 w-6 text-red-500 mx-auto"
+                                      role="img"
+                                      aria-label="Not in Mist"
+                                    />
                                   )}
                                 </td>
                               </tr>
@@ -373,7 +431,7 @@ export const ManageDevicePage = () => {
                       ) : (
                         <tr>
                           <td
-                            colSpan="5"
+                            colSpan="7"
                             className="px-4 py-6 text-center text-gray-500 italic"
                           >
                             No devices found for this site.

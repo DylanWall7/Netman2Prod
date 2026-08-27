@@ -6,3 +6,6 @@ data.js
 /build
 docs/
 .superpowers/
+.impeccable/
+DESIGN.md
+PRODUCT.md

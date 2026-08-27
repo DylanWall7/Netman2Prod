@@ -182,6 +182,19 @@ export const HomeLayout = () => {
             </Card>
           )}
 
+          {isEngineer && (
+            <Card to="/dhcp" title="DHCP Manager" description="View DHCP scopes, leases, and reservations across Gizmo and Kea.">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+                <rect x="3" y="3.5" width="18" height="5" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                <rect x="3" y="10" width="18" height="5" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                <rect x="3" y="16.5" width="18" height="4.5" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                <circle cx="6.5" cy="6" r="0.9" fill="currentColor" />
+                <circle cx="6.5" cy="12.5" r="0.9" fill="currentColor" />
+                <circle cx="6.5" cy="18.75" r="0.9" fill="currentColor" />
+              </svg>
+            </Card>
+          )}
+
           {isAuthorized && (
             <Card to="https://dhcp.kiewitplaza.com" title="DHCP Tool" description="Manage DHCP reservations easily and efficiently." external>
               <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor">

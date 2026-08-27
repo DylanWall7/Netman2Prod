@@ -20,3 +20,14 @@ body,
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Registered so its value is animatable/transitionable — plain custom properties
+   (--x: 42) can't be interpolated by the browser without this. Used by the DHCP
+   scope capacity bar (DHCPManager.js) to smoothly sweep the fill's hue from
+   green toward red as utilization climbs, instead of snapping between fixed
+   color stops. */
+@property --dhcp-hue {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 142;
+}

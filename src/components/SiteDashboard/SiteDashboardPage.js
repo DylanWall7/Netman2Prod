@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { MapContainer, TileLayer, Marker } from "react-leaflet";
 import { Icon } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   getActiveWeatherAlerts,
   getCurrentWeather,
-  getDhcpScopes,
+  getScopesForSite,
   getDiagramDevices,
   getLatestRadarFrame,
   getMistDevices,
@@ -67,90 +67,132 @@ function SkeletonTable({ rows = 4 }) {
   );
 }
 
-// Real Kia response shape only has { id, subnet, sharedNetworkName } — no name/gateway/leases.
-function KiaScopeTable({ scopes }) {
-  if (scopes.length === 0) return <p className="text-xs text-gray-600 italic">No scopes found.</p>;
+// Status/source styling mirrors ManageDHCP/DHCPManager.js so a scope reads the same way in
+// both places. Each row is exactly one server's deployment of a subnet (see getScopesForSite) —
+// a subnet on both Gizmo and Kea produces two rows here, not one merged row.
+const DHCP_STATUS_STYLES = {
+  active: { dot: "bg-green-400", label: "Active" },
+  inactive: { dot: "bg-gray-500", label: "Inactive" },
+  warning: { dot: "bg-yellow-400", label: "Warning" },
+  error: { dot: "bg-red-400", label: "Error" },
+  unknown: { dot: "bg-gray-500", label: "Status unknown" },
+  not_deployed: { dot: "bg-gray-600", label: "Not deployed" },
+};
+
+function dhcpSourceLabel(scope) {
+  if (scope.hasGizmo) return "Gizmo";
+  if (scope.hasKea) return "Kea";
+  return null;
+}
+
+// "Active" is the unremarkable default and "unknown" just means no status
+// data exists (true for every Kea scope) — neither is worth calling out.
+// Only show a status when it's actually notable: Gizmo's real "Inactive",
+// warning, error, or not_deployed.
+const QUIET_DHCP_STATUSES = new Set(["active", "unknown"]);
+
+function DhcpScopeRow({ scope }) {
+  const statusStyle = DHCP_STATUS_STYLES[scope.status] || DHCP_STATUS_STYLES.unknown;
+  const showStatus = !QUIET_DHCP_STATUSES.has(scope.status);
+  const source = dhcpSourceLabel(scope);
+  const hasRange = scope.start !== "—" || scope.end !== "—";
+  const dns = Array.isArray(scope.dns) && scope.dns.length > 0 ? scope.dns.join(", ") : "—";
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-xs">
-        <thead className="text-gray-500">
-          <tr>
-            <th className="text-left px-2 py-1.5">ID</th>
-            <th className="text-left px-2 py-1.5">Subnet</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-800">
-          {scopes.map((s) => (
-            <tr key={s.id} className="text-gray-300">
-              <td className="px-2 py-1.5 font-mono text-gray-400">{s.id ?? "—"}</td>
-              <td className="px-2 py-1.5 font-mono text-gray-200">{s.subnet || "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <tr className="text-gray-300 align-top">
+      <td className="px-2 py-2">
+        <div className="font-mono text-gray-200">
+          {scope.scopeId}
+          {scope.cidr != null ? `/${scope.cidr}` : ""}
+        </div>
+        <div className="text-xs text-gray-500">{scope.name}</div>
+      </td>
+      <td className="px-2 py-2">
+        {source ? (
+          <span
+            className={`text-xs px-1.5 py-0.5 rounded-full border ${
+              source === "Gizmo"
+                ? "bg-amber-900/40 border-amber-700/50 text-amber-300"
+                : "bg-teal-900/30 border-teal-700/40 text-teal-300"
+            }`}
+          >
+            {source}
+          </span>
+        ) : (
+          <span className="text-xs text-gray-600">—</span>
+        )}
+      </td>
+      <td className="px-2 py-2 whitespace-nowrap">
+        {showStatus ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
+            {statusStyle.label}
+          </span>
+        ) : (
+          <span className="text-gray-600">—</span>
+        )}
+      </td>
+      <td className="px-2 py-2 font-mono text-xs text-gray-400 whitespace-nowrap">
+        {hasRange ? `${scope.start} – ${scope.end}` : "—"}
+      </td>
+      <td className="px-2 py-2 font-mono text-xs text-gray-400">{scope.gateway}</td>
+      <td className="px-2 py-2 font-mono text-xs text-gray-400">{dns}</td>
+      <td className="px-2 py-2 text-xs text-gray-400 whitespace-nowrap">
+        {scope.leases} leased / {scope.reservations} reserved
+      </td>
+      <td className="px-2 py-2">
+        {scope.utilization != null ? (
+          <div className="flex items-center gap-1.5 w-20">
+            <div className="flex-1 h-1.5 rounded-full bg-gray-700 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-teal-400"
+                style={{ width: `${scope.utilization}%` }}
+              />
+            </div>
+            <span className="font-mono text-xs text-gray-400">{scope.utilization}%</span>
+          </div>
+        ) : (
+          <span className="text-gray-600 text-xs">—</span>
+        )}
+      </td>
+    </tr>
   );
 }
 
-// Mirrors only the fields DemobeStepper.js trusts from real Gizmo responses — its shape
-// isn't otherwise confirmed.
-function GizmoScopeTable({ scopes }) {
-  if (scopes.length === 0) return <p className="text-xs text-gray-600 italic">No scopes found.</p>;
+function DhcpScopesCard({ siteCode, scopes, error }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-xs">
-        <thead className="text-gray-500">
-          <tr>
-            <th className="text-left px-2 py-1.5">Scope ID</th>
-            <th className="text-left px-2 py-1.5">Name</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-800">
-          {scopes.map((s, idx) => {
-            const scopeId = s.scopeID ?? s.scopeId;
-            return (
-              <tr key={scopeId ?? idx} className="text-gray-300">
-                <td className="px-2 py-1.5 font-mono text-gray-400">{scopeId ?? "—"}</td>
-                <td className="px-2 py-1.5 text-gray-200">{s.name || "—"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function DhcpScopesCard({ dhcpScopes, error }) {
-  const kia = dhcpScopes?.kia ?? [];
-  const gizmo = dhcpScopes?.gizmo ?? [];
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-5">
-      <h3 className="text-sm font-semibold text-gray-400">DHCP Scopes</h3>
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-400">DHCP Scopes</h3>
+        <Link to={`/dhcp/${siteCode}`} className="text-xs text-pink-500 hover:text-pink-400">
+          Manage DHCP →
+        </Link>
+      </div>
       {error ? (
         <p className="text-xs text-red-400">{error}</p>
-      ) : kia.length === 0 && gizmo.length === 0 ? (
+      ) : scopes.length === 0 ? (
         <p className="text-xs text-gray-600 italic">No DHCP scopes found for this site.</p>
       ) : (
-        <>
-          {kia.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-gray-400 mb-2">Kia DHCP Server</p>
-              <KiaScopeTable scopes={kia} />
-            </div>
-          )}
-          {gizmo.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-amber-300 mb-2 flex items-center gap-1.5">
-                Gizmo DHCP Server
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/40 border border-amber-700/50 text-amber-300">
-                  Legacy / Read Only
-                </span>
-              </p>
-              <GizmoScopeTable scopes={gizmo} />
-            </div>
-          )}
-        </>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-xs">
+            <thead className="text-gray-500">
+              <tr>
+                <th className="text-left px-2 py-1.5">Scope</th>
+                <th className="text-left px-2 py-1.5">Source</th>
+                <th className="text-left px-2 py-1.5">Status</th>
+                <th className="text-left px-2 py-1.5">Range</th>
+                <th className="text-left px-2 py-1.5">Gateway</th>
+                <th className="text-left px-2 py-1.5">DNS</th>
+                <th className="text-left px-2 py-1.5">Leases / Reservations</th>
+                <th className="text-left px-2 py-1.5">Utilization</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-800">
+              {scopes.map((s) => (
+                <DhcpScopeRow key={s.id} scope={s} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -1107,7 +1149,7 @@ export default function SiteDashboardPage() {
   const [snowLocation, setSnowLocation] = useState(null);
   const [snowLoading, setSnowLoading] = useState(true);
   const [snowLocationError, setSnowLocationError] = useState(null);
-  const [dhcpScopes, setDhcpScopes] = useState(null);
+  const [dhcpScopes, setDhcpScopes] = useState([]);
   const [dhcpLoading, setDhcpLoading] = useState(true);
   const [dhcpError, setDhcpError] = useState(null);
   const [opengearDevices, setOpengearDevices] = useState([]);
@@ -1178,7 +1220,7 @@ export default function SiteDashboardPage() {
           if (!cancelled) setSnowLoading(false);
         });
 
-      getDhcpScopes(siteCode, token)
+      getScopesForSite(siteCode, token)
         .then((result) => {
           if (!cancelled) setDhcpScopes(result);
         })
@@ -1316,7 +1358,11 @@ export default function SiteDashboardPage() {
         )}
       </div>
 
-      {dhcpLoading ? <SkeletonTable rows={3} /> : <DhcpScopesCard dhcpScopes={dhcpScopes} error={dhcpError} />}
+      {dhcpLoading ? (
+        <SkeletonTable rows={3} />
+      ) : (
+        <DhcpScopesCard siteCode={siteCode} scopes={dhcpScopes} error={dhcpError} />
+      )}
 
       {opengearLoading ? (
         <SkeletonTable rows={2} />

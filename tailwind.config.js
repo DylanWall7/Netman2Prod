@@ -23,12 +23,27 @@ module.exports = {
           "0%, 100%": { opacity: 1 },
           "50%": { opacity: 0.5 },
         },
+        iconPop: {
+          "0%": { transform: "scale(0.5)", opacity: 0 },
+          "100%": { transform: "scale(1)", opacity: 1 },
+        },
+        fadeIn: {
+          "0%": { opacity: 0 },
+          "100%": { opacity: 1 },
+        },
+        modalIn: {
+          "0%": { transform: "scale(0.96)", opacity: 0 },
+          "100%": { transform: "scale(1)", opacity: 1 },
+        },
       },
 
       animation: {
         blink: "blink 10s infinite",
         bounceOnce: "bounce 1s ease-in-out 4",
         pulse10s: "pulse 2s ease-in-out 5",
+        iconPop: "iconPop 150ms cubic-bezier(0.16, 1, 0.3, 1)",
+        fadeIn: "fadeIn 200ms ease-out",
+        modalIn: "modalIn 200ms cubic-bezier(0.16, 1, 0.3, 1)",
       },
 
       colors: {

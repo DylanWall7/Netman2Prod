@@ -17,7 +17,7 @@ import { GizmoRequest } from "./authConfig";
 import DemobeStepper from "./components/Demobe/DemobeStepper";
 import UserProfile from "./components/User/UserProfile";
 import LogsPage from "./components/LogPage/LogFile";
-import MobeBenchTable from "./components/Workbench/WorkbenchList";
+import WorkbenchList from "./components/Workbench/WorkbenchList";
 import { ManageDevicePage } from "./components/ManageDevice/ManageDevicePage";
 import DHCPManager from "./components/ManageDHCP/DHCPManager";
 import DHCPSiteSelect from "./components/ManageDHCP/DHCPSiteSelect";
@@ -175,7 +175,7 @@ function App() {
               path="workbench"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
-                  <MobeBenchTable />
+                  <WorkbenchList />
                 </ProtectedRoute>
               }
             />
@@ -311,22 +311,22 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route
+            {/* <Route
               path="dashboard"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <SiteSearchPage />
                 </ProtectedRoute>
               }
-            />
-            <Route
+            /> */}
+            {/* <Route
               path=":siteCode/dashboard"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <SiteDashboardPage />
                 </ProtectedRoute>
               }
-            />
+            /> */}
             <Route path="*" element={<NoMatch />} />
           </Routes>
         </AuthenticatedTemplate>

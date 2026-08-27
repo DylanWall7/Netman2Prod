@@ -135,6 +135,22 @@ export const PageLayout = (props) => {
       ),
     },
     {
+      to: "/dhcp",
+      label: "DHCP Manager",
+      show: isEngineer,
+      external: false,
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+          <rect x="3" y="3.5" width="18" height="5" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+          <rect x="3" y="10" width="18" height="5" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+          <rect x="3" y="16.5" width="18" height="4.5" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+          <circle cx="6.5" cy="6" r="0.9" fill="currentColor" />
+          <circle cx="6.5" cy="12.5" r="0.9" fill="currentColor" />
+          <circle cx="6.5" cy="18.75" r="0.9" fill="currentColor" />
+        </svg>
+      ),
+    },
+    {
       to: "https://dhcp.kiewitplaza.com",
       label: "DHCP Tool",
       show: isAuthorized,

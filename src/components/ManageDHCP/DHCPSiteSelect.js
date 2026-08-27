@@ -41,12 +41,7 @@ export default function DHCPSiteSelect() {
   return (
     <div className="text-gray-100 max-w-xl mx-auto py-16 px-6 space-y-6">
       <div className="text-center">
-        <h1 className="text-3xl font-bold leading-tight mb-2 pb-4 relative inline-block">
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-pink-500">
-            DHCP Manager
-          </span>
-          <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-1 rounded-full bg-gradient-to-r from-pink-400 to-pink-500" />
-        </h1>
+        <h1 className="text-3xl font-bold leading-tight mb-2 text-gray-100">DHCP Manager</h1>
         <p className="text-sm text-pink-400">Pick a site, or type its code and hit enter.</p>
       </div>
 
@@ -85,7 +80,7 @@ export default function DHCPSiteSelect() {
       <button
         onClick={() => goToSite(inputText)}
         disabled={!inputText.trim()}
-        className="w-full text-sm px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-pink-500 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full text-sm px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-pink-500 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-500"
       >
         Go to DHCP scopes
       </button>
