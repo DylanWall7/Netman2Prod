@@ -71,7 +71,12 @@ export default function SiteSearchPage() {
             if (key) goToSite(key);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !sites.some((s) => s.name === inputText)) goToSite(inputText);
+            // Only treat Enter as "navigate to this literal typed text" when nothing in the
+            // list matches it at all — otherwise let the Autocomplete's own Enter-selects-
+            // highlighted-item handling win, instead of also firing this on the stale partial
+            // text still in the box.
+            const hasMatch = sites.some((s) => s.name.toLowerCase().includes(inputText.trim().toLowerCase()));
+            if (e.key === "Enter" && !hasMatch) goToSite(inputText);
           }}
         >
           {sites.map((site) => (

@@ -2604,7 +2604,13 @@ export default function SiteDashboardPage() {
               }
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !sites.some((s) => s.name === siteInput)) goToSite(siteInput);
+              // Only treat Enter as "navigate to this literal typed text" when nothing in the
+              // list matches it at all. If any site matches (even a partial, arrow-key-
+              // highlighted one), leave Enter to the Autocomplete's own selection handling —
+              // otherwise this fired in addition to it, navigating to whatever partial text
+              // was still in the box instead of the highlighted suggestion.
+              const hasMatch = sites.some((s) => s.name.toLowerCase().includes(siteInput.trim().toLowerCase()));
+              if (e.key === "Enter" && !hasMatch) goToSite(siteInput);
             }}
           >
             {sites.map((site) => (
