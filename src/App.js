@@ -235,14 +235,14 @@ function App() {
                 </ProtectedRoute>
               }
             ></Route>
-            <Route
+            {/* <Route
               path="diagrams"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <SiteDiagramsView />
                 </ProtectedRoute>
               }
-            ></Route>
+            ></Route> */}
             <Route
               path="dhcp"
               element={
@@ -252,7 +252,7 @@ function App() {
               }
             />
             <Route
-              path="dhcp/:siteCode"
+              path=":siteCode/dhcp"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <DHCPManager />

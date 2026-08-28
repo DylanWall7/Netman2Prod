@@ -91,6 +91,17 @@ export const HomeLayout = () => {
           animate="visible"
         >
           {isEngineer && (
+            <Card to="/dashboard" title="Site Dashboard" description="View live device, DHCP, circuit, and incident status for any job site.">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+                <rect x="3" y="3" width="8" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                <rect x="13" y="3" width="8" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                <rect x="13" y="11" width="8" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                <rect x="3" y="15" width="8" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+            </Card>
+          )}
+
+          {isEngineer && (
             <Card to="/provision" title="Provisioning Wizard" description="Deploy new sites, DHCP, and Netbox using the provisioning wizard.">
               <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 490 490" width="28" height="28">
                 <g>

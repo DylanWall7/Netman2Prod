@@ -76,6 +76,20 @@ export const PageLayout = (props) => {
       ),
     },
     {
+      to: "/dashboard",
+      label: "Site Dashboard",
+      show: isEngineer,
+      external: false,
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+          <rect x="3" y="3" width="8" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+          <rect x="13" y="3" width="8" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+          <rect x="13" y="11" width="8" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+          <rect x="3" y="15" width="8" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      ),
+    },
+    {
       to: "/provision",
       label: "Provisioning",
       show: isEngineer,
@@ -258,19 +272,19 @@ export const PageLayout = (props) => {
         </svg>
       ),
     },
-    {
-      to: "/diagrams",
-      label: "Site Diagrams",
-      show: isEngineer,
-      external: false,
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
-          <path d="M12 3L3 7.5L12 12L21 7.5L12 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-          <path d="M3 12L12 16.5L21 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M3 16.5L12 21L21 16.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ),
-    },
+    // {
+    //   to: "/diagrams",
+    //   label: "Site Diagrams",
+    //   show: isEngineer,
+    //   external: false,
+    //   icon: (
+    //     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+    //       <path d="M12 3L3 7.5L12 12L21 7.5L12 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    //       <path d="M3 12L12 16.5L21 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    //       <path d="M3 16.5L12 21L21 16.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    //     </svg>
+    //   ),
+    // },
     {
       to: "/validate",
       label: "Validation",
@@ -366,7 +380,7 @@ export const PageLayout = (props) => {
             </svg>
           </button>
 
-          <nav className="flex flex-col gap-0.5 p-1.5 mt-1 flex-1 overflow-y-auto">
+          <nav className="flex flex-col gap-0.5 p-1.5 mt-1">
             {visibleItems.map((item) => {
               const isActive =
                 item.to === "/"
@@ -387,7 +401,7 @@ export const PageLayout = (props) => {
           </nav>
 
           {isAuthenticated && (
-            <div className="p-1.5 border-t border-gray-700 flex-shrink-0">
+            <div className="p-1.5 mt-4 border-t border-gray-700 flex-shrink-0">
               <button
                 onClick={() => instance.logoutRedirect({ postLogoutRedirectUri: window.location.origin }).catch(console.error)}
                 title="Sign out"

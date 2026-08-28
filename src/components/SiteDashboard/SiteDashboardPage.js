@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Autocomplete, AutocompleteItem } from "@nextui-org/react";
 import { MapContainer, TileLayer, Marker } from "react-leaflet";
+import { BuildingOfficeIcon, UsersIcon, DocumentTextIcon, MapPinIcon } from "@heroicons/react/24/outline";
 import { Icon } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -15,6 +17,11 @@ import {
   getOpengearDevices,
   getOpengearSummary,
   getRecentDailyWeather,
+  getCircuitsForSite,
+  getRecentIncidents,
+  getServiceNowLocationBySite,
+  getServiceNowUsers,
+  referenceDisplay,
   getSiteDashboardData,
   getSnowLocation,
   listSites,
@@ -25,6 +32,14 @@ import { getSnipeitAssetBySerial } from "../DepotOrders/snipeitApi";
 const NETBOX_UI_BASE_URL = "https://netbox.kiewit.com";
 const SNIPEIT_UI_BASE_URL = "https://netinv.kiewitplaza.com";
 
+// This endpoint has no site filter (see getRecentIncidents) — every option here pulls every
+// incident assigned to the network group org-wide, filtered down client-side afterward, so
+// the window is capped rather than left open-ended: going back further means fetching (and
+// discarding) proportionally more org-wide records just to find this one site's handful.
+const INCIDENTS_DEFAULT_DAYS = 30;
+const INCIDENTS_MAX_DAYS = 90;
+const INCIDENTS_DAY_OPTIONS = [7, 14, 30, 60, INCIDENTS_MAX_DAYS];
+
 const MIST_LINKABLE_TYPES = new Set(["switch", "gateway", "router", "ap"]);
 
 function mistDetailUrl(mistId, type, mistSiteId) {
@@ -33,17 +48,581 @@ function mistDetailUrl(mistId, type, mistSiteId) {
   return `https://manage.mist.com/admin/?org_id=${orgId}#!${mistType}/detail/${mistId}/${mistSiteId ?? ""}`;
 }
 
-function ComingSoonCard({ title, note }) {
+// Prefers a real name resolved via getServiceNowUsers (sys_id -> display name, fetched for
+// every assigned_to/opened_by/caller_id sys_id across the current incident list) over
+// referenceDisplay's raw-sys_id fallback — see the userDisplayMap effect below.
+function resolveReference(field, userMap) {
+  if (!field) return null;
+  if (typeof field === "string") return field || null;
+  return userMap.get(field.value) || referenceDisplay(field);
+}
+
+// "state"/"incident_state" arrive as human text like "Closed"/"In Progress" if
+// sysparm_display_value is honored (see getRecentIncidents), or as ServiceNow's raw numeric
+// codes if it isn't. Confirmed org-specific mapping (not the ServiceNow OOB defaults) — 3/4/5
+// are unused at this org, and the negative codes are the various "awaiting X" states.
+const CLOSED_STATE_CODES = new Set(["6", "7", "8"]);
+const INCIDENT_STATE_LABELS = {
+  1: "Open",
+  2: "Work In Progress",
+  6: "Resolved",
+  7: "Closed Complete",
+  8: "Closed Canceled",
+  "-4": "Awaiting Customer",
+  "-19": "Awaiting Internal",
+  "-12": "Awaiting Vendor",
+  "-11": "Customer Responded",
+  "-2": "Scheduled",
+};
+function isClosedState(state) {
+  return CLOSED_STATE_CODES.has((state ?? "").toString().trim());
+}
+
+// Confirmed org-specific incident priority scale (from getPriorityString()) — this org only
+// uses 1-4, unlike ServiceNow's OOB 1-5 scale. Severity is still unconfirmed for this org.
+const PRIORITY_LABELS = { 1: "Critical", 2: "High", 3: "Medium", 4: "Low" };
+const SEVERITY_LABELS = { 1: "High", 2: "Medium", 3: "Low" };
+function codeLabel(value, labels) {
+  if (!value) return null;
+  const s = value.toString().trim();
+  return labels[s] ? `${s} - ${labels[s]}` : value;
+}
+function stateLabel(state) {
+  const s = (state ?? "").toString().trim();
+  return INCIDENT_STATE_LABELS[s] || state;
+}
+// 1 (Critical) and 2 (High) on the standard ServiceNow priority scale.
+function isHighPriority(priority) {
+  const s = (priority ?? "").toString().trim();
+  return s === "1" || s === "2";
+}
+
+// ServiceNow's display timestamps come back as "YYYY-MM-DD HH:MM:SS" — readable, but not
+// localized. Reformatted into the viewer's own locale/date-time style; falls back to the raw
+// string if it doesn't parse as a date (e.g. any unexpected format).
+function formatSnowDate(value) {
+  if (!value) return null;
+  const date = new Date(value.replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function IncidentStatusBadge({ state }) {
+  if (!state) return <span className="text-gray-600 text-[11px]">—</span>;
+  const closed = isClosedState(state);
   return (
-    <div className="bg-gray-900 border border-dashed border-gray-700 rounded-xl p-5 flex flex-col justify-between min-h-[140px]">
-      <h3 className="text-sm font-semibold text-gray-400">{title}</h3>
-      <p className="text-xs text-gray-600 mt-2">{note}</p>
+    <span
+      className={`text-[11px] px-1.5 py-0.5 rounded-full border shrink-0 ${
+        closed ? "bg-gray-800 border-gray-700 text-gray-400" : "bg-amber-900/30 border-amber-700/40 text-amber-300"
+      }`}
+    >
+      {stateLabel(state)}
+    </span>
+  );
+}
+
+function IncidentsCard({ incidents, loading, error, onSelect, userMap, daysAgo, onChangeDaysAgo, onRetry }) {
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col min-h-[140px]">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h3 className="text-sm font-semibold text-gray-400">Recent Tickets / Outages</h3>
+        <select
+          value={daysAgo}
+          onChange={(e) => onChangeDaysAgo(Number(e.target.value))}
+          aria-label="Filter incidents by days back"
+          className="text-[11px] bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-gray-400 focus:outline-none focus:border-gray-500"
+        >
+          {INCIDENTS_DAY_OPTIONS.map((d) => (
+            <option key={d} value={d}>
+              Last {d}d
+            </option>
+          ))}
+        </select>
+      </div>
+      {loading ? (
+        <div className="space-y-2">
+          <SkeletonBar className="h-3 w-full" />
+          <SkeletonBar className="h-3 w-5/6" />
+        </div>
+      ) : error ? (
+        <RetryError message={error} onRetry={onRetry} />
+      ) : incidents.length === 0 ? (
+        <p className="text-xs text-gray-500 italic">No recent incidents for this site.</p>
+      ) : (
+        <ul className="space-y-2 overflow-y-auto max-h-48 pr-1">
+          {incidents.map((inc, i) => {
+            const state = inc.state || inc.incident_state;
+            const assignedTo = resolveReference(inc.assigned_to, userMap);
+            return (
+              <li key={inc.sys_id ?? inc.number ?? i}>
+                <button
+                  onClick={() => onSelect(inc)}
+                  className="w-full text-left text-xs border-b border-gray-800/60 pb-1.5 hover:bg-gray-800/40 rounded px-1 -mx-1 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 font-mono text-gray-400">
+                      {isHighPriority(inc.priority) && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" title="High priority" />
+                      )}
+                      {inc.number ?? "—"}
+                    </span>
+                    <IncidentStatusBadge state={state} />
+                  </div>
+                  <p className="text-gray-300 truncate">{inc.short_description || "—"}</p>
+                  <div className="flex items-center justify-between gap-2 mt-0.5 text-gray-600">
+                    <span className="truncate">{assignedTo ? `Assigned: ${assignedTo}` : "Unassigned"}</span>
+                    {inc.sys_created_on && <span className="shrink-0">{formatSnowDate(inc.sys_created_on)}</span>}
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
+  );
+}
+
+function circuitName(c) {
+  return resolveScalar(c.name) || "—";
+}
+// u_primary_service (e.g. "Point to Point", "Internet", "SIP", "POTS", "Ethernet") is the
+// meaningful type breakdown. The top-level `type` field is always "AC" on every circuit —
+// unrelated CMDB metadata, not circuit type — so it's not used despite being non-empty.
+// u_type (Data/Voice) is a coarser fallback for records missing u_primary_service.
+function circuitType(c) {
+  return resolveScalar(c.u_primary_service) || resolveScalar(c.u_type) || null;
+}
+// The coarse Data/Voice split — used for the type filter (per request, instead of the more
+// granular u_primary_service breakdown above, which is still shown per-row).
+function circuitCategory(c) {
+  return resolveScalar(c.u_type) || null;
+}
+const CIRCUIT_ACTIVE_WORDS = ["active", "connected", "installed", "operational"];
+const CIRCUIT_INACTIVE_WORDS = ["disconnected", "inactive", "cancelled", "canceled", "removed"];
+// u_status ("Active"/"Disconnected") is the real signal — operational_status/install_status
+// are both a constant "1" across every circuit regardless of actual state (confirmed in the
+// same payload), so they'd always say "active" even for a disconnected circuit and aren't
+// used. null = couldn't tell, treated as "still show it" by the Active filter below rather
+// than hiding a circuit whose u_status uses a word this doesn't recognize.
+function circuitIsActive(c) {
+  const status = resolveScalar(c.u_status).toLowerCase().trim();
+  if (!status) return null;
+  if (CIRCUIT_INACTIVE_WORDS.some((w) => status.includes(w))) return false;
+  if (CIRCUIT_ACTIVE_WORDS.some((w) => status.includes(w))) return true;
+  return null;
+}
+function circuitSpeed(c) {
+  return resolveScalar(c.u_max_speed) || null;
+}
+
+const CIRCUIT_STATUS_OPTIONS = [
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+  { value: "all", label: "All" },
+];
+
+function CircuitsCard({ circuits, loading, error, onSelect, onRetry }) {
+  const [typeFilter, setTypeFilter] = useState("Data");
+  const [statusFilter, setStatusFilter] = useState("active");
+  const activeFilterCount = (typeFilter !== "all" ? 1 : 0) + (statusFilter !== "all" ? 1 : 0);
+
+  const categories = useMemo(
+    () => [...new Set(circuits.map(circuitCategory).filter(Boolean))].sort(),
+    [circuits],
+  );
+
+  const filtered = useMemo(() => {
+    return circuits.filter((c) => {
+      const matchesType =
+        typeFilter === "all" || (circuitCategory(c) || "").toLowerCase() === typeFilter.toLowerCase();
+      const active = circuitIsActive(c);
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" && active !== false) ||
+        (statusFilter === "inactive" && active === false);
+      return matchesType && matchesStatus;
+    });
+  }, [circuits, typeFilter, statusFilter]);
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col min-h-[140px]">
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <h3 className="text-sm font-semibold text-gray-400">Circuits</h3>
+        <div className="flex items-center gap-1.5">
+          {activeFilterCount > 0 && (
+            <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-gray-400">
+              {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"} active
+            </span>
+          )}
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            aria-label="Filter circuits by type"
+            className="text-[11px] bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-gray-400 focus:outline-none focus:border-gray-500"
+          >
+            <option value="all">All Types</option>
+            {categories.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            aria-label="Filter circuits by status"
+            className="text-[11px] bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-gray-400 focus:outline-none focus:border-gray-500"
+          >
+            {CIRCUIT_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {loading ? (
+        <div className="space-y-2">
+          <SkeletonBar className="h-3 w-full" />
+          <SkeletonBar className="h-3 w-5/6" />
+        </div>
+      ) : error ? (
+        <RetryError message={error} onRetry={onRetry} />
+      ) : circuits.length === 0 ? (
+        <p className="text-xs text-gray-500 italic">No circuits found for this site.</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-xs text-gray-500 italic">No circuits match this filter.</p>
+      ) : (
+        <ul className="space-y-2 overflow-y-auto max-h-48 pr-1">
+          {filtered.map((c, i) => {
+            const active = circuitIsActive(c);
+            const type = circuitType(c);
+            const speed = circuitSpeed(c);
+            return (
+              <li key={c.sys_id ?? i}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(c)}
+                  className="w-full text-left text-xs border-b border-gray-800/60 last:border-0 pb-1.5 pt-1 -mx-1 px-1 rounded hover:bg-gray-800/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-gray-300 truncate">{circuitName(c)}</span>
+                    {active !== null && (
+                      <span
+                        className={`text-[11px] px-1.5 py-0.5 rounded-full border shrink-0 ${
+                          active
+                            ? "bg-green-900/30 border-green-700/40 text-green-300"
+                            : "bg-gray-800 border-gray-700 text-gray-400"
+                        }`}
+                      >
+                        {active ? "Active" : "Inactive"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-600">
+                    {type && <span>{type}</span>}
+                    {speed && <span className="font-mono">{speed}</span>}
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function formatCurrency(value) {
+  const n = Number(value);
+  return Number.isNaN(n) ? value : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Mirrors the real ServiceNow circuit form's field layout, two-column left/right grouping.
+// Key names beyond the four already confirmed (u_primary_service, u_type, u_status,
+// u_max_speed) are best guesses following this integration's u_-prefix convention; if one's
+// wrong, that field just renders blank rather than breaking anything.
+const CIRCUIT_LEFT_FIELDS = [
+  { key: "u_type", label: "Type" },
+  { key: "u_max_speed", label: "Max Speed" },
+  { key: "u_carrier", label: "Carrier" },
+  { key: "u_account_number", label: "Account Number" },
+  { key: "u_primary_service", label: "Primary Service" },
+  { key: "u_installation_days", label: "Installation Days" },
+  { key: "u_contract_start", label: "Contract Start Date", format: formatFullDate },
+  { key: "u_contract_end", label: "Contract End Date", format: formatFullDate },
+];
+const CIRCUIT_RIGHT_FIELDS = [
+  { key: "u_cost_code", label: "Cost Code" },
+  { key: "u_months_contract", label: "Months of Contract" },
+  { key: "mrc", label: "MRC (Monthly)", format: formatCurrency },
+  { key: "nrc", label: "NRC (Install)", format: formatCurrency },
+];
+
+function buildCircuitFields(circuit, fieldDefs) {
+  return fieldDefs
+    .map(({ key, label, format }) => {
+      const resolved = resolveScalar(circuit[key]);
+      if (resolved === "" || resolved == null) return null;
+      return { key, label, value: format ? format(resolved) : resolved };
+    })
+    .filter(Boolean);
+}
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// Extra padding (offset by a matching negative margin so it doesn't shift surrounding layout)
+// brings the click/tap target close to the 44x44px guideline without changing the visible ×.
+const MODAL_CLOSE_BUTTON_CLASS =
+  "text-gray-500 hover:text-gray-300 text-2xl leading-none p-2 -m-2 rounded hover:bg-gray-800/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-500";
+
+// Focus trap + Escape-to-close + focus restore — same pattern already used by
+// ManageDHCP/DHCPScopeModal.js, shared here since every modal on this page needs identical
+// behavior. Every modal that uses this is only ever mounted while open (the parent renders it
+// via `{selectedX && <Modal .../>}`), so mount = open and unmount = close; the effect just runs
+// once per mount rather than needing an explicit "active" flag.
+function useModalA11y(dialogRef, onClose) {
+  const previouslyFocusedRef = useRef(null);
+  useEffect(() => {
+    previouslyFocusedRef.current = document.activeElement;
+    const dialog = dialogRef.current;
+    dialog?.querySelectorAll(FOCUSABLE_SELECTOR)?.[0]?.focus();
+
+    function handleKeyDown(e) {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !dialog) return;
+      const nodes = dialog.querySelectorAll(FOCUSABLE_SELECTOR);
+      if (nodes.length === 0) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocusedRef.current?.focus?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+}
+
+// locationRecord is the already-fetched /servicenow/locations record for the current site
+// (see the siteCode-keyed effect above) — used here instead of the circuit's own `location`
+// reference field, which only carries an unresolved sys_id.
+function CircuitDetailModal({ circuit, locationRecord, onClose }) {
+  const dialogRef = useRef(null);
+  useModalA11y(dialogRef, onClose);
+  if (!circuit) return null;
+  const active = circuitIsActive(circuit);
+  const comments = resolveScalar(circuit.comments) || resolveScalar(circuit.description);
+  const locationDisplay = locationRecord?.u_display_name || locationRecord?.name || null;
+
+  const leftFields = buildCircuitFields(circuit, CIRCUIT_LEFT_FIELDS);
+  const rightFields = [
+    { key: "u_status", label: "Status", value: active === null ? resolveScalar(circuit.u_status) : (
+      <span className={active ? "text-green-400" : "text-gray-400"}>{active ? "Active" : "Inactive"}</span>
+    ) },
+    ...buildCircuitFields(circuit, CIRCUIT_RIGHT_FIELDS),
+    ...(locationDisplay ? [{ key: "location", label: "Location", value: locationDisplay }] : []),
+  ];
+
+  return createPortal(
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="circuit-modal-title"
+        className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-4xl min-h-[60vh] max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-3 gap-3 shrink-0">
+          <h3 id="circuit-modal-title" className="text-base font-mono font-semibold text-gray-100">
+            {circuitName(circuit)}
+          </h3>
+          <button onClick={onClose} aria-label="Close" className={MODAL_CLOSE_BUTTON_CLASS}>
+            &times;
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 border-t border-gray-800 pt-3 shrink-0">
+          <div className="space-y-1.5">
+            {leftFields.map((f) => (
+              <IncidentDetailField key={f.key} label={f.label} value={f.value} />
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            {rightFields.map((f) => (
+              <IncidentDetailField key={f.key} label={f.label} value={f.value} />
+            ))}
+          </div>
+        </div>
+
+        {comments && (
+          <div className="border-t border-gray-800 mt-3 pt-3 flex-1 min-h-0 flex flex-col">
+            <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1.5 shrink-0">Comments</h4>
+            <p className="text-xs text-gray-300 whitespace-pre-wrap leading-relaxed flex-1 overflow-y-auto pr-1 pb-2">
+              {comments}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function IncidentDetailField({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="flex justify-between items-start gap-4 text-xs py-1">
+      <span className="text-zinc-500 shrink-0">{label}</span>
+      <span className="text-gray-200 text-right">{value}</span>
+    </div>
+  );
+}
+
+// The list endpoint's own results already contain the full record (description, close
+// notes, every timestamp) — same object shown in the card row, no separate detail fetch.
+function IncidentDetailModal({ incident, onClose, userMap }) {
+  const dialogRef = useRef(null);
+  useModalA11y(dialogRef, onClose);
+  if (!incident) return null;
+  const state = incident.state || incident.incident_state;
+  // Portaled straight to document.body — this page nests the modal many levels deep, and a
+  // "fixed" backdrop only actually covers the full viewport if none of those ancestors set a
+  // transform/filter/perspective (any of which quietly turns "fixed" into "positioned
+  // relative to that ancestor" instead of the viewport, leaving a gap wherever that ancestor
+  // starts). A portal sidesteps the question entirely.
+  return createPortal(
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="incident-modal-title"
+        className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-5xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-3 gap-3">
+          <div>
+            <h3 className="text-sm font-mono text-gray-400">{incident.number}</h3>
+            <p id="incident-modal-title" className="text-base font-semibold text-gray-100 mt-0.5">
+              {incident.short_description}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <IncidentStatusBadge state={state} />
+            <button onClick={onClose} aria-label="Close" className={MODAL_CLOSE_BUTTON_CLASS}>
+              &times;
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 border-t border-gray-800 pt-3">
+          <div>
+            <IncidentDetailField label="Assigned To" value={resolveReference(incident.assigned_to, userMap)} />
+            <IncidentDetailField label="Opened By" value={resolveReference(incident.opened_by, userMap)} />
+            <IncidentDetailField label="Caller" value={resolveReference(incident.caller_id, userMap)} />
+            <IncidentDetailField label="Category" value={incident.category} />
+            <IncidentDetailField label="Subcategory" value={incident.subcategory} />
+          </div>
+          <div>
+            <IncidentDetailField label="Opened" value={formatSnowDate(incident.opened_at)} />
+            <IncidentDetailField label="Resolved" value={formatSnowDate(incident.resolved_at)} />
+            <IncidentDetailField label="Closed" value={formatSnowDate(incident.closed_at)} />
+            <IncidentDetailField label="Priority" value={codeLabel(incident.priority, PRIORITY_LABELS)} />
+            <IncidentDetailField label="Severity" value={codeLabel(incident.severity, SEVERITY_LABELS)} />
+          </div>
+        </div>
+
+        {incident.description && (
+          <div className="border-t border-gray-800 mt-3 pt-3">
+            <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">Description</h4>
+            <p className="text-xs text-gray-300 whitespace-pre-wrap font-mono">{incident.description}</p>
+          </div>
+        )}
+
+        {incident.close_notes && (
+          <div className="border-t border-gray-800 mt-3 pt-3">
+            <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">
+              Close Notes {incident.close_code ? `(${incident.close_code})` : ""}
+            </h4>
+            <p className="text-xs text-gray-300 whitespace-pre-wrap">{incident.close_notes}</p>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// Portaled for the same reason as IncidentDetailModal above.
+function NotesModal({ description, comments, onClose }) {
+  const dialogRef = useRef(null);
+  useModalA11y(dialogRef, onClose);
+  return createPortal(
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="notes-modal-title"
+        className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-4xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h3 id="notes-modal-title" className="text-sm font-semibold text-gray-300">
+            Site Notes
+          </h3>
+          <button onClick={onClose} aria-label="Close" className={MODAL_CLOSE_BUTTON_CLASS}>
+            &times;
+          </button>
+        </div>
+        <div className="space-y-3">
+          {description && <p className="text-sm text-gray-200 whitespace-pre-wrap">{description}</p>}
+          {comments && <p className="text-xs text-gray-400 whitespace-pre-wrap italic">{comments}</p>}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
 function SkeletonBar({ className }) {
   return <div className={`animate-pulse bg-gray-800 rounded ${className}`} />;
+}
+
+// Every section fetches independently with its own cancel-safe effect, so retrying is cheap —
+// previously a failed section had no recovery path besides a full page reload, which also
+// wiped unrelated state (device-table search/sort/columns) that had nothing to do with the
+// failure. onRetry is optional so callers with no retry path (e.g. weather) can omit it.
+function RetryError({ message, onRetry }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-xs text-red-400">{message}</p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="shrink-0 text-[11px] px-2 py-0.5 rounded border border-red-500/50 text-red-300 hover:bg-red-900/30 transition-colors"
+        >
+          Retry
+        </button>
+      )}
+    </div>
+  );
 }
 
 function SkeletonCard({ lines = 3 }) {
@@ -132,39 +711,98 @@ function DhcpScopeRow({ scope }) {
   );
 }
 
-function DhcpScopesCard({ siteCode, scopes, error }) {
+const DHCP_SCOPES_PAGE_SIZE = 5;
+
+function DhcpScopesCard({ siteCode, scopes, error, onRetry }) {
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return scopes;
+    return scopes.filter((s) => `${s.scopeId} ${s.cidr} ${s.name}`.toLowerCase().includes(q));
+  }, [scopes, search]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [search, scopes]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / DHCP_SCOPES_PAGE_SIZE));
+  const clampedPage = Math.min(page, totalPages - 1);
+  const pageScopes = filtered.slice(
+    clampedPage * DHCP_SCOPES_PAGE_SIZE,
+    clampedPage * DHCP_SCOPES_PAGE_SIZE + DHCP_SCOPES_PAGE_SIZE,
+  );
+
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-gray-400">DHCP Scopes</h3>
-        <Link to={`/dhcp/${siteCode}`} className="text-xs text-pink-500 hover:text-pink-400">
+        <Link to={`/${siteCode}/dhcp`} className="text-xs text-pink-500 hover:text-pink-400">
           Manage DHCP →
         </Link>
       </div>
       {error ? (
-        <p className="text-xs text-red-400">{error}</p>
+        <RetryError message={error} onRetry={onRetry} />
       ) : scopes.length === 0 ? (
-        <p className="text-xs text-gray-600 italic">No DHCP scopes found for this site.</p>
+        <p className="text-xs text-gray-500 italic">No DHCP scopes found for this site.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-xs">
-            <thead className="text-gray-500">
-              <tr>
-                <th className="text-left px-2 py-1.5">Scope</th>
-                <th className="text-left px-2 py-1.5">Source</th>
-                <th className="text-left px-2 py-1.5">Range</th>
-                <th className="text-left px-2 py-1.5">Gateway</th>
-                <th className="text-left px-2 py-1.5">Leases / Reservations</th>
-                <th className="text-left px-2 py-1.5">Utilization</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {scopes.map((s) => (
-                <DhcpScopeRow key={s.id} scope={s} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <input
+            type="text"
+            placeholder="Search scopes…"
+            aria-label="Search DHCP scopes"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-48 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+          />
+          {filtered.length === 0 ? (
+            <p className="text-xs text-gray-500 italic">No scopes match "{search}".</p>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-xs">
+                  <thead className="text-gray-500">
+                    <tr>
+                      <th className="text-left px-2 py-1.5">Scope</th>
+                      <th className="text-left px-2 py-1.5">Source</th>
+                      <th className="text-left px-2 py-1.5">Range</th>
+                      <th className="text-left px-2 py-1.5">Gateway</th>
+                      <th className="text-left px-2 py-1.5">Leases / Reservations</th>
+                      <th className="text-left px-2 py-1.5">Utilization</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {pageScopes.map((s) => (
+                      <DhcpScopeRow key={s.id} scope={s} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between text-xs text-gray-500 pt-1">
+                  <button
+                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    disabled={clampedPage === 0}
+                    className="px-2 py-1 rounded border border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:text-white hover:border-gray-500 transition-colors"
+                  >
+                    Prev
+                  </button>
+                  <span>
+                    Page {clampedPage + 1} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                    disabled={clampedPage === totalPages - 1}
+                    className="px-2 py-1 rounded border border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:text-white hover:border-gray-500 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </>
       )}
     </div>
   );
@@ -251,14 +889,31 @@ function OpengearInventoryFields({ device, loading }) {
   );
 }
 
-function OpengearCard({ devices, error, statusLoading, summaryLoading }) {
+// Matches OpengearCard's own width/shape (SkeletonTable is full-width and doesn't fit the
+// narrow max-w-sm slot this card sits in next to DHCP Scopes) so the loading state doesn't
+// jump in size once real data replaces it.
+function OpengearCardSkeleton() {
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 w-full max-w-sm flex-shrink-0">
+      <SkeletonBar className="h-4 w-24 mb-3" />
+      <SkeletonBar className="h-4 w-32 mb-2" />
+      <SkeletonBar className="h-3 w-20 mb-2" />
+      <div className="space-y-1.5">
+        <SkeletonBar className="h-3 w-full" />
+        <SkeletonBar className="h-3 w-full" />
+      </div>
+    </div>
+  );
+}
+
+function OpengearCard({ devices, error, statusLoading, summaryLoading, onRetry }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 w-full max-w-sm flex-shrink-0">
       <h3 className="text-sm font-semibold text-gray-400 mb-3">Opengear</h3>
       {error ? (
-        <p className="text-xs text-red-400">{error}</p>
+        <RetryError message={error} onRetry={onRetry} />
       ) : devices.length === 0 ? (
-        <p className="text-xs text-gray-600 italic">No Opengear devices found for this site.</p>
+        <p className="text-xs text-gray-500 italic">No Opengear devices found for this site.</p>
       ) : (
         <div className="space-y-3">
           {devices.map((og, idx) => (
@@ -323,6 +978,10 @@ function mergeDevicesByName(netboxDevices, diagramDevices, mistDevices, mistSite
   };
   // Mist devices are always Juniper hardware by definition — a structural default, not a
   // guess, for the vendor field Mist's summary doesn't itself report.
+  //
+  // inMist is set unconditionally here — a device that came from THIS SITE's Mist device
+  // list is definitionally in Mist, regardless of what Netbox's own mistdevice/mistdevicesite
+  // custom fields (used below for devices Mist didn't report) claim.
   mistDevices.forEach((d) =>
     upsert(d.name, {
       model: d.model,
@@ -335,6 +994,7 @@ function mergeDevicesByName(netboxDevices, diagramDevices, mistDevices, mistSite
       version: d.version,
       uptime: d.uptime,
       mistId: d.id,
+      inMist: "Yes",
     }),
   );
   diagramDevices.forEach((d) =>
@@ -402,9 +1062,41 @@ function loadVisibleColumns() {
   return DEFAULT_VISIBLE_COLUMNS;
 }
 
+const DEFAULT_COLUMN_WIDTHS = {
+  name: 220,
+  vendor: 120,
+  model: 160,
+  ip: 140,
+  status: 110,
+  type: 120,
+  serial: 140,
+  mac: 150,
+  polling: 100,
+  alert: 100,
+  inMist: 90,
+  version: 110,
+  uptime: 110,
+  links: 160,
+};
+const MIN_COLUMN_WIDTH = 60;
+const DEVICE_COLUMN_WIDTHS_STORAGE_KEY = "siteDashboard.deviceColumnWidths";
+
+function loadColumnWidths() {
+  try {
+    const raw = localStorage.getItem(DEVICE_COLUMN_WIDTHS_STORAGE_KEY);
+    if (raw) return { ...DEFAULT_COLUMN_WIDTHS, ...JSON.parse(raw) };
+  } catch {}
+  return DEFAULT_COLUMN_WIDTHS;
+}
+
 function formatCell(value, column) {
   const formatted = column.format ? column.format(value) : value;
   return formatted || "—";
+}
+
+function capitalize(word) {
+  if (!word) return word;
+  return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
 // "connected" is the only online value Mist/the diagram endpoint report — devices with no
@@ -415,9 +1107,8 @@ function StatusBadge({ status }) {
   }
   const online = status === "connected";
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${online ? "text-green-400" : "text-red-400"}`}>
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${online ? "bg-green-500" : "bg-red-500"}`} />
-      {online ? "Online" : status}
+    <span className={`text-xs font-medium ${online ? "text-green-400" : "text-red-400"}`}>
+      {online ? "Online" : capitalize(status)}
     </span>
   );
 }
@@ -495,6 +1186,49 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
   const [visibleColumns, setVisibleColumns] = useState(loadVisibleColumns);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
+  const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
+
+  // Escape-to-close, since a keyboard user who opens the picker via Enter/Space has no other
+  // way to dismiss it (onMouseLeave alone doesn't help them).
+  useEffect(() => {
+    if (!showColumnPicker) return;
+    function handleKeyDown(e) {
+      if (e.key === "Escape") setShowColumnPicker(false);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [showColumnPicker]);
+
+  // Pointer capture (not a document-level listener) keeps pointermove/pointerup targeting
+  // this exact handle even once the cursor drags off its thin hit area — without it, a
+  // mouseup that lands back over the header text fires a click there too, which re-triggers
+  // the column's sort handler mid-drag.
+  const startResize = (key) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const handle = e.currentTarget;
+    const startX = e.clientX;
+    const startWidth = columnWidths[key] ?? 140;
+    handle.setPointerCapture(e.pointerId);
+    document.body.classList.add("select-none");
+
+    const handleMove = (moveEvent) => {
+      const next = Math.max(MIN_COLUMN_WIDTH, startWidth + (moveEvent.clientX - startX));
+      setColumnWidths((prev) => ({ ...prev, [key]: next }));
+    };
+    const handleUp = () => {
+      handle.releasePointerCapture(e.pointerId);
+      handle.removeEventListener("pointermove", handleMove);
+      handle.removeEventListener("pointerup", handleUp);
+      document.body.classList.remove("select-none");
+      setColumnWidths((prev) => {
+        localStorage.setItem(DEVICE_COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(prev));
+        return prev;
+      });
+    };
+    handle.addEventListener("pointermove", handleMove);
+    handle.addEventListener("pointerup", handleUp);
+  };
   const [snipeitStatus, setSnipeitStatus] = useState({});
 
   // Looked up by serial on click (not prefetched per row) — tab opens synchronously so
@@ -628,6 +1362,7 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
         <input
           type="text"
           placeholder="Search devices…"
+          aria-label="Search devices"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-56 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
@@ -635,6 +1370,7 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
+          aria-label="Filter devices by type"
           className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-gray-500"
         >
           <option value="all">All Types</option>
@@ -647,12 +1383,15 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
         <div className="relative">
           <button
             onClick={() => setShowColumnPicker((p) => !p)}
+            aria-haspopup="true"
+            aria-expanded={showColumnPicker}
             className="text-xs px-2 py-1 rounded border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
           >
             Columns
           </button>
           {showColumnPicker && (
             <div
+              role="menu"
               className="absolute z-20 mt-1 bg-gray-800 border border-gray-700 rounded-lg p-2 space-y-0.5 shadow-xl min-w-[160px]"
               onMouseLeave={() => setShowColumnPicker(false)}
             >
@@ -690,20 +1429,50 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-700">
-        <table className="min-w-full divide-y divide-gray-800 text-sm">
+        <table className="w-full divide-y divide-gray-800 text-sm table-fixed">
+          <colgroup>
+            {columns.map((c) => (
+              <col key={c.key} style={{ width: columnWidths[c.key] ?? 140 }} />
+            ))}
+            <col style={{ width: columnWidths.links ?? 160 }} />
+            {/* Absorbs whatever width the explicit columns above don't use, so shrinking a
+                column doesn't get silently redistributed back across the others, and the
+                table doesn't force a horizontal scrollbar just for having explicit widths. */}
+            <col />
+          </colgroup>
           <thead className="bg-gray-900 text-gray-500">
             <tr>
               {columns.map((c) => (
                 <th
                   key={c.key}
                   onClick={() => toggleSort(c.key)}
-                  className="text-left px-4 py-2.5 cursor-pointer select-none hover:text-gray-300 whitespace-nowrap"
+                  tabIndex={0}
+                  aria-sort={sortKey === c.key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleSort(c.key);
+                    }
+                  }}
+                  className="relative text-left px-4 py-2.5 cursor-pointer select-none hover:text-gray-300 whitespace-nowrap overflow-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-teal-500"
                 >
                   {c.label}
                   {sortKey === c.key && (sortDir === "asc" ? " ▲" : " ▼")}
+                  <span
+                    onPointerDown={startResize(c.key)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute top-0 right-0 h-full w-3 cursor-col-resize hover:bg-gray-600/60 touch-none"
+                  />
                 </th>
               ))}
-              <th className="text-left px-4 py-2.5 whitespace-nowrap">Links</th>
+              <th className="relative text-left px-4 py-2.5 whitespace-nowrap overflow-hidden">
+                Links
+                <span
+                  onPointerDown={startResize("links")}
+                  className="absolute top-0 right-0 h-full w-3 cursor-col-resize hover:bg-gray-600/60 touch-none"
+                />
+              </th>
+              <th aria-hidden="true" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
@@ -714,9 +1483,12 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
                 const parentRow = (
                   <tr key={d.name} className="text-gray-200 hover:bg-gray-800/60">
                     {columns.map((c) => (
-                      <td key={c.key} className={`px-4 py-2.5 ${c.key === "name" ? "font-medium" : "text-gray-400"}`}>
+                      <td
+                        key={c.key}
+                        className={`px-4 py-2.5 overflow-hidden ${c.key === "name" ? "font-medium" : "text-gray-400 truncate"}`}
+                      >
                         {c.key === "name" ? (
-                          <span className="flex items-center gap-1.5">
+                          <span className="flex items-center gap-1.5 min-w-0">
                             {hasChildren ? (
                               <button
                                 onClick={() => toggleExpanded(d.name)}
@@ -727,8 +1499,10 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
                             ) : (
                               <span className="w-4 shrink-0" />
                             )}
-                            {d.name}
-                            {hasChildren && <span className="text-[10px] text-gray-600">({d.children.length})</span>}
+                            <span className="truncate">{d.name}</span>
+                            {hasChildren && (
+                              <span className="text-[10px] text-gray-600 shrink-0">({d.children.length})</span>
+                            )}
                           </span>
                         ) : c.key === "status" ? (
                           <StatusBadge status={d.status} />
@@ -745,13 +1519,17 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
                         onSnipeitClick={handleSnipeitClick}
                       />
                     </td>
+                    <td aria-hidden="true" />
                   </tr>
                 );
                 if (!isOpen) return [parentRow];
                 const childRows = d.children.map((child) => (
                   <tr key={child.name} className="text-gray-400 bg-gray-950/40 hover:bg-gray-800/40">
                     {columns.map((c) => (
-                      <td key={c.key} className={`px-4 py-2 ${c.key === "name" ? "pl-10" : ""}`}>
+                      <td
+                        key={c.key}
+                        className={`px-4 py-2 overflow-hidden truncate ${c.key === "name" ? "pl-10" : ""}`}
+                      >
                         {c.key === "name" ? (
                           child.name
                         ) : c.key === "status" ? (
@@ -769,13 +1547,14 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
                         onSnipeitClick={handleSnipeitClick}
                       />
                     </td>
+                    <td aria-hidden="true" />
                   </tr>
                 ));
                 return [parentRow, ...childRows];
               })
             ) : (
               <tr>
-                <td colSpan={columns.length + 1} className="px-4 py-6 text-center text-gray-500 italic">
+                <td colSpan={columns.length + 2} className="px-4 py-6 text-center text-gray-500 italic">
                   No devices found.
                 </td>
               </tr>
@@ -799,6 +1578,18 @@ function resolveScalar(v) {
   return v ?? "";
 }
 
+// Confirmed org-specific scale (from the location's getPriorityString()). "0" is a real,
+// meaningful value here ("No Monitoring"), not an empty/unset field — resolved and mapped to
+// text *before* Field's own emptiness check runs, since a raw 0 there reads as falsy and
+// would otherwise get silently hidden like a genuinely missing value.
+const SITE_PRIORITY_LABELS = { 0: "No Monitoring", 1: "Next Business Day", 2: "24/7" };
+function sitePriorityLabel(rawValue) {
+  const resolved = resolveScalar(rawValue);
+  if (resolved === "") return null;
+  const s = resolved.toString().trim();
+  return SITE_PRIORITY_LABELS[s] ?? resolved;
+}
+
 // Appending T00:00:00 forces local-time parsing so a date-only string like "2026-07-01"
 // doesn't shift a day earlier in negative-UTC-offset timezones.
 function formatFullDate(dateStr) {
@@ -812,18 +1603,36 @@ function Field({ label, value, format }) {
   if (!resolved) return null;
   return (
     <div>
-      <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className="text-sm text-gray-200">{format ? format(resolved) : resolved}</p>
+      <p className="text-xs text-gray-500 uppercase tracking-wide whitespace-nowrap">{label}</p>
+      <p className="text-sm text-gray-200 whitespace-nowrap">{format ? format(resolved) : resolved}</p>
     </div>
   );
 }
 
-function SnowLocationCard({ location, error }) {
+// A sys_user reference field renders as its raw sys_id until userMap resolves it — shows a
+// skeleton instead of that hex string for the specific window where resolution is still in
+// flight, rather than flashing the id and then swapping to a name.
+function ContactField({ label, refField, userMap, loading }) {
+  if (!refField) return null;
+  const isPending = loading && typeof refField === "object" && !userMap.has(refField.value);
+  if (isPending) {
+    return (
+      <div>
+        <p className="text-xs text-gray-500 uppercase tracking-wide whitespace-nowrap">{label}</p>
+        <div className="h-4 w-24 mt-1 rounded bg-gray-800 animate-pulse" />
+      </div>
+    );
+  }
+  return <Field label={label} value={resolveReference(refField, userMap)} />;
+}
+
+function SnowLocationCard({ location, error, contacts, userMap, userMapLoading, onRetry }) {
+  const [showNotesModal, setShowNotesModal] = useState(false);
   let body;
   if (error) {
-    body = <p className="text-xs text-red-400">{error}</p>;
+    body = <RetryError message={error} onRetry={onRetry} />;
   } else if (!location) {
-    body = <p className="text-xs text-gray-600 italic">No ServiceNow location data returned for this site.</p>;
+    body = <p className="text-xs text-gray-500 italic">No ServiceNow location data returned for this site.</p>;
   } else {
     const get = (key) => resolveScalar(location[key]);
     const streetLine = [
@@ -844,44 +1653,132 @@ function SnowLocationCard({ location, error }) {
     const siteDocUrl = get("u_site_doc_url");
     const hasAddress = streetLine || cityStateZip || country;
 
-    body = (
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3">
-          <Field label="Site Type" value={location.u_site_type} />
-          <Field label="Priority" value={location.u_priority} />
-          <Field label="Active" value={boolLabel(get("u_active"))} />
-          <Field label="Time Zone" value={location.time_zone} />
-          <Field label="Phone" value={location.phone} />
-          <Field label="Mobilization Date" value={location.u_mob_date} format={formatFullDate} />
-          <Field label="Demobilization Date" value={location.u_demob_date} format={formatFullDate} />
-        </div>
+    // contacts is a separate record (see getServiceNowLocationBySite) from a different backend
+    // endpoint than `location` — description/comments live on that record, not this one.
+    const description = contacts && resolveScalar(contacts.u_description);
+    const comments = contacts && resolveScalar(contacts.u_comments);
+    const hasNotes = description || comments;
+    const hasLinks = latLongUrl || siteDocUrl;
 
-        {hasAddress && (
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Address</p>
-            <p className="text-sm text-gray-200 uppercase">
-              {streetLine || "—"}
-              {streetTwo ? `, ${streetTwo}` : ""}
-              <br />
-              {[cityStateZip, country].filter(Boolean).join(", ") || "—"}
-            </p>
-            {latLongUrl && (
-              <a href={latLongUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline">
-                View on map ↗
-              </a>
-            )}
+    body = (
+      <div className="space-y-5">
+        <section>
+          <h4 className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2.5">
+            <BuildingOfficeIcon className="w-3.5 h-3.5" />
+            Site Info
+          </h4>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3">
+            <Field label="Site Type" value={location.u_site_type} />
+            <Field label="Priority" value={sitePriorityLabel(location.u_priority)} />
+            <Field label="Active" value={boolLabel(get("u_active"))} />
+            <Field label="Time Zone" value={location.time_zone} />
+            <Field label="Phone" value={location.phone} />
+            <Field
+              label="Mobilization Date"
+              value={contacts && resolveScalar(contacts.u_network_mob_date)}
+              format={formatFullDate}
+            />
+            <Field
+              label="Demobilization Date"
+              value={contacts && resolveScalar(contacts.u_network_demob_date)}
+              format={formatFullDate}
+            />
+            {/* u_demob_date (the general job demob date) is a rougher, often-far-future
+                estimate compared to the network-specific date above — kept as its own field
+                rather than dropped, labeled to make clear it's the less precise one. */}
+            <Field label="Estimated Demob Date" value={location.u_demob_date} format={formatFullDate} />
           </div>
+        </section>
+
+        {contacts && (
+          <section className="border-t border-gray-800 pt-4">
+            <h4 className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2.5">
+              <UsersIcon className="w-3.5 h-3.5" />
+              Contacts
+            </h4>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3">
+              <ContactField label="Business Contact" refField={contacts.contact} userMap={userMap} loading={userMapLoading} />
+              <ContactField
+                label="Second Business Contact"
+                refField={contacts.u_second_business_contact}
+                userMap={userMap}
+                loading={userMapLoading}
+              />
+              <ContactField
+                label="IT Contact"
+                refField={contacts.u_it_support_contact}
+                userMap={userMap}
+                loading={userMapLoading}
+              />
+              <ContactField
+                label="On-Site Contact"
+                refField={contacts.u_on_site_contact}
+                userMap={userMap}
+                loading={userMapLoading}
+              />
+              {/* No field on this record is literally "IT Manager" — u_field_support_manager
+                  is the closest role match. Flag if a different field was meant. */}
+              <ContactField
+                label="Field Support Manager"
+                refField={contacts.u_field_support_manager}
+                userMap={userMap}
+                loading={userMapLoading}
+              />
+            </div>
+          </section>
         )}
 
-        {siteDocUrl && (
-          <a
-            href={siteDocUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-blue-400 hover:underline block"
-          >
-            Site documentation ↗
-          </a>
+        {(hasAddress || hasLinks) && (
+          <section className="border-t border-gray-800 pt-4">
+            <h4 className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2.5">
+              <MapPinIcon className="w-3.5 h-3.5" />
+              Address
+            </h4>
+            {hasAddress && (
+              <p className="text-sm text-gray-200 uppercase">
+                {streetLine || "—"}
+                {streetTwo ? `, ${streetTwo}` : ""}
+                <br />
+                {[cityStateZip, country].filter(Boolean).join(", ") || "—"}
+              </p>
+            )}
+            {hasLinks && (
+              <div className="flex items-center gap-4 mt-1.5">
+                {latLongUrl && (
+                  <a href={latLongUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline">
+                    View on map ↗
+                  </a>
+                )}
+                {siteDocUrl && (
+                  <a href={siteDocUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline">
+                    Site documentation ↗
+                  </a>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {hasNotes && (
+          <section className="border-t border-gray-800 pt-4 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+                <DocumentTextIcon className="w-3.5 h-3.5" />
+                Notes
+              </h4>
+              <button onClick={() => setShowNotesModal(true)} className="text-xs text-blue-400 hover:underline shrink-0">
+                Expand ↗
+              </button>
+            </div>
+            <div className="max-h-28 overflow-y-auto pr-1 space-y-1.5">
+              {description && <p className="text-sm text-gray-300">{description}</p>}
+              {comments && <p className="text-xs text-gray-500 italic">{comments}</p>}
+            </div>
+          </section>
+        )}
+
+        {showNotesModal && (
+          <NotesModal description={description} comments={comments} onClose={() => setShowNotesModal(false)} />
         )}
       </div>
     );
@@ -993,15 +1890,23 @@ function SiteMap({ coords, height, zoom = 15, scrollWheelZoom = false, radarUrl 
 }
 
 function SiteMapModal({ coords, radarUrl, onClose }) {
+  const dialogRef = useRef(null);
+  useModalA11y(dialogRef, onClose);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="site-map-modal-title"
         className="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-w-4xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-300">Site Location</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-2xl leading-none">
+          <h3 id="site-map-modal-title" className="text-sm font-semibold text-gray-300">
+            Site Location
+          </h3>
+          <button onClick={onClose} aria-label="Close" className={MODAL_CLOSE_BUTTON_CLASS}>
             &times;
           </button>
         </div>
@@ -1022,16 +1927,24 @@ function formatDayLabel(dateStr, { weekday } = {}) {
 }
 
 function WeatherHistoryModal({ dailyWeather, onClose }) {
+  const dialogRef = useRef(null);
+  useModalA11y(dialogRef, onClose);
   const days = dailyWeather.slice(-5);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="weather-history-modal-title"
         className="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-w-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-300">Last {days.length} Days</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-2xl leading-none">
+          <h3 id="weather-history-modal-title" className="text-sm font-semibold text-gray-300">
+            Last {days.length} Days
+          </h3>
+          <button onClick={onClose} aria-label="Close" className={MODAL_CLOSE_BUTTON_CLASS}>
             &times;
           </button>
         </div>
@@ -1114,7 +2027,7 @@ function SiteLocationCard({ location }) {
   const radarUrl = showRadar ? buildRadarTileUrl(radarFrame) : null;
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 h-full flex flex-col">
       {alerts.length > 0 && (
         <div className="mb-3 px-3 py-2 rounded-lg bg-red-900/30 border border-red-600/50 text-red-300 text-xs space-y-1">
           <p className="font-semibold">
@@ -1169,12 +2082,12 @@ function SiteLocationCard({ location }) {
       </div>
       {radarError && showRadar && <p className="text-xs text-red-400 mb-2">{radarError}</p>}
       {expanded || showHistory ? (
-        <div className="rounded-lg border border-gray-800 flex items-center justify-center text-xs text-gray-600 italic" style={{ height: 320 }}>
+        <div className="rounded-lg border border-gray-800 flex items-center justify-center text-xs text-gray-500 italic flex-1 min-h-[320px]">
           {expanded ? "Viewing expanded map…" : "Viewing weather history…"}
         </div>
       ) : (
-        <div className="rounded-lg overflow-hidden border border-gray-800" style={{ height: 320 }}>
-          <SiteMap coords={coords} height="100%" radarUrl={radarUrl} scrollWheelZoom={showRadar} />
+        <div className="rounded-lg overflow-hidden border border-gray-800 flex-1 min-h-[320px]">
+          <SiteMap coords={coords} height="100%" radarUrl={radarUrl} scrollWheelZoom />
         </div>
       )}
       {expanded && <SiteMapModal coords={coords} radarUrl={radarUrl} onClose={() => setExpanded(false)} />}
@@ -1226,15 +2139,36 @@ export default function SiteDashboardPage() {
     if (trimmed && trimmed !== siteCode) navigate(`/${trimmed}/dashboard`);
   };
 
+  // Bumped by each section's Retry button to force its effect to re-run even though siteCode
+  // (its usual trigger) hasn't changed.
+  const [dataRetryNonce, setDataRetryNonce] = useState(0);
+  const [circuitsRetryNonce, setCircuitsRetryNonce] = useState(0);
+  const [incidentsRetryNonce, setIncidentsRetryNonce] = useState(0);
+
   const [data, setData] = useState(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState(null);
   const [snowLocation, setSnowLocation] = useState(null);
   const [snowLoading, setSnowLoading] = useState(true);
   const [snowLocationError, setSnowLocationError] = useState(null);
+  // A different backend endpoint/record than snowLocation above — only fetched for the
+  // business/IT contact fields that one doesn't carry.
+  const [locationRecord, setLocationRecord] = useState(null);
+  const [locationRecordLoading, setLocationRecordLoading] = useState(true);
   const [dhcpScopes, setDhcpScopes] = useState([]);
   const [dhcpLoading, setDhcpLoading] = useState(true);
   const [dhcpError, setDhcpError] = useState(null);
+  const [circuits, setCircuits] = useState([]);
+  const [circuitsLoading, setCircuitsLoading] = useState(true);
+  const [circuitsError, setCircuitsError] = useState(null);
+  const [incidents, setIncidents] = useState([]);
+  const [selectedIncident, setSelectedIncident] = useState(null);
+  const [selectedCircuit, setSelectedCircuit] = useState(null);
+  const [userDisplayMap, setUserDisplayMap] = useState(new Map());
+  const [userMapLoading, setUserMapLoading] = useState(true);
+  const [incidentsLoading, setIncidentsLoading] = useState(true);
+  const [incidentsError, setIncidentsError] = useState(null);
+  const [incidentsDaysAgo, setIncidentsDaysAgo] = useState(INCIDENTS_DEFAULT_DAYS);
   // Split into two independent lists, each filtered by site prefix on its own, and unioned
   // by name below — whichever of the two calls resolves first is what determines the initial
   // device list (a name can come from either source), rather than always waiting on summary
@@ -1349,10 +2283,10 @@ export default function SiteDashboardPage() {
 
       // Site code is always the first 8 characters of the device name (e.g. "KSCVICHC" in
       // "KSCVICHCSWA0201") — keep every match since some sites have more than one Opengear.
-      // Confirmed 2026-08-27: the summary endpoint (netmanid, netboxid, name, model, serial,
-      // wiredip, cellip, version, imei, mac, iccid) is the real device inventory; the status
-      // endpoint has no inventory info of its own — it's only used for icmp/snmp, the live
-      // connection state from the network monitoring tool.
+      // The summary endpoint (netmanid, netboxid, name, model, serial, wiredip, cellip,
+      // version, imei, mac, iccid) is the real device inventory; the status endpoint has no
+      // inventory info of its own — it's only used for icmp/snmp, the live connection state
+      // from the network monitoring tool.
       //
       // These two are fetched independently (not Promise.all'd), and each is filtered by site
       // prefix on its own — whichever resolves first (it varies) populates opengearDevices via
@@ -1392,12 +2326,186 @@ export default function SiteDashboardPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [siteCode]);
+  }, [siteCode, dataRetryNonce]);
+
+  const retryData = () => setDataRetryNonce((n) => n + 1);
 
   const netboxSite = data?.netboxbsite;
   const mistSite = data?.mistsite;
   const devices = data?.devices || [];
   const mistSiteId = mistSite?.id;
+
+  // Circuits' `location` filter needs the actual cmn_location sys_id (confirmed by testing
+  // that the display-value/site-code string doesn't match — see getCircuitsForSite), so the
+  // location record has to resolve first. Originally two separate effects — one fetching the
+  // location record, one reacting to it to fetch circuits — but that let the circuits effect
+  // read a stale (previous site's) locationRecord/locationRecordLoading for one render right
+  // after a site switch, before the location-record effect's own reset had committed. Merged
+  // into one sequential effect keyed only on siteCode so there's no window where either piece
+  // of state is stale relative to the other.
+  useEffect(() => {
+    if (!siteCode) return;
+    let cancelled = false;
+    setLocationRecord(null);
+    setLocationRecordLoading(true);
+    setCircuits([]);
+    setCircuitsError(null);
+    setCircuitsLoading(true);
+    (async () => {
+      let token;
+      try {
+        token = await getToken();
+      } catch (err) {
+        if (!cancelled) {
+          setLocationRecordLoading(false);
+          setCircuitsError(err.message || "Authentication failed");
+          setCircuitsLoading(false);
+        }
+        return;
+      }
+      let record = null;
+      try {
+        record = await getServiceNowLocationBySite(siteCode, token);
+      } catch {
+        record = null;
+      }
+      if (cancelled) return;
+      setLocationRecord(record);
+      setLocationRecordLoading(false);
+
+      const locationSysId = record?.sys_id;
+      if (!locationSysId) {
+        setCircuitsLoading(false);
+        return;
+      }
+      try {
+        const result = await getCircuitsForSite(locationSysId, token);
+        if (!cancelled) setCircuits(result);
+      } catch (err) {
+        if (!cancelled) setCircuitsError(err.message || "Failed to load circuits");
+      } finally {
+        if (!cancelled) setCircuitsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteCode, circuitsRetryNonce]);
+
+  const retryCircuits = () => setCircuitsRetryNonce((n) => n + 1);
+
+  // Its own effect (not part of the big siteCode-keyed one above) so widening the days-back
+  // window doesn't have to re-fetch DHCP/Opengear/etc. too.
+  useEffect(() => {
+    if (!siteCode) return;
+    let cancelled = false;
+    setIncidentsLoading(true);
+    setIncidents([]);
+    setIncidentsError(null);
+    (async () => {
+      let token;
+      try {
+        token = await getToken();
+      } catch (err) {
+        if (!cancelled) {
+          setIncidentsError(err.message || "Authentication failed");
+          setIncidentsLoading(false);
+        }
+        return;
+      }
+      if (cancelled) return;
+      getRecentIncidents(token, incidentsDaysAgo, siteCode)
+        .then((result) => {
+          if (!cancelled) setIncidents(result);
+        })
+        .catch((err) => {
+          if (!cancelled) setIncidentsError(err.message || "Failed to load incidents");
+        })
+        .finally(() => {
+          if (!cancelled) setIncidentsLoading(false);
+        });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteCode, incidentsDaysAgo, incidentsRetryNonce]);
+
+  const retryIncidents = () => setIncidentsRetryNonce((n) => n + 1);
+
+  // getRecentIncidents now does the real site filtering server-side (short_descriptionLIKE in
+  // sysparm_query — incidents have no Location field to filter on like circuits do), so this
+  // is just a client-side safety net plus the sort. A widened days-back window was previously
+  // returning FEWER site-matching incidents than a narrower one, because the old client-only
+  // filter ran after the API's flat 200-record cap — a wider window pulled in more org-wide
+  // noise while the cap stayed fixed, truncating this site's incidents before they were ever
+  // filtered. Filtering server-side means the cap now applies after the site match, so a wider
+  // window can only add incidents, never lose them.
+  const siteIncidents = useMemo(
+    () =>
+      incidents
+        .filter((i) => (i.short_description || "").toUpperCase().includes(siteCode))
+        .sort((a, b) => {
+          const dateA = new Date((a.opened_at || a.sys_created_on || "").replace(" ", "T")).getTime();
+          const dateB = new Date((b.opened_at || b.sys_created_on || "").replace(" ", "T")).getTime();
+          return dateB - dateA;
+        }),
+    [incidents, siteCode],
+  );
+
+  // Resolves whichever of these reference fields still came back as a raw {link, value}
+  // sys_id (sysparm_display_value isn't confirmed to be honored on either call it covers)
+  // into real names, batched into one users request rather than one per field. Covers both
+  // incident people (assigned_to/opened_by/caller_id) and the location record's contacts.
+  useEffect(() => {
+    const ids = new Set();
+    siteIncidents.forEach((inc) => {
+      ["assigned_to", "opened_by", "caller_id"].forEach((field) => {
+        const ref = inc[field];
+        if (ref && typeof ref === "object" && ref.value) ids.add(ref.value);
+      });
+    });
+    if (locationRecord) {
+      [
+        "contact",
+        "u_second_business_contact",
+        "u_it_support_contact",
+        "u_on_site_contact",
+        "u_field_support_manager",
+      ].forEach((field) => {
+        const ref = locationRecord[field];
+        if (ref && typeof ref === "object" && ref.value) ids.add(ref.value);
+      });
+    }
+    if (ids.size === 0) {
+      setUserMapLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setUserMapLoading(true);
+    (async () => {
+      try {
+        const token = await getToken();
+        const users = await getServiceNowUsers(token, [...ids]);
+        if (cancelled) return;
+        const map = new Map();
+        users.forEach((u) => {
+          const display = u.name || [u.first_name, u.last_name].filter(Boolean).join(" ") || u.user_name || u.email;
+          if (display) map.set(u.sys_id, display);
+        });
+        setUserDisplayMap(map);
+      } catch {
+        // Non-critical — resolveReference falls back to the raw sys_id.
+      } finally {
+        if (!cancelled) setUserMapLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteIncidents, locationRecord]);
 
   // Resolved via its own lookup rather than data.netboxbsite.id, which isn't confirmed to be
   // in the same ID space the diagrams endpoint expects.
@@ -1505,8 +2613,14 @@ export default function SiteDashboardPage() {
       </div>
 
       {error && (
-        <div className="px-4 py-3 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-sm text-center">
-          {error}
+        <div className="px-4 py-3 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-sm text-center flex items-center justify-center gap-3">
+          <span>{error}</span>
+          <button
+            onClick={retryData}
+            className="shrink-0 text-xs px-2 py-0.5 rounded border border-red-400/50 text-red-200 hover:bg-red-900/40 transition-colors"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -1524,7 +2638,14 @@ export default function SiteDashboardPage() {
           </>
         ) : (
           <>
-            <SnowLocationCard location={snowLocation} error={snowLocationError} />
+            <SnowLocationCard
+              location={snowLocation}
+              error={snowLocationError}
+              contacts={locationRecord}
+              userMap={userDisplayMap}
+              userMapLoading={userMapLoading}
+              onRetry={retryData}
+            />
             <SiteLocationCard location={snowLocation} />
           </>
         )}
@@ -1532,20 +2653,21 @@ export default function SiteDashboardPage() {
 
       <div className="flex flex-col lg:flex-row gap-4">
         {opengearInitialLoading ? (
-          <SkeletonTable rows={2} />
+          <OpengearCardSkeleton />
         ) : (
           <OpengearCard
             devices={opengearDevices}
             error={opengearError}
             statusLoading={opengearStatusLoading}
             summaryLoading={opengearLoading}
+            onRetry={retryData}
           />
         )}
         <div className="lg:flex-1 lg:min-w-0">
           {dhcpLoading ? (
             <SkeletonTable rows={3} />
           ) : (
-            <DhcpScopesCard siteCode={siteCode} scopes={dhcpScopes} error={dhcpError} />
+            <DhcpScopesCard siteCode={siteCode} scopes={dhcpScopes} error={dhcpError} onRetry={retryData} />
           )}
         </div>
       </div>
@@ -1554,10 +2676,22 @@ export default function SiteDashboardPage() {
         <>
           <SkeletonTable rows={1} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <ComingSoonCard title="Circuits" note="Work in progress." />
-            <ComingSoonCard
-              title="Recent Tickets / Outages"
-              note="Work in progress."
+            <CircuitsCard
+              circuits={circuits}
+              loading={circuitsLoading}
+              error={circuitsError}
+              onSelect={setSelectedCircuit}
+              onRetry={retryCircuits}
+            />
+            <IncidentsCard
+              incidents={siteIncidents}
+              loading={incidentsLoading}
+              error={incidentsError}
+              onSelect={setSelectedIncident}
+              userMap={userDisplayMap}
+              daysAgo={incidentsDaysAgo}
+              onChangeDaysAgo={setIncidentsDaysAgo}
+              onRetry={retryIncidents}
             />
           </div>
           <SkeletonTable rows={5} />
@@ -1566,14 +2700,31 @@ export default function SiteDashboardPage() {
         data && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <ComingSoonCard title="Circuits" note="Work in progress." />
-            <ComingSoonCard
-              title="Recent Tickets / Outages"
-              note="Work in progress."
+            <CircuitsCard
+              circuits={circuits}
+              loading={circuitsLoading}
+              error={circuitsError}
+              onSelect={setSelectedCircuit}
+              onRetry={retryCircuits}
+            />
+            <IncidentsCard
+              incidents={siteIncidents}
+              loading={incidentsLoading}
+              error={incidentsError}
+              onSelect={setSelectedIncident}
+              userMap={userDisplayMap}
+              daysAgo={incidentsDaysAgo}
+              onChangeDaysAgo={setIncidentsDaysAgo}
+              onRetry={retryIncidents}
             />
           </div>
 
           <AllDevicesCard
+            // Remounts on site change so search/type-filter/sort/expanded-row state (plain
+            // useState, previously untied to siteCode) doesn't silently carry over from the
+            // last site and hide devices at the new one. Column width/visibility prefs are
+            // unaffected — those are read from localStorage on init, not component instance.
+            key={siteCode}
             netboxDevices={devices}
             diagram={{ devices: diagramDevices, loading: diagramLoading, error: diagramError }}
             mist={{ devices: mistDevices, loading: mistLoading, error: mistError }}
@@ -1584,6 +2735,22 @@ export default function SiteDashboardPage() {
           />
         </>
       ))}
+
+      {selectedIncident && (
+        <IncidentDetailModal
+          incident={selectedIncident}
+          onClose={() => setSelectedIncident(null)}
+          userMap={userDisplayMap}
+        />
+      )}
+
+      {selectedCircuit && (
+        <CircuitDetailModal
+          circuit={selectedCircuit}
+          locationRecord={locationRecord}
+          onClose={() => setSelectedCircuit(null)}
+        />
+      )}
     </div>
   );
 }

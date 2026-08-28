@@ -35,7 +35,7 @@ export default function DHCPSiteSelect() {
 
   const goToSite = (code) => {
     const trimmed = (code || "").trim();
-    if (trimmed) navigate(`/dhcp/${trimmed}`);
+    if (trimmed) navigate(`/${trimmed}/dhcp`);
   };
 
   return (

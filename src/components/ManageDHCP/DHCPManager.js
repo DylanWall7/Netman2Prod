@@ -144,12 +144,14 @@ const ScopeCard = ({ scope, manageable, selected, onSelect, onExpand, onViewDeta
               <span className="sr-only">{statusStyle.label}</span>
             </>
           )}
-          <span className="font-mono text-base font-bold text-pink-400">
-            {scope.scopeId}/{scope.cidr}
-          </span>
         </div>
 
-        <span className="text-sm text-zinc-200 truncate flex-1 min-w-0">{scope.name}</span>
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="font-mono text-sm font-bold text-pink-400 truncate">
+            {scope.scopeId}/{scope.cidr}
+          </span>
+          <span className="text-xs uppercase tracking-wide text-pink-400 truncate">{scope.name}</span>
+        </div>
 
         {/* Metadata cluster: supporting context, each with its own breakpoint */}
         <div className="flex items-center gap-3 flex-shrink-0">
@@ -318,7 +320,7 @@ const DHCPManager = () => {
 
   const goToSite = (code) => {
     const trimmed = (code || "").trim();
-    if (trimmed && trimmed !== siteCode) navigate(`/dhcp/${trimmed}`);
+    if (trimmed && trimmed !== siteCode) navigate(`/${trimmed}/dhcp`);
   };
 
   const loadScopes = async (site) => {
@@ -387,7 +389,7 @@ const DHCPManager = () => {
         <p className="text-sm text-zinc-400">DHCP scopes for this site.</p>
       </div>
 
-      <div className="w-full px-4 sm:px-6 lg:px-8 mt-10">
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 mt-10">
         {scopesError && (
           <div className="mb-4 px-4 py-3 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-sm text-center animate-fadeIn motion-reduce:animate-none">
             <p>{scopesError}</p>
@@ -435,7 +437,7 @@ const DHCPManager = () => {
               </span> */}
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 pb-10">
               {kiaScopes.length === 0 ? (
                 <p className="text-sm text-zinc-500 italic py-4 text-center">
                   No DHCP scopes found for {siteCode}.
