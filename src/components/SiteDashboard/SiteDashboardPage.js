@@ -1099,13 +1099,17 @@ function capitalize(word) {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
-// "connected" is the only online value Mist/the diagram endpoint report — devices with no
-// live status source stay an explicit "Unknown" rather than being shown as down.
+// "connected" was assumed to be the only online value Mist/the diagram endpoint report, but
+// at least one real device came back with "online" instead — that exact-match check treated
+// it as offline (red) while the fallback text still displayed capitalize(status) = "Online",
+// so the badge read "Online" in red. Matched case-insensitively against both known values now.
+// Devices with no live status source stay an explicit "Unknown" rather than being shown as down.
+const ONLINE_STATUS_VALUES = new Set(["connected", "online"]);
 function StatusBadge({ status }) {
   if (!status) {
     return <span className="text-gray-600 text-xs">Unknown</span>;
   }
-  const online = status === "connected";
+  const online = ONLINE_STATUS_VALUES.has(status.toLowerCase());
   return (
     <span className={`text-xs font-medium ${online ? "text-green-400" : "text-red-400"}`}>
       {online ? "Online" : capitalize(status)}
