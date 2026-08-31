@@ -929,13 +929,15 @@ function OpengearCardSkeleton() {
 function OpengearCard({ devices, error, statusLoading, summaryLoading, onRetry }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 w-full max-w-sm flex-shrink-0">
-      <h3 className="text-sm font-semibold text-gray-400 mb-3">Opengear</h3>
+      <h3 className="text-sm font-semibold text-gray-400 mb-3">
+        Opengear{devices.length > 1 ? ` (${devices.length})` : ""}
+      </h3>
       {error ? (
         <RetryError message={error} onRetry={onRetry} />
       ) : devices.length === 0 ? (
         <p className="text-xs text-gray-500 italic">No Opengear devices found for this site.</p>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
           {devices.map((og, idx) => (
             <div key={og.name ?? idx}>
               {og.netboxid ? (
