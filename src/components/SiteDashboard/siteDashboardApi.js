@@ -100,26 +100,25 @@ export async function getMistDevices(mistSiteId, token) {
 // NWS's alerting system also carries non-meteorological public-safety messages (air quality,
 // civil/emergency messages, amber alerts, etc.) through the same feed — not weather, so this
 // card (which exists to flag actual weather conditions at a site) filters them out.
-const NON_WEATHER_ALERT_EVENTS = new Set(
+// Only alert types severe enough to realistically threaten power or network
+// equipment at a site (downed lines, ice/wind damage, flooding of ground-level
+// gear) — advisory-level and low-impact events (heat, flood, fog, etc.) are
+// noise for this purpose even though they're real NWS alerts.
+const IMPACTFUL_WEATHER_ALERT_EVENTS = new Set(
   [
-    "Air Quality Alert",
-    "Administrative Message",
-    "Test Message",
-    "Civil Danger Warning",
-    "Civil Emergency Message",
-    "Child Abduction Emergency",
-    "Earthquake Warning",
-    "Evacuation Immediate",
-    "Fire Warning",
-    "Hazardous Materials Warning",
-    "Law Enforcement Warning",
-    "Local Area Emergency",
-    "Nuclear Power Plant Warning",
-    "Radiological Hazard Warning",
-    "Shelter In Place Warning",
-    "Volcano Warning",
-    "911 Telephone Outage Emergency",
-    "Telephone Outage Emergency",
+    "Tornado Warning",
+    "Severe Thunderstorm Warning",
+    "Extreme Wind Warning",
+    "High Wind Warning",
+    "Ice Storm Warning",
+    "Winter Storm Warning",
+    "Blizzard Warning",
+    "Hurricane Warning",
+    "Hurricane Watch",
+    "Tropical Storm Warning",
+    "Tropical Storm Watch",
+    "Storm Surge Warning",
+    "Tsunami Warning",
   ].map((e) => e.toLowerCase()),
 );
 
@@ -133,7 +132,7 @@ export async function getActiveWeatherAlerts(lat, lon) {
   const body = await res.json();
   const features = body?.features || [];
   return features
-    .filter((f) => !NON_WEATHER_ALERT_EVENTS.has((f.properties?.event || "").toLowerCase()))
+    .filter((f) => IMPACTFUL_WEATHER_ALERT_EVENTS.has((f.properties?.event || "").toLowerCase()))
     .map((f) => ({
       id: f.id,
       event: f.properties?.event,

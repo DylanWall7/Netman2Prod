@@ -34,34 +34,26 @@ export async function generateDhcpScopeParams(netboxPrefixId, token) {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to generate scope parameters (${res.status})`);
-  const body = await res.json();
-  console.log("[DHCP live] dhcp/generate response:", body);
-  return body;
+  return res.json();
 }
 
 // Returns every Kia + Gizmo scope for a site in one call, replacing the old
-// per-prefix subnetv4 lookup loop. Response shape not yet confirmed —
-// logged so the real payload can be captured from the console/Network tab.
+// per-prefix subnetv4 lookup loop.
 export async function getDhcpSiteSummary(siteCode, token) {
   const res = await fetch(`${DHCP_ROOT}/sitesummary/${encodeURIComponent(siteCode)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to load DHCP site summary (${res.status})`);
-  const body = await res.json();
-  console.log("[DHCP live] sitesummary response:", body);
-  return body;
+  return res.json();
 }
 
-// Returns every reservation within a subnet. Response shape not yet
-// confirmed — logged so the real payload can be captured from the
-// console/Network tab.
+// Returns every reservation within a subnet.
 export async function getReservationsForSubnet(subnet, token) {
   const res = await fetch(`${DHCP_ROOT}/reservationv4?subnet=${encodeURIComponent(subnet)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to load reservations (${res.status})`);
   const body = await res.json();
-  console.log("[DHCP live] reservationv4 response:", body);
   return Array.isArray(body) ? body : body?.results || body?.data || [];
 }
 
@@ -104,7 +96,6 @@ export async function getGizmoReservations(gizmoId, token) {
   });
   if (!res.ok) throw new Error(`Failed to load reservations (${res.status})`);
   const body = await res.json();
-  console.log("[DHCP live] gizmo reservations response:", body);
   return Array.isArray(body) ? body : body?.results || body?.data || [];
 }
 
@@ -114,7 +105,6 @@ export async function getGizmoLeases(gizmoId, token) {
   });
   if (!res.ok) throw new Error(`Failed to load leases (${res.status})`);
   const body = await res.json();
-  console.log("[DHCP live] gizmo leases response:", body);
   return Array.isArray(body) ? body : body?.results || body?.data || [];
 }
 
@@ -126,7 +116,6 @@ export async function getKeaLeases(subnet, token) {
   });
   if (!res.ok) throw new Error(`Failed to load leases (${res.status})`);
   const body = await res.json();
-  console.log("[DHCP live] leasev4 response:", body);
   return Array.isArray(body) ? body : body?.results || body?.data || [];
 }
 

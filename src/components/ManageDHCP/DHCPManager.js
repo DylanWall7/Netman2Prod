@@ -191,9 +191,9 @@ const ScopeCard = ({ scope, deleting, onExpand, onViewDetail, onDelete, onDeploy
           {scope._stale ? (
             <span
               className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-900/20 border border-amber-700/40 text-amber-400"
-              title="Not yet confirmed — refresh to sync with the server"
+              title="Change applied — refresh to update this row with the latest data"
             >
-              {scope._pendingChange === "deleted" ? "Deleted" : "New"} · refresh to confirm
+              {scope._pendingChange === "deleted" ? "Deleted" : "Deployed"} — refresh to update
             </span>
           ) : (
             <>
@@ -488,7 +488,7 @@ const DHCPManager = () => {
         _stale: true,
         _pendingChange: "deployed",
       };
-      setKiaScopes((prev) => [...prev.filter((s) => s.id !== deployScope.id), provisionalRow]);
+      setKiaScopes((prev) => prev.map((s) => (s.id === deployScope.id ? provisionalRow : s)));
 
       closeDeployModal();
     } catch (err) {
@@ -588,7 +588,7 @@ const DHCPManager = () => {
               {pendingChangeCount > 0 && (
                 <div className="ml-auto flex items-center gap-2 text-xs">
                   <span className="text-amber-400">
-                    {pendingChangeCount} change{pendingChangeCount === 1 ? "" : "s"} not yet confirmed
+                    {pendingChangeCount} change{pendingChangeCount === 1 ? "" : "s"} made — refresh to update
                   </span>
                   <button
                     onClick={() => loadScopes(siteCode)}
