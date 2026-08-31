@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMsal } from "@azure/msal-react";
 import { motion } from "framer-motion";
@@ -27,7 +27,13 @@ function ArrowUpRight({ className }) {
   );
 }
 
-function Card({ to, title, description, external, children }) {
+function Card({ to, title, description, external, children, searchQuery }) {
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    const matches = title.toLowerCase().includes(q) || (description || "").toLowerCase().includes(q);
+    if (!matches) return null;
+  }
+
   const inner = (
     <motion.div
       variants={itemVariants}
@@ -64,6 +70,33 @@ export const HomeLayout = () => {
   const isEngineer = roles.includes("Engineer");
   const isFieldServices = roles.includes("FieldServices");
   const isAuthorized = isEngineer || isFieldServices;
+  const [search, setSearch] = useState("");
+
+  // Mirrors the title/description/visibility of the Card tiles below, purely so the
+  // "no results" message can be shown without threading a match callback through Card.
+  const TOOL_INDEX = [
+    { title: "Site Dashboard", description: "View live device, DHCP, circuit, and incident status for any job site.", show: isEngineer },
+    { title: "Provisioning Wizard", description: "Deploy new sites, DHCP, and Netbox using the provisioning wizard.", show: isEngineer },
+    { title: "Demobe Tool", description: "Demobe sites and delete DHCP scopes by sitecode.", show: isEngineer },
+    { title: "Workbench Info", description: "List of workbenches and their details.", show: isEngineer },
+    { title: "Manage Devices", description: "Manage devices in Netbox.", show: isEngineer },
+    { title: "DHCP Manager", description: "View DHCP scopes, leases, and reservations across Gizmo and Kea.", show: isEngineer },
+    { title: "GitLab", description: "Device configuration repository.", show: isEngineer },
+    { title: "DHCP Tool", description: "Manage DHCP reservations easily and efficiently.", show: isAuthorized },
+    { title: "Mist Viewer", description: "View Mist devices and monitor their real-time status.", show: isAuthorized },
+    { title: "Network Search", description: "Search the network for devices and information.", show: isEngineer },
+    { title: "Opengear List", description: "View Opengear device status.", show: isAuthorized },
+    { title: "Network Reports", description: "View network reports and analytics.", show: isEngineer },
+    { title: "Inventory Scan", description: "Scan assets into depot, locations, jobs, or add to inventory.", show: isEngineer },
+    { title: "Depot Manager", description: "Dashboard, ticket submission, and order/gear management in one place.", show: isEngineer },
+    { title: "Network Topology", description: "View network topologies.", show: isEngineer },
+  ];
+  const searchQuery = search.trim().toLowerCase();
+  const hasNoMatches =
+    searchQuery !== "" &&
+    !TOOL_INDEX.some(
+      (t) => t.show && (t.title.toLowerCase().includes(searchQuery) || t.description.toLowerCase().includes(searchQuery))
+    );
 
   if (!isAuthorized) {
     return (
@@ -84,6 +117,43 @@ export const HomeLayout = () => {
   return (
     <div className="mt-12 px-4">
       <main className="h-full">
+        <div className="max-w-5xl mx-auto flex justify-end">
+          <div className="relative w-full sm:w-64">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none"
+              stroke="currentColor"
+            >
+              <path d="M11 19a8 8 0 100-16 8 8 0 000 16z" strokeWidth="1.5" />
+              <path d="M21 21l-4.35-4.35" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tools…"
+              className="w-full pl-9 pr-9 py-2 text-sm rounded-xl bg-gray-800 border border-gray-700 text-gray-100 placeholder:text-gray-500 focus:outline-none focus:border-pink-500/50"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                aria-label="Clear search text"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+              >
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {hasNoMatches && (
+          <p className="text-center text-sm text-gray-500 italic max-w-5xl mx-auto mt-8">No tools found.</p>
+        )}
+
         <motion.div
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto mt-5"
           variants={containerVariants}
@@ -91,7 +161,7 @@ export const HomeLayout = () => {
           animate="visible"
         >
           {isEngineer && (
-            <Card to="/dashboard" title="Site Dashboard" description="View live device, DHCP, circuit, and incident status for any job site.">
+            <Card to="/dashboard" title="Site Dashboard" description="View live device, DHCP, circuit, and incident status for any job site." searchQuery={search}>
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
                 <rect x="3" y="3" width="8" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
                 <rect x="13" y="3" width="8" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
@@ -102,7 +172,7 @@ export const HomeLayout = () => {
           )}
 
           {isEngineer && (
-            <Card to="/provision" title="Provisioning Wizard" description="Deploy new sites, DHCP, and Netbox using the provisioning wizard.">
+            <Card to="/provision" title="Provisioning Wizard" description="Deploy new sites, DHCP, and Netbox using the provisioning wizard." searchQuery={search}>
               <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 490 490" width="28" height="28">
                 <g>
                   <g>
@@ -130,7 +200,7 @@ export const HomeLayout = () => {
           )}
 
           {isEngineer && (
-            <Card to="/demobe" title="Demobe Tool" description="Demobe sites and delete DHCP scopes by sitecode.">
+            <Card to="/demobe" title="Demobe Tool" description="Demobe sites and delete DHCP scopes by sitecode." searchQuery={search}>
               <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28">
                 <g>
                   <g>
@@ -173,7 +243,7 @@ export const HomeLayout = () => {
           )}
 
           {isEngineer && (
-            <Card to="/workbench" title="Workbench Info" description="List of workbenches and their details.">
+            <Card to="/workbench" title="Workbench Info" description="List of workbenches and their details." searchQuery={search}>
               <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="28" height="28">
                 <g>
                   <rect x="48" y="64.2" width="68.9" height="5.6" />
@@ -186,7 +256,7 @@ export const HomeLayout = () => {
           )}
 
           {isEngineer && (
-            <Card to="/managedevices" title="Manage Devices" description="Manage devices in Netbox.">
+            <Card to="/managedevices" title="Manage Devices" description="Manage devices in Netbox." searchQuery={search}>
               <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="-351 153 256 256" width="28" height="28">
                 <path d="M-139.1,345.7c-6.5-5.9-14.1-8.6-23-8.3c-3,0-5.9,0.7-8.9,1.7l-44.6-40.8l28.7-33.9l45.6,40.2l40.3-45.9l-114.1-100.4 l-40.3,45.9l44.4,39.1l-29.7,32.1l-40.6-37.2c0.7-3,1-5.9,0.7-8.9c-0.3-8.9-3.8-16.5-10.3-22.3c-6.5-5.9-14.1-8.6-23-8.3 c-3,0-6.2,0.7-8.9,1.7l25.8,23.4l-22.8,25l-25.8-23.4c-0.7,3-1,6.2-0.7,8.9c0.3,8.9,3.8,16.1,10.3,22c6.5,5.9,14.1,8.6,23,8.3 c3,0,6.5-0.7,9.6-2.1l39.4,36.1l-65.2,67.6c-4.5,3.8-6.8,9.2-6.8,15.1c0,11,8.9,19.9,19.9,19.9c6.8,0,12.7-3.5,16.5-8.6l62.8-69.2 l37.1,33.9l6.2,5.9c-0.7,3-1,6.5-1,9.6c0.3,8.9,3.8,16.1,10.3,22.3c6.5,5.9,14.1,8.6,23,8.3c3,0,5.9-0.7,8.9-1.7l-25.8-23.4l23-25.1 l25.5,23.5c0.7-3,1-6.2,0.7-8.9C-129.1,358.7-132.6,351.5-139.1,345.7z" />
               </svg>
@@ -194,7 +264,7 @@ export const HomeLayout = () => {
           )}
 
           {isEngineer && (
-            <Card to="/dhcp" title="DHCP Manager" description="View DHCP scopes, leases, and reservations across Gizmo and Kea.">
+            <Card to="/dhcp" title="DHCP Manager" description="View DHCP scopes, leases, and reservations across Gizmo and Kea." searchQuery={search}>
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
                 <rect x="3" y="3.5" width="18" height="5" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
                 <rect x="3" y="10" width="18" height="5" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
@@ -206,8 +276,17 @@ export const HomeLayout = () => {
             </Card>
           )}
 
+          {isEngineer && (
+            // Placeholder link — update to="..." once the real GitLab URL is known.
+            <Card to="https://gitlab.kiewitplaza.com/telecom" title="GitLab" description="Device configuration repository." external searchQuery={search}>
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor">
+                <path d="m23.6004 9.5927-.0337-.0862L20.3.9814a.851.851 0 0 0-.3362-.405.8748.8748 0 0 0-.9997.0539.8748.8748 0 0 0-.29.4399l-2.2055 6.748H7.5375l-2.2057-6.748a.8573.8573 0 0 0-.29-.4412.8748.8748 0 0 0-.9997-.0539.8585.8585 0 0 0-.3362.405L.4332 9.5015l-.0325.0862a6.0657 6.0657 0 0 0 2.0119 7.0105l.0113.0087.03.0213 4.976 3.7264 2.462 1.8633 1.4995 1.1321a1.0085 1.0085 0 0 0 1.2197 0l1.4995-1.1321 2.4619-1.8633 5.006-3.7489.0125-.01a6.0682 6.0682 0 0 0 2.0007-7.0094Z" />
+              </svg>
+            </Card>
+          )}
+
           {isAuthorized && (
-            <Card to="https://dhcp.kiewitplaza.com" title="DHCP Tool" description="Manage DHCP reservations easily and efficiently." external>
+            <Card to="https://dhcp.kiewitplaza.com" title="DHCP Tool" description="Manage DHCP reservations easily and efficiently." external searchQuery={search}>
               <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor">
                 <path d="M18.979,4.661c-2.212,0.573-4.284,1.494-6.129,2.735L9.857,4.402l-5.656,5.657l3.042,3.042 c-1.163,1.784-2.036,3.766-2.583,5.883H0v10.031h4.66c0.56,2.165,1.458,4.193,2.66,6.009l-3.118,3.118l5.656,5.656l3.119-3.118 c1.819,1.205,3.853,2.104,6.023,2.664V48h4.062v-8.047C14.665,39.465,8,32.52,8,24c0-8.521,6.665-15.465,15.062-15.953V0h-4.083 V4.661z" />
                 <path d="M15,24c0,4.654,3.532,8.482,8.062,8.951v-4.046C20.75,28.466,19,26.44,19,24c0-2.44,1.75-4.466,4.062-4.905 v-4.046C18.532,15.518,15,19.346,15,24z" />
@@ -218,7 +297,7 @@ export const HomeLayout = () => {
           )}
 
           {isAuthorized && (
-            <Card to="https://mistviewer.kiewitplaza.com" title="Mist Viewer" description="View Mist devices and monitor their real-time status." external>
+            <Card to="https://mistviewer.kiewitplaza.com" title="Mist Viewer" description="View Mist devices and monitor their real-time status." external searchQuery={search}>
               <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor">
                 <path d="M464.8 409.7C431.9 365 378.9 336 319.2 336c-99.8 0-180.7 80.9-180.7 180.7s80.9 180.7 180.7 180.7h297.3c149.3 0 270.3-121 270.3-270.3s-121-270.3-270.3-270.3c-118.7 0-219.6 76.5-255.9 183" />
                 <path d="M823.5 766.5c0-3.2 0.5-6.3 1.5-9.2H631V417.4c0-5.5-4.5-10-10-10s-10 4.5-10 10v359.9h214.6c-1.3-3.3-2.1-7-2.1-10.8z" />
@@ -228,7 +307,7 @@ export const HomeLayout = () => {
           )}
 
           {isEngineer && (
-            <Card to="/NetworkSearch" title="Network Search" description="Search the network for devices and information.">
+            <Card to="/NetworkSearch" title="Network Search" description="Search the network for devices and information." searchQuery={search}>
               <svg viewBox="-0.5 0 25 25" fill="none" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
                 <path d="M22 11.8201C22 9.84228 21.4135 7.90885 20.3147 6.26436C19.2159 4.61987 17.6542 3.33813 15.8269 2.58126C13.9996 1.82438 11.9889 1.62637 10.0491 2.01223C8.10927 2.39808 6.32748 3.35052 4.92896 4.74904C3.53043 6.14757 2.578 7.92935 2.19214 9.86916C1.80629 11.809 2.00436 13.8197 2.76123 15.6469C3.51811 17.4742 4.79985 19.036 6.44434 20.1348C8.08883 21.2336 10.0222 21.8201 12 21.8201" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 <path d="M2 11.8201H22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -240,7 +319,7 @@ export const HomeLayout = () => {
           )}
 
           {isAuthorized && (
-            <Card to="/opengear" title="Opengear List" description="View Opengear device status.">
+            <Card to="/opengear" title="Opengear List" description="View Opengear device status." searchQuery={search}>
             <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28">
               <g>
                 <g>
@@ -256,7 +335,7 @@ export const HomeLayout = () => {
           )}
 
           {isEngineer && (
-            <Card to="/Reports" title="Network Reports" description="View network reports and analytics.">
+            <Card to="/Reports" title="Network Reports" description="View network reports and analytics." searchQuery={search}>
               <svg fill="currentColor" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
                 <rect x="15" y="20" width="2" height="4" />
                 <rect x="20" y="18" width="2" height="6" />
@@ -267,15 +346,15 @@ export const HomeLayout = () => {
           )}
 
           {isEngineer && (
-            <Card to="/inventory" title="Inventory Scan" description="Scan assets into depot, locations, jobs, or add to inventory.">
+            <Card to="/inventory" title="Inventory Scan" description="Scan assets into depot, locations, jobs, or add to inventory." searchQuery={search}>
               <svg fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
                 <path d="M3 5a2 2 0 012-2h2a1 1 0 010 2H5v2a1 1 0 01-2 0V5zM3 19a2 2 0 002 2h2a1 1 0 000-2H5v-2a1 1 0 00-2 0v2zM19 3h-2a1 1 0 000 2h2v2a1 1 0 002 0V5a2 2 0 00-2-2zM21 17a1 1 0 00-2 0v2h-2a1 1 0 000 2h2a2 2 0 002-2v-2zM7 8a1 1 0 011-1h8a1 1 0 110 2H8a1 1 0 01-1-1zM7 12a1 1 0 011-1h8a1 1 0 110 2H8a1 1 0 01-1-1zM7 16a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1z" fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
               </svg>
             </Card>
           )}
 
-          {isAuthorized && (
-            <Card to="/depot-orders" title="Depot Manager" description="Dashboard, ticket submission, and order/gear management in one place.">
+          {isEngineer && (
+            <Card to="/depot-orders" title="Depot Manager" description="Dashboard, ticket submission, and order/gear management in one place." searchQuery={search}>
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
                 <path d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25M21 5.25V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -283,7 +362,7 @@ export const HomeLayout = () => {
           )}
 
           {isEngineer && (
-            <Card to="/topology" title="Network Topology" description="View network topologies.">
+            <Card to="/topology" title="Network Topology" description="View network topologies." searchQuery={search}>
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
                 <path d="M5.46997 9C7.40297 9 8.96997 7.433 8.96997 5.5C8.96997 3.567 7.40297 2 5.46997 2C3.53697 2 1.96997 3.567 1.96997 5.5C1.96997 7.433 3.53697 9 5.46997 9Z" stroke="currentColor" strokeWidth="1.5" />
                 <path d="M16.97 15H19.97C21.07 15 21.97 15.9 21.97 17V20C21.97 21.1 21.07 22 19.97 22H16.97C15.87 22 14.97 21.1 14.97 20V17C14.97 15.9 15.87 15 16.97 15Z" stroke="currentColor" strokeWidth="1.5" />

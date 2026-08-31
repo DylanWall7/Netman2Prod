@@ -40,6 +40,9 @@ export const PageLayout = (props) => {
   const name = accounts[0] && accounts[0].name;
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchInputRef = useRef(null);
 
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef(null);
@@ -67,6 +70,7 @@ export const PageLayout = (props) => {
     {
       to: "/",
       label: "Home",
+      description: "Go to the home page.",
       show: isAuthorized,
       external: false,
       icon: (
@@ -78,6 +82,7 @@ export const PageLayout = (props) => {
     {
       to: "/dashboard",
       label: "Site Dashboard",
+      description: "View live device, DHCP, circuit, and incident status for any job site.",
       show: isEngineer,
       external: false,
       icon: (
@@ -92,6 +97,7 @@ export const PageLayout = (props) => {
     {
       to: "/provision",
       label: "Provisioning",
+      description: "Deploy new sites, DHCP, and Netbox using the provisioning wizard.",
       show: isEngineer,
       external: false,
       icon: (
@@ -108,6 +114,7 @@ export const PageLayout = (props) => {
     {
       to: "/demobe",
       label: "Demobe",
+      description: "Demobe sites and delete DHCP scopes by sitecode.",
       show: isEngineer,
       external: false,
       icon: (
@@ -126,6 +133,7 @@ export const PageLayout = (props) => {
     {
       to: "/workbench",
       label: "Workbench",
+      description: "List of workbenches and their details.",
       show: isEngineer,
       external: false,
       icon: (
@@ -140,6 +148,7 @@ export const PageLayout = (props) => {
     {
       to: "/managedevices",
       label: "Manage Devices",
+      description: "Manage devices in Netbox.",
       show: isEngineer,
       external: false,
       icon: (
@@ -151,6 +160,7 @@ export const PageLayout = (props) => {
     {
       to: "/dhcp",
       label: "DHCP Manager",
+      description: "View DHCP scopes, leases, and reservations across Gizmo and Kea.",
       show: isEngineer,
       external: false,
       icon: (
@@ -167,6 +177,7 @@ export const PageLayout = (props) => {
     {
       to: "https://dhcp.kiewitplaza.com",
       label: "DHCP Tool",
+      description: "Manage DHCP reservations easily and efficiently.",
       show: isAuthorized,
       external: true,
       icon: (
@@ -181,6 +192,7 @@ export const PageLayout = (props) => {
     {
       to: "https://mistviewer.kiewitplaza.com",
       label: "Mist Viewer",
+      description: "View Mist devices and monitor their real-time status.",
       show: isAuthorized,
       external: true,
       icon: (
@@ -194,6 +206,7 @@ export const PageLayout = (props) => {
     {
       to: "/NetworkSearch",
       label: "Network Search",
+      description: "Search the network for devices and information.",
       show: isEngineer,
       external: false,
       icon: (
@@ -209,6 +222,7 @@ export const PageLayout = (props) => {
     {
       to: "/opengear",
       label: "Opengear List",
+      description: "View Opengear device status.",
       show: isAuthorized,
       external: false,
       icon: (
@@ -224,6 +238,7 @@ export const PageLayout = (props) => {
     {
       to: "/Reports",
       label: "Reports",
+      description: "View network reports and analytics.",
       show: isEngineer,
       external: false,
       icon: (
@@ -238,6 +253,7 @@ export const PageLayout = (props) => {
     {
       to: "/inventory",
       label: "Inventory",
+      description: "Scan assets into depot, locations, jobs, or add to inventory.",
       show: isEngineer,
       external: false,
       icon: (
@@ -249,7 +265,8 @@ export const PageLayout = (props) => {
     {
       to: "/depot-orders",
       label: "Depot Manager",
-      show: isAuthorized,
+      description: "Dashboard, ticket submission, and order/gear management in one place.",
+      show: isEngineer,
       external: false,
       icon: (
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
@@ -260,6 +277,7 @@ export const PageLayout = (props) => {
     {
       to: "/topology",
       label: "Topology",
+      description: "View network topologies.",
       show: isEngineer,
       external: false,
       icon: (
@@ -288,6 +306,7 @@ export const PageLayout = (props) => {
     {
       to: "/validate",
       label: "Validation",
+      description: "Validate site or device configuration.",
       show: isEngineer,
       external: false,
       icon: (
@@ -299,6 +318,32 @@ export const PageLayout = (props) => {
   ];
 
   const visibleItems = navItems.filter((item) => item.show);
+  const searchQuery = search.trim().toLowerCase();
+  const filteredItems = searchQuery
+    ? visibleItems.filter(
+        (item) =>
+          item.label.toLowerCase().includes(searchQuery) ||
+          (item.description || "").toLowerCase().includes(searchQuery)
+      )
+    : visibleItems;
+
+  const openSearch = () => {
+    setCollapsed(false);
+    setSearchOpen(true);
+    // Sidebar just expanded, so the input isn't in the DOM/focusable yet this tick.
+    setTimeout(() => searchInputRef.current?.focus(), 0);
+  };
+
+  // Clears the typed text only — the X inside a search box shouldn't also close the box.
+  const clearSearchText = () => {
+    setSearch("");
+    searchInputRef.current?.focus();
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearch("");
+  };
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -366,7 +411,11 @@ export const PageLayout = (props) => {
           ].join(" ")}
         >
           <button
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={() => {
+              const next = !collapsed;
+              setCollapsed(next);
+              if (next) closeSearch();
+            }}
             title={collapsed ? "Expand menu" : "Collapse menu"}
             className="flex items-center justify-center h-10 mt-1 mx-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-800 transition-colors flex-shrink-0"
           >
@@ -380,8 +429,49 @@ export const PageLayout = (props) => {
             </svg>
           </button>
 
+          <button
+            onClick={() => (searchOpen ? closeSearch() : openSearch())}
+            title="Search tools"
+            className="flex items-center justify-center h-10 mt-0.5 mx-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-800 transition-colors flex-shrink-0"
+          >
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" stroke="currentColor">
+              <path d="M11 19a8 8 0 100-16 8 8 0 000 16z" strokeWidth="1.5" />
+              <path d="M21 21l-4.35-4.35" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          {!collapsed && searchOpen && (
+            <div className="px-1.5 mt-1 flex-shrink-0 relative">
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") closeSearch();
+                }}
+                placeholder="Search tools…"
+                className="w-full pl-2.5 pr-7 py-1.5 text-xs rounded-lg bg-gray-800 border border-gray-700 text-gray-100 placeholder:text-gray-500 focus:outline-none focus:border-pink-500/50"
+              />
+              {search && (
+              <button
+                onClick={clearSearchText}
+                aria-label="Clear search text"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+              >
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              )}
+            </div>
+          )}
+
           <nav className="flex flex-col gap-0.5 p-1.5 mt-1">
-            {visibleItems.map((item) => {
+            {!collapsed && searchOpen && searchQuery && filteredItems.length === 0 && (
+              <p className="px-2 py-2 text-xs text-gray-500 italic">No tools found.</p>
+            )}
+            {(!collapsed && searchOpen ? filteredItems : visibleItems).map((item) => {
               const isActive =
                 item.to === "/"
                   ? location.pathname === "/"

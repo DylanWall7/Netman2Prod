@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { PageLayout } from "./components/PageLayout";
 import { NextUIProvider } from "@nextui-org/react";
 import { Routes, Route } from "react-router-dom";
@@ -12,7 +12,8 @@ import {
   UnauthenticatedTemplate,
   useMsal,
 } from "@azure/msal-react";
-import { GizmoRequest } from "./authConfig";
+import { InteractionStatus } from "@azure/msal-browser";
+import { GizmoRequest, loginRequest } from "./authConfig";
 
 import DemobeStepper from "./components/Demobe/DemobeStepper";
 import UserProfile from "./components/User/UserProfile";
@@ -87,7 +88,21 @@ const ProtectedRoute = ({ children, allowedRoles, allowNoRoles = false }) => {
 };
 
 function App() {
-  const { instance, accounts } = useMsal();
+  const { instance, accounts, inProgress } = useMsal();
+  const ssoAttempted = useRef(false);
+
+  useEffect(() => {
+    if (
+      inProgress === InteractionStatus.None &&
+      accounts.length === 0 &&
+      !ssoAttempted.current
+    ) {
+      ssoAttempted.current = true;
+      instance.ssoSilent(loginRequest).catch((e) => {
+        console.warn("Silent SSO failed, falling back to manual sign-in:", e);
+      });
+    }
+  }, [inProgress, accounts, instance]);
 
   return (
     <NextUIProvider>
