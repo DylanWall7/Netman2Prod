@@ -87,20 +87,28 @@ const ProtectedRoute = ({ children, allowedRoles, allowNoRoles = false }) => {
   return children;
 };
 
+// Guards the auto-login redirect to once per browser session, so a user who explicitly
+// signs out (or cancels sign-in) isn't bounced straight back in on reload. ssoSilent's
+// hidden-iframe approach was tried first but this network blocks it (monitor_window_timeout
+// every time), so it just added a guaranteed 6s wait with no chance of succeeding.
+const AUTO_LOGIN_REDIRECT_KEY = "netman2.autoLoginRedirectAttempted";
+
 function App() {
   const { instance, accounts, inProgress } = useMsal();
-  const ssoAttempted = useRef(false);
+  const loginAttempted = useRef(false);
 
   useEffect(() => {
     if (
       inProgress === InteractionStatus.None &&
       accounts.length === 0 &&
-      !ssoAttempted.current
+      !loginAttempted.current &&
+      !sessionStorage.getItem(AUTO_LOGIN_REDIRECT_KEY)
     ) {
-      ssoAttempted.current = true;
-      instance.ssoSilent(loginRequest).catch((e) => {
-        console.warn("Silent SSO failed, falling back to manual sign-in:", e);
-      });
+      loginAttempted.current = true;
+      sessionStorage.setItem(AUTO_LOGIN_REDIRECT_KEY, "1");
+      instance
+        .loginRedirect({ ...loginRequest, redirectStartPage: window.location.href })
+        .catch((err) => console.error("Auto login redirect failed:", err));
     }
   }, [inProgress, accounts, instance]);
 

@@ -11,6 +11,10 @@ import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
+// CRA5/webpack 5 dropped the automatic `process` polyfill; some deps (NextUI's
+// shared-utils warn() helper) reference the bare identifier and crash without it.
+window.process = window.process || { env: {} };
+
 const queryClient = new QueryClient();
 const msalInstance = new PublicClientApplication(msalConfig);
 

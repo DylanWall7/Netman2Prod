@@ -404,6 +404,7 @@ export const PageLayout = (props) => {
       </nav>
 
       <div className="flex flex-1">
+        {isAuthenticated && (
         <aside
           className={[
             "bg-gray-900 border-r border-gray-700 flex flex-col flex-shrink-0 transition-all duration-200 overflow-hidden",
@@ -508,6 +509,7 @@ export const PageLayout = (props) => {
             </div>
           )}
         </aside>
+        )}
 
         <main className="flex-1 min-w-0">
           {props.children}
