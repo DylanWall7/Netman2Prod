@@ -2,21 +2,23 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowPathIcon,
   MagnifyingGlassIcon,
-  // PlusIcon, // unused while Add reservation is commented out for this view-only push
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { useSiteDashboardToken } from "../SiteDashboard/siteDashboardApi";
 import {
+  createReservation,
+  deleteReservationByIp,
   getGizmoLeases,
   getGizmoReservations,
   getKeaLeases,
   getReservationsForSubnet,
-  useSiteDashboardToken,
-} from "../SiteDashboard/siteDashboardApi";
+  updateReservation,
+} from "./dhcpApi";
 
-// TODO(backend): no create/delete-reservation endpoint exists yet — both are local-only
-// until one is available. Also currently unused: Add reservation is commented out
-// for this view-only push (see EMPTY_RESERVATION below).
-// const EMPTY_RESERVATION = { ip: "", mac: "", description: "" };
+const EMPTY_RESERVATION = { ip: "", mac: "", description: "" };
 
 const FOCUSABLE_SELECTOR =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -24,14 +26,26 @@ const FOCUSABLE_SELECTOR =
 const FOCUS_RING =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-500";
 
-// Both real reservation shapes are now confirmed (2026-08-27). Gizmo:
-// { ipAddress, scopeId, clientId, name, description } — clientId is already
-// a readable dash-separated MAC (e.g. "6c-3b-e5-04-da-cd"). Kea: { ipAddress,
-// hwAddress, hostname, usercontext: { description }, ... } — description
-// lives nested under usercontext, not top-level. Neither source's
-// name/hostname field is reliably a real hostname (Kea's is confirmed
-// always ""), so it's dropped from the model entirely rather than shown as
-// a column that's permanently blank.
+// Sorts numerically by octet — plain string sort would put "10.1.2.100" before "10.1.2.9".
+function ipToInt(ip) {
+  const parts = String(ip).split(".").map(Number);
+  if (parts.length !== 4 || parts.some((p) => Number.isNaN(p))) return null;
+  return parts.reduce((acc, p) => acc * 256 + p, 0);
+}
+
+function byIp(a, b) {
+  const aInt = ipToInt(a.ip);
+  const bInt = ipToInt(b.ip);
+  if (aInt === null && bInt === null) return 0;
+  if (aInt === null) return 1;
+  if (bInt === null) return -1;
+  return aInt - bInt;
+}
+
+// Gizmo: { ipAddress, scopeId, clientId, name, description } — clientId is
+// already a dash-separated MAC. Kea: { ipAddress, hwAddress, hostname,
+// usercontext: { description } } — description is nested. Neither source's
+// name/hostname is a reliable real hostname, so it's dropped entirely.
 function mapReservation(r, i) {
   return {
     ip: r.ipAddress ?? "—",
@@ -41,14 +55,11 @@ function mapReservation(r, i) {
   };
 }
 
-// Gizmo's real lease shape (confirmed 2026-08-27): { ipAddress, scopeId,
-// clientId, hostName, addressState }. Kea's leasev4 (confirmed 2026-08-27):
-// { ipAddress, hwAddress, hostname, state, cltt, validLft, subnetId,
-// fqdnFwd, fqdnRev } — a real colon-formatted MAC in hwAddress, unlike
-// Gizmo's encoded clientId. hostName/hostname can come back as "" (not
-// missing), hence `||` instead of `??` there. Only Gizmo's addressState
-// maps to `status` — Kea's `state` is an unconfirmed numeric code, not the
-// same kind of value, so it's left out rather than guessed at.
+// Gizmo: { ipAddress, scopeId, clientId, hostName, addressState }. Kea's
+// leasev4 has a real colon-formatted MAC in hwAddress, unlike Gizmo's
+// encoded clientId. hostName/hostname can be "" (not missing), hence `||`
+// instead of `??`. Only Gizmo's addressState maps to `status` — Kea's
+// `state` is a different kind of value (an unconfirmed numeric code).
 function mapLease(l, i) {
   return {
     ip: l.ipAddress ?? l["ip-address"] ?? l.IPAddress ?? l.ip ?? "—",
@@ -59,11 +70,9 @@ function mapLease(l, i) {
   };
 }
 
-// Gizmo's leases endpoint returns a row for every reservation on the scope,
-// not just real active dynamic leases — addressState (e.g.
-// "InactiveReservation"/"ActiveReservation") is what tells them apart. Shown
-// only for Gizmo so people don't mistake an unclaimed reservation for a real
-// lease; trims the redundant "Reservation" suffix to read as a plain word.
+// Gizmo's leases endpoint returns a row for every reservation, not just real
+// active leases — addressState tells them apart. Trims the redundant
+// "Reservation" suffix to read as a plain word.
 function formatAddressState(status) {
   if (!status) return null;
   return status.replace(/Reservation$/, "") || status;
@@ -80,19 +89,26 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
   const [leases, setLeases] = useState([]);
   const [leasesLoading, setLeasesLoading] = useState(false);
   const [leasesError, setLeasesError] = useState(null);
-  // Add-reservation is commented out along with its button/form below — this push is
-  // view-only until scope management is built, and there's no create-reservation
-  // endpoint yet anyway.
-  // const [addingReservation, setAddingReservation] = useState(false);
-  // const [newReservation, setNewReservation] = useState(EMPTY_RESERVATION);
+  const [addingReservation, setAddingReservation] = useState(false);
+  const [editingReservation, setEditingReservation] = useState(null);
+  const [newReservation, setNewReservation] = useState(EMPTY_RESERVATION);
+  const [savingReservation, setSavingReservation] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [deletingIp, setDeletingIp] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
+  const [confirmDeleteRes, setConfirmDeleteRes] = useState(null);
   const dialogRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
+  // Mirrors confirmDeleteRes for the Escape handler below, which would otherwise
+  // close over a stale value.
+  const confirmDeleteResRef = useRef(null);
+  useEffect(() => {
+    confirmDeleteResRef.current = confirmDeleteRes;
+  }, [confirmDeleteRes]);
 
-  // reservationv4 is a Kea-specific endpoint (same REST family as subnetv4) —
-  // confirmed 2026-08-25 after it returned the *Kea* subnet's reservations
-  // when queried for a Gizmo-only scope sharing the same address range.
-  // Gizmo scopes now use their own dedicated /dhcp/gizmo/{id}/reservations
-  // endpoint instead (keyed by gizmoId, not the subnet address).
+  // reservationv4 (same family as subnetv4) is Kea-specific — it returned Kea's
+  // reservations even when queried for a Gizmo scope. Gizmo uses its own
+  // /dhcp/gizmo/{id}/reservations endpoint instead.
   const loadReservations = async (currentScope) => {
     if (!currentScope?.hasGizmo && !currentScope?.hasKea) {
       setReservations([]);
@@ -140,8 +156,12 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
     setActiveTab(initialTab ?? "leases");
     setLeaseSearch("");
     setReservationSearch("");
-    // setAddingReservation(false);
-    // setNewReservation(EMPTY_RESERVATION);
+    setAddingReservation(false);
+    setEditingReservation(null);
+    setNewReservation(EMPTY_RESERVATION);
+    setSaveError(null);
+    setDeleteError(null);
+    setConfirmDeleteRes(null);
     setReservations([]);
     setLeases([]);
     loadReservations(scope);
@@ -159,7 +179,11 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
 
     function handleKeyDown(e) {
       if (e.key === "Escape") {
-        onClose();
+        if (confirmDeleteResRef.current) {
+          setConfirmDeleteRes(null);
+        } else {
+          onClose();
+        }
         return;
       }
       if (e.key !== "Tab" || !dialog) return;
@@ -186,47 +210,98 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
 
   if (!scope) return null;
 
-  const filteredReservations = reservations.filter(
-    (r) =>
-      r.ip.includes(reservationSearch) ||
-      r.mac.toLowerCase().includes(reservationSearch.toLowerCase()) ||
-      r.description.toLowerCase().includes(reservationSearch.toLowerCase())
-  );
+  const filteredReservations = reservations
+    .filter(
+      (r) =>
+        r.ip.includes(reservationSearch) ||
+        r.mac.toLowerCase().includes(reservationSearch.toLowerCase()) ||
+        r.description.toLowerCase().includes(reservationSearch.toLowerCase())
+    )
+    .sort(byIp);
 
-  const filteredLeases = leases.filter(
-    (l) =>
-      l.ip.includes(leaseSearch) ||
-      l.mac.toLowerCase().includes(leaseSearch.toLowerCase()) ||
-      l.hostname.toLowerCase().includes(leaseSearch.toLowerCase())
-  );
+  // Reservations load in the background regardless of tab, so this is available
+  // on the leases tab too.
+  const reservedIps = new Set(reservations.map((r) => r.ip));
 
-  // const canSubmitReservation = newReservation.ip.trim() && newReservation.mac.trim();
-  // const handleAddReservation = (e) => {
-  //   e.preventDefault();
-  //   if (!canSubmitReservation) return;
-  //   setReservations((prev) => [
-  //     ...prev,
-  //     {
-  //       ip: newReservation.ip.trim(),
-  //       mac: newReservation.mac.trim(),
-  //       description: newReservation.description.trim() || "—",
-  //       _key: `local-${Date.now()}`,
-  //     },
-  //   ]);
-  //   setNewReservation(EMPTY_RESERVATION);
-  //   setAddingReservation(false);
-  // };
+  const filteredLeases = leases
+    .filter(
+      (l) =>
+        l.ip.includes(leaseSearch) ||
+        l.mac.toLowerCase().includes(leaseSearch.toLowerCase()) ||
+        l.hostname.toLowerCase().includes(leaseSearch.toLowerCase())
+    )
+    .sort(byIp);
 
-  // Delete-reservation is disabled for now, pending a bit of testing on the
-  // new Gizmo reservations/leases endpoints — the button is commented out
-  // below rather than removed, so it's easy to re-enable.
-  // const handleDeleteReservation = (index, ip) => {
-  //   const confirmed = window.confirm(
-  //     `Delete the reservation for ${ip}? This isn't wired to a real endpoint yet — it only removes it from this view.`
-  //   );
-  //   if (!confirmed) return;
-  //   setReservations((prev) => prev.filter((_, i) => i !== index));
-  // };
+  const canSubmitReservation =
+    newReservation.ip.trim() && newReservation.mac.trim() && newReservation.description.trim();
+
+  const handleSubmitReservation = async (e) => {
+    e.preventDefault();
+    if (!canSubmitReservation) return;
+    setSavingReservation(true);
+    setSaveError(null);
+    try {
+      const token = await getToken();
+      if (!token) return; // falling back to a redirect — page is about to navigate away
+      const payload = {
+        ipaddress: newReservation.ip.trim(),
+        hwaddress: newReservation.mac.trim(),
+        description: newReservation.description.trim(),
+      };
+      if (editingReservation) {
+        await updateReservation(payload, token);
+      } else {
+        await createReservation(payload, token);
+      }
+      setNewReservation(EMPTY_RESERVATION);
+      setAddingReservation(false);
+      setEditingReservation(null);
+      await loadReservations(scope);
+    } catch (err) {
+      setSaveError(
+        err.message || `Failed to ${editingReservation ? "update" : "create"} reservation — please try again.`
+      );
+    } finally {
+      setSavingReservation(false);
+    }
+  };
+
+  // PATCH's payload matches create — ipaddress is likely the lookup key, so it
+  // stays disabled in edit mode to avoid a silent no-op or wrong match.
+  const handleEditReservation = (res) => {
+    setEditingReservation(res);
+    setNewReservation({ ip: res.ip, mac: res.mac, description: res.description === "—" ? "" : res.description });
+    setSaveError(null);
+    setAddingReservation(true);
+  };
+
+  // reservationv4 only resolves against Kea, so delete is Kea-only too — hidden
+  // for Gizmo to avoid hitting an unrelated Kea reservation on the same IP.
+  const handleConfirmDeleteReservation = async () => {
+    if (!confirmDeleteRes) return;
+    const ip = confirmDeleteRes.ip;
+    setConfirmDeleteRes(null);
+    setDeletingIp(ip);
+    setDeleteError(null);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      await deleteReservationByIp(ip, token);
+      await loadReservations(scope);
+    } catch (err) {
+      setDeleteError(err.message || "Failed to delete reservation — please try again.");
+    } finally {
+      setDeletingIp(null);
+    }
+  };
+
+  const handleConvertLeaseToReservation = (lease) => {
+    setEditingReservation(null);
+    setNewReservation({ ip: lease.ip, mac: lease.mac, description: "" });
+    setSaveError(null);
+    setActiveTab("reservations");
+    setAddingReservation(true);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
@@ -331,13 +406,13 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
                       <div className="rounded-lg border border-zinc-700/40 overflow-hidden min-w-[900px]">
                         <div
                           className={`grid gap-4 bg-gray-800/70 border-b border-zinc-700/40 px-4 py-2.5 text-xs uppercase tracking-wider text-zinc-300 font-semibold select-none ${
-                            scope.hasGizmo ? "grid-cols-[0.8fr_1fr_1.4fr_0.8fr]" : "grid-cols-[0.8fr_1fr_1.8fr]"
+                            scope.hasGizmo ? "grid-cols-[0.8fr_1fr_1.4fr_0.8fr]" : "grid-cols-[0.8fr_1fr_1.6fr_auto]"
                           }`}
                         >
                           <div>IP Address</div>
                           <div>MAC Address</div>
                           <div>Hostname</div>
-                          {scope.hasGizmo && <div>Status</div>}
+                          {scope.hasGizmo ? <div>Status</div> : <div />}
                         </div>
                         <div className="divide-y divide-zinc-700/20 max-h-[360px] overflow-y-auto">
                           {filteredLeases.length === 0 ? (
@@ -351,14 +426,32 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
                                 className={`grid gap-4 px-4 py-2.5 text-xs hover:bg-gray-800/40 transition-colors items-center ${
                                   scope.hasGizmo
                                     ? "grid-cols-[0.8fr_1fr_1.4fr_0.8fr]"
-                                    : "grid-cols-[0.8fr_1fr_1.8fr]"
+                                    : "grid-cols-[0.8fr_1fr_1.6fr_auto]"
                                 }`}
                               >
                                 <span className="font-mono text-gray-100">{lease.ip}</span>
                                 <span className="font-mono text-zinc-200">{lease.mac}</span>
                                 <span className="text-gray-100">{lease.hostname}</span>
-                                {scope.hasGizmo && (
-                                  <span className="text-zinc-400">{formatAddressState(lease.status) || "—"}</span>
+                                {scope.hasGizmo ? (
+                                  lease.status?.includes("Reservation") ? (
+                                    <span className="justify-self-start text-[10px] px-2 py-1 rounded border border-green-700/50 bg-green-900/20 text-green-400 font-medium">
+                                      Reserved
+                                    </span>
+                                  ) : (
+                                    <span className="text-zinc-400">{formatAddressState(lease.status) || "—"}</span>
+                                  )
+                                ) : reservedIps.has(lease.ip) ? (
+                                  <span className="justify-self-end text-[10px] px-2 py-1 rounded border border-green-700/50 bg-green-900/20 text-green-400 font-medium">
+                                    Reserved
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleConvertLeaseToReservation(lease)}
+                                    title="Turn into a reservation"
+                                    className={`justify-self-end text-[10px] px-2 py-1 rounded border border-zinc-700/60 text-zinc-400 hover:text-pink-400 hover:border-pink-500/50 transition-colors ${FOCUS_RING}`}
+                                  >
+                                    Reserve
+                                  </button>
                                 )}
                               </div>
                             ))
@@ -400,19 +493,34 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
                       <ArrowPathIcon className={`w-3.5 h-3.5 ${reservationsLoading ? "animate-spin" : ""}`} />
                       Refresh
                     </button>
-                    {/* Add reservation is disabled for this view-only push — see the commented-out
-                        state/handlers above. Re-enable alongside scope management. */}
-                    {/* <button
-                      onClick={() => setAddingReservation((v) => !v)}
-                      className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-pink-600 text-black font-semibold hover:bg-pink-700 hover:text-pink-600 transition-colors ${FOCUS_RING}`}
-                    >
-                      <PlusIcon className="w-3.5 h-3.5" />
-                      Add reservation
-                    </button> */}
+                    {!scope.hasGizmo && (
+                      <button
+                        onClick={() => {
+                          if (addingReservation) {
+                            setAddingReservation(false);
+                          } else {
+                            setEditingReservation(null);
+                            setNewReservation(EMPTY_RESERVATION);
+                            setSaveError(null);
+                            setAddingReservation(true);
+                          }
+                        }}
+                        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-pink-600 text-black font-semibold hover:bg-pink-700 hover:text-pink-600 transition-colors ${FOCUS_RING}`}
+                      >
+                        <PlusIcon className="w-3.5 h-3.5" />
+                        Add reservation
+                      </button>
+                    )}
                     <span className="text-xs text-zinc-400 ml-auto">
                       {filteredReservations.length} of {reservations.length} reservations
                     </span>
                   </div>
+
+                  {scope.hasGizmo && (
+                    <p className="mb-4 text-xs text-zinc-500 italic">
+                      Adding and deleting reservations isn't available for Gizmo scopes yet.
+                    </p>
+                  )}
 
                   {reservationsError && (
                     <div className="mb-4 px-3 py-2 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-xs text-center">
@@ -420,53 +528,71 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
                     </div>
                   )}
 
-                  {/* {addingReservation && (
+                  {deleteError && (
+                    <div className="mb-4 px-3 py-2 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-xs text-center">
+                      {deleteError}
+                    </div>
+                  )}
+
+                  {addingReservation && (
                     <form
-                      onSubmit={handleAddReservation}
+                      onSubmit={handleSubmitReservation}
                       className="mb-4 p-4 rounded-lg border border-zinc-700/50 bg-gray-800/40 grid grid-cols-2 gap-3"
                     >
-                      <p className="col-span-2 text-xs text-zinc-500 -mt-1 mb-1">
-                        No create-reservation endpoint exists yet, so this is added locally only.
+                      <p className="col-span-2 text-xs font-semibold text-zinc-300 -mt-1 mb-1">
+                        {editingReservation ? "Edit reservation" : "New reservation"}
                       </p>
+                      {saveError && (
+                        <div className="col-span-2 px-3 py-2 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-xs text-center">
+                          {saveError}
+                        </div>
+                      )}
                       {[
-                        ["ip", "IP address", "10.148.0.201"],
-                        ["mac", "MAC address", "00:AA:BB:CC:DD:EE"],
-                        ["description", "Description", "optional"],
+                        ["ip", "IP address *", "10.148.0.201"],
+                        ["mac", "MAC address *", "00:AA:BB:CC:DD:EE"],
+                        ["description", "Description *", "Printer in room 204"],
                       ].map(([key, label, placeholder]) => (
                         <div key={key}>
                           <label htmlFor={`reservation-${key}`} className="block text-xs text-zinc-400 mb-1">
                             {label}
+                            {key === "ip" && editingReservation && (
+                              <span className="text-zinc-600 normal-case"> (can't be changed)</span>
+                            )}
                           </label>
                           <input
                             id={`reservation-${key}`}
                             type="text"
                             value={newReservation[key]}
+                            disabled={key === "ip" && !!editingReservation}
                             onChange={(e) =>
                               setNewReservation((prev) => ({ ...prev, [key]: e.target.value }))
                             }
                             placeholder={placeholder}
-                            className={`w-full px-3 py-1.5 text-xs rounded-lg bg-gray-900/60 border border-zinc-700/50 text-gray-100 placeholder:text-zinc-600 focus:outline-none focus:border-pink-500/50 ${FOCUS_RING}`}
+                            className={`w-full px-3 py-1.5 text-xs rounded-lg bg-gray-900/60 border border-zinc-700/50 text-gray-100 placeholder:text-zinc-600 focus:outline-none focus:border-pink-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${FOCUS_RING}`}
                           />
                         </div>
                       ))}
                       <div className="col-span-2 flex justify-end gap-2 pt-1">
                         <button
                           type="button"
-                          onClick={() => setAddingReservation(false)}
+                          onClick={() => {
+                            setAddingReservation(false);
+                            setEditingReservation(null);
+                          }}
                           className={`text-xs px-3 py-1.5 rounded-lg border border-zinc-700/50 text-zinc-300 hover:text-white transition-colors ${FOCUS_RING}`}
                         >
                           Cancel
                         </button>
                         <button
                           type="submit"
-                          disabled={!canSubmitReservation}
+                          disabled={!canSubmitReservation || savingReservation}
                           className={`text-xs px-3 py-1.5 rounded-lg bg-pink-600 text-black font-semibold hover:bg-pink-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${FOCUS_RING}`}
                         >
-                          Add
+                          {savingReservation ? (editingReservation ? "Saving…" : "Adding…") : editingReservation ? "Save" : "Add"}
                         </button>
                       </div>
                     </form>
-                  )} */}
+                  )}
 
                   {reservationsLoading ? (
                     <p className="text-sm text-zinc-500 italic text-center py-10">Loading reservations…</p>
@@ -497,15 +623,29 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
                                 <span className="font-mono text-gray-100">{res.ip}</span>
                                 <span className="font-mono text-zinc-200">{res.mac}</span>
                                 <span className="text-zinc-300">{res.description}</span>
-                                {/* Delete is disabled for now, pending a bit of testing on the
-                                    new reservations endpoints — see handleDeleteReservation above. */}
-                                {/* <button
-                                  onClick={() => handleDeleteReservation(reservations.indexOf(res), res.ip)}
-                                  aria-label={`Delete reservation for ${res.ip}`}
-                                  className={`p-2 rounded text-zinc-500 hover:text-red-400 transition-colors justify-self-end ${FOCUS_RING}`}
-                                >
-                                  <TrashIcon className="w-3.5 h-3.5" />
-                                </button> */}
+                                {!scope.hasGizmo && (
+                                  <div className="flex items-center gap-1 justify-self-end">
+                                    <button
+                                      onClick={() => handleEditReservation(res)}
+                                      aria-label={`Edit reservation for ${res.ip}`}
+                                      title="Edit reservation"
+                                      className={`p-2 rounded text-zinc-500 hover:text-pink-400 transition-colors ${FOCUS_RING}`}
+                                    >
+                                      <PencilIcon className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmDeleteRes(res)}
+                                      disabled={deletingIp === res.ip}
+                                      aria-label={`Delete reservation for ${res.ip}`}
+                                      title="Delete reservation"
+                                      className={`p-2 rounded text-zinc-500 hover:text-red-400 transition-colors disabled:opacity-40 ${FOCUS_RING}`}
+                                    >
+                                      <TrashIcon
+                                        className={`w-3.5 h-3.5 ${deletingIp === res.ip ? "animate-pulse" : ""}`}
+                                      />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             ))
                           )}
@@ -519,6 +659,52 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
           )}
         </div>
       </div>
+
+      {confirmDeleteRes && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="confirm-delete-reservation-title"
+            className="w-full max-w-sm rounded-xl border border-zinc-700/60 bg-gray-900 p-6 shadow-xl"
+          >
+            <h3 id="confirm-delete-reservation-title" className="text-lg font-bold text-gray-100 mb-3">
+              Delete reservation?
+            </h3>
+            <dl className="text-xs mb-6 space-y-1.5 rounded-lg border border-zinc-700/50 bg-gray-800/40 p-3">
+              <div className="flex justify-between gap-3">
+                <dt className="text-zinc-500">IP Address</dt>
+                <dd className="font-mono text-gray-100">{confirmDeleteRes.ip}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-zinc-500">MAC Address</dt>
+                <dd className="font-mono text-gray-100">{confirmDeleteRes.mac}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-zinc-500">Description</dt>
+                <dd className="text-gray-100 text-right">{confirmDeleteRes.description}</dd>
+              </div>
+            </dl>
+            <p className="text-xs text-zinc-500 mb-6">This can't be undone.</p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteRes(null)}
+                className={`text-xs px-3 py-1.5 rounded-lg border border-zinc-700/50 text-zinc-300 hover:text-white transition-colors ${FOCUS_RING}`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteReservation}
+                className={`text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-500 transition-colors ${FOCUS_RING}`}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

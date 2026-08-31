@@ -1,28 +1,34 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Autocomplete, AutocompleteItem } from "@nextui-org/react";
-import { ChevronDownIcon, ChevronUpIcon, ServerIcon, GlobeAltIcon } from "@heroicons/react/24/outline";
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ServerIcon,
+  GlobeAltIcon,
+  TrashIcon,
+  CloudArrowUpIcon,
+} from "@heroicons/react/24/outline";
 import DHCPScopeModal from "./DHCPScopeModal";
-import { getScopesForSite, listSites, useSiteDashboardToken } from "../SiteDashboard/siteDashboardApi";
+import { listSites, useSiteDashboardToken } from "../SiteDashboard/siteDashboardApi";
+import { createSubnet, deleteSubnet, firstKeaPoolRange, generateDhcpScopeParams, getScopesForSite } from "./dhcpApi";
 import Badge from "../DepotOrders/Badge";
 
-// Scopes are provisioned in Netbox, not created ad hoc here — this page only reflects what
-// Netbox, Gizmo, and Kea already know about (no manual "create scope" flow).
+// Scopes come from Netbox — a not-yet-deployed prefix can be pushed to Kea from here,
+// but nothing is ever created in Netbox itself from this tool.
 
 const FOCUS_RING =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-500";
 
 const STATUS_STYLES = {
   active: { dot: "bg-green-400", color: "green", label: "Active" },
-  // Gizmo's own state field is confirmed to include "Inactive", not just
-  // "Active" — a real, meaningful state, not a fallback bucket.
+  // Gizmo really does report "Inactive" — not just a fallback bucket.
   inactive: { dot: "bg-gray-500", color: "gray", label: "Inactive" },
   warning: { dot: "bg-yellow-400", color: "amber", label: "Warning" },
   error: { dot: "bg-red-400", color: "red", label: "Error" },
   unknown: { dot: "bg-gray-500", color: "gray", label: "Status unknown" },
-  // A prefix that exists in Netbox but has no matching Gizmo or Kea record —
-  // confirmed as a real, common case via a real sitesummary response,
-  // 2026-08-25. Distinct from "unknown": we know exactly what this means.
+  // Netbox prefix with no matching Gizmo/Kea record — a real, common case,
+  // distinct from "unknown".
   not_deployed: { dot: "bg-gray-600", color: "gray", label: "Not deployed" },
 };
 
@@ -32,10 +38,8 @@ function ipToInt(ip) {
   return parts.reduce((acc, p) => acc * 256 + p, 0);
 }
 
-// Fallback only — the API now returns a real `utilization` value derived
-// server-side from Gizmo's percentageUsed or Kea's allocated/total addresses
-// (see getScopesForSite). This client-side estimate from the scope's own
-// start/end range only kicks in if that field is ever missing.
+// Fallback only — the API returns a real `utilization` value (see
+// getScopesForSite); this only kicks in if that's missing.
 function utilizationPercent(scope) {
   const start = ipToInt(scope.start);
   const end = ipToInt(scope.end);
@@ -45,12 +49,9 @@ function utilizationPercent(scope) {
   return Math.min(100, Math.round((scope.leases / poolSize) * 100));
 }
 
-// Whether this scope's subnet has a matching Netbox prefix record at all —
-// independent of the scope's own Active/Inactive status. Gizmo/Kea scopes
-// can exist without ever being registered in Netbox, which is a real data-
-// integrity gap worth flagging on its own, not something "Active" already
-// covers (Netbox's prefix status describes the prefix record, not whether
-// the scope is serving DHCP — see the status comment in buildScopeRow).
+// Whether this scope has a matching Netbox prefix — independent of Active/
+// Inactive. Gizmo/Kea scopes can exist without ever being in Netbox, which
+// Active doesn't capture.
 function NetboxMark({ hasNetbox }) {
   return (
     <span
@@ -67,19 +68,17 @@ function NetboxMark({ hasNetbox }) {
   );
 }
 
-// Each scope row now represents exactly one server's deployment — a subnet
-// on both Gizmo and Kea produces two separate rows (see getScopesForSite),
-// not one row with both flags set. Returns null for a not-deployed scope,
-// since that's already conveyed by its status badge.
+// Each row is one server's deployment — a subnet on both Gizmo and Kea gets
+// two rows, not one with both flags. Null for not-deployed (status badge
+// already covers that).
 function sourceLabel(scope) {
   if (scope.hasGizmo) return "Gizmo";
   if (scope.hasKea) return "Kea";
   return null;
 }
 
-// The fill sweeps from 0 on mount, and its color continuously interpolates
-// green->red via a browser-animatable custom property (@property --dhcp-hue,
-// registered in index.css) instead of snapping between fixed color stops.
+// Fill sweeps from 0 on mount; color interpolates green->red via the
+// --dhcp-hue custom property (registered in index.css) instead of snapping.
 function CapacityBar({ percent }) {
   const [displayPercent, setDisplayPercent] = useState(0);
 
@@ -110,14 +109,11 @@ function CapacityBar({ percent }) {
   );
 }
 
-// "Active" is the unremarkable default (and the only state Gizmo ever reports
-// besides "Inactive") and "unknown" just means no status data exists at all
-// (true for every Kea scope) — neither is worth a badge. Only surface a
-// status when it says something: Gizmo's real "Inactive", or warning/error/
-// not_deployed.
+// Active and unknown aren't worth a badge — only surface Inactive/warning/
+// error/not_deployed.
 const QUIET_STATUSES = new Set(["active", "unknown"]);
 
-const ScopeCard = ({ scope, manageable, selected, onSelect, onExpand, onViewDetail }) => {
+const ScopeCard = ({ scope, deleting, onExpand, onViewDetail, onDelete, onDeploy }) => {
   const statusStyle = STATUS_STYLES[scope.status] || STATUS_STYLES.unknown;
   const showStatus = !QUIET_STATUSES.has(scope.status);
   const utilization = scope.utilization ?? utilizationPercent(scope);
@@ -127,17 +123,6 @@ const ScopeCard = ({ scope, manageable, selected, onSelect, onExpand, onViewDeta
       <div className="flex items-center gap-4 px-4 py-3">
         {/* Identity cluster: what this row IS */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* This push is view-only — selection/bulk-management is disabled until that
-              capability is built. Commented out, not removed, so it's a quick re-enable. */}
-          {/* {manageable && (
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={onSelect}
-              aria-label={`Select scope ${scope.scopeId}/${scope.cidr}`}
-              className={`w-4 h-4 rounded accent-pink-500 cursor-pointer ${FOCUS_RING}`}
-            />
-          )} */}
           {showStatus && (
             <>
               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${statusStyle.dot}`} />
@@ -200,6 +185,45 @@ const ScopeCard = ({ scope, manageable, selected, onSelect, onExpand, onViewDeta
             <span className="text-zinc-500">res</span>
             <span className="font-semibold text-gray-100">{scope.reservations}</span>
           </button>
+          {/* A locally-mutated row (just deleted/deployed here, not yet confirmed by a
+              real fetch) shows a badge instead of action buttons — acting again on top
+              of an unconfirmed local guess is how this kind of state gets confusing. */}
+          {scope._stale ? (
+            <span
+              className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-900/20 border border-amber-700/40 text-amber-400"
+              title="Not yet confirmed — refresh to sync with the server"
+            >
+              {scope._pendingChange === "deleted" ? "Deleted" : "New"} · refresh to confirm
+            </span>
+          ) : (
+            <>
+              {/* subnetv4 delete is Kea-specific — no Kea subnet on a Gizmo row. */}
+              {scope.hasKea && (
+                <button
+                  onClick={() => onDelete(scope)}
+                  disabled={deleting}
+                  aria-label={`Delete scope ${scope.scopeId}/${scope.cidr}`}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded bg-gray-800 border border-gray-700 text-zinc-500 hover:border-red-500/50 hover:text-red-400 transition-colors disabled:opacity-40 ${FOCUS_RING}`}
+                  title="Delete scope"
+                >
+                  <TrashIcon className={`w-3.5 h-3.5 ${deleting ? "animate-pulse" : ""}`} />
+                </button>
+              )}
+              {/* Only a real Netbox prefix has params to generate — a scope with no Netbox
+                  record at all has nothing for /dhcp/generate to work from. */}
+              {scope.status === "not_deployed" && scope.netboxPrefixId && (
+                <button
+                  onClick={() => onDeploy(scope)}
+                  aria-label={`Deploy scope ${scope.scopeId}/${scope.cidr} to Kea`}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded bg-gray-800 border border-gray-700 text-zinc-300 hover:border-green-500/50 hover:text-green-400 transition-colors ${FOCUS_RING}`}
+                  title="Deploy to Kea"
+                >
+                  <CloudArrowUpIcon className="w-3.5 h-3.5" />
+                  Deploy
+                </button>
+              )}
+            </>
+          )}
         </div>
 
         {/* Affordance */}
@@ -280,14 +304,22 @@ const DHCPManager = () => {
   const [kiaScopes, setKiaScopes] = useState([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [scopesError, setScopesError] = useState(null);
-  // Selection state is commented out along with the checkbox/manageable prop and
-  // toggleSelect below — this push is view-only until scope management is built.
-  // const [selectedScopes, setSelectedScopes] = useState([]);
   const [activeScope, setActiveScope] = useState(null);
   const [activeTab, setActiveTab] = useState("leases");
+  const [confirmDeleteScope, setConfirmDeleteScope] = useState(null);
+  const [finalConfirmScope, setFinalConfirmScope] = useState(null);
+  const [deletingScopeId, setDeletingScopeId] = useState(null);
+  const [deleteScopeError, setDeleteScopeError] = useState(null);
 
-  // Inline site switcher — lets an engineer jump to another site's scopes
-  // without leaving this page and re-navigating through /dhcp.
+  const [deployScope, setDeployScope] = useState(null);
+  const [deployParams, setDeployParams] = useState(null);
+  const [deployLoading, setDeployLoading] = useState(false);
+  const [deployError, setDeployError] = useState(null);
+  const [deployStart, setDeployStart] = useState("");
+  const [deployEnd, setDeployEnd] = useState("");
+  const [deploying, setDeploying] = useState(false);
+
+  // Inline site switcher — jump sites without leaving the page.
   const [sites, setSites] = useState([]);
   const [sitesLoading, setSitesLoading] = useState(false);
   const [siteInput, setSiteInput] = useState(siteCode || "");
@@ -306,8 +338,7 @@ const DHCPManager = () => {
         const data = await listSites(token);
         if (!cancelled) setSites(data);
       } catch {
-        // Non-critical: the switcher just has no options if this fails. The
-        // page's actual scope data loads independently and isn't blocked by it.
+        // Non-critical — switcher just has no options; scope data loads independently.
       } finally {
         if (!cancelled) setSitesLoading(false);
       }
@@ -328,7 +359,6 @@ const DHCPManager = () => {
     setHasLoaded(false);
     setScopesError(null);
     setKiaScopes([]);
-    // setSelectedScopes([]);
     try {
       const token = await getToken();
       if (!token) return; // falling back to a redirect — page is about to navigate away
@@ -350,8 +380,123 @@ const DHCPManager = () => {
   const toggleKiaExpand = (id) =>
     setKiaScopes((prev) => prev.map((s) => (s.id === id ? { ...s, expanded: !s.expanded } : s)));
 
-  // const toggleSelect = (id) =>
-  //   setSelectedScopes((prev) => (prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]));
+  const pendingChangeCount = kiaScopes.filter((s) => s._stale).length;
+
+  // Skips the full re-fetch after a delete — on a large site, re-gathering every
+  // scope just to confirm the one you already know succeeded is slow for no reason.
+  // Instead this downgrades the row locally to what a real refresh would eventually
+  // show (no more Kea presence) and flags it stale until that refresh actually happens.
+  const handleDeleteScope = async (scope) => {
+    setConfirmDeleteScope(null);
+    setFinalConfirmScope(null);
+    setDeletingScopeId(scope.id);
+    setDeleteScopeError(null);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      await deleteSubnet(scope.scopeId, scope.cidr, token);
+      setKiaScopes((prev) =>
+        prev.map((s) =>
+          s.id === scope.id
+            ? {
+                ...s,
+                hasKea: false,
+                leases: 0,
+                reservations: 0,
+                utilization: null,
+                status: "not_deployed",
+                _stale: true,
+                _pendingChange: "deleted",
+              }
+            : s
+        )
+      );
+    } catch (err) {
+      setDeleteScopeError(err.message || "Failed to delete scope — please try again.");
+    } finally {
+      setDeletingScopeId(null);
+    }
+  };
+
+  // scope.leases includes reservation-backed leases too, so anything beyond
+  // scope.reservations is a real dynamic lease that'll be orphaned — worth a
+  // second, harder confirmation before deleting.
+  const unreservedLeaseCount = (scope) => Math.max(0, scope.leases - scope.reservations);
+
+  const openDeployModal = async (scope) => {
+    setDeployScope(scope);
+    setDeployParams(null);
+    setDeployError(null);
+    setDeployStart("");
+    setDeployEnd("");
+    setDeployLoading(true);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const params = await generateDhcpScopeParams(scope.netboxPrefixId, token);
+      setDeployParams(params);
+      const range = firstKeaPoolRange(params?.pools);
+      setDeployStart(range.start || "");
+      setDeployEnd(range.end || "");
+    } catch (err) {
+      setDeployError(err.message || "Failed to generate scope parameters — please try again.");
+    } finally {
+      setDeployLoading(false);
+    }
+  };
+
+  const closeDeployModal = () => {
+    setDeployScope(null);
+    setDeployParams(null);
+    setDeployError(null);
+  };
+
+  // Generated params are otherwise passed straight through — the range is the only
+  // thing the user is asked to edit before this deploys, per the initial cut of this flow.
+  // shared-network-name isn't part of the generate response, but Kea's create API requires it.
+  const buildDeployPayload = (params, start, end) => ({
+    ...params,
+    "shared-network-name": params["shared-network-name"] ?? null,
+    pools: [{ ...(params.pools?.[0] || {}), pool: `${start.trim()}-${end.trim()}` }],
+  });
+
+  // Same reasoning as handleDeleteScope: no full re-fetch, just a provisional row built
+  // from what we submitted (not Kea's authoritative response) so it's flagged stale
+  // rather than presented as confirmed.
+  const handleDeploy = async () => {
+    if (!deployParams || !deployScope) return;
+    setDeploying(true);
+    setDeployError(null);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const payload = buildDeployPayload(deployParams, deployStart, deployEnd);
+      await createSubnet(payload, token);
+
+      const cidrKey = `${deployScope.scopeId}/${deployScope.cidr}`;
+      const provisionalRow = {
+        ...deployScope,
+        id: `${cidrKey}::kea`,
+        start: deployStart.trim(),
+        end: deployEnd.trim(),
+        leases: 0,
+        reservations: 0,
+        utilization: 0,
+        status: "unknown",
+        hasGizmo: false,
+        hasKea: true,
+        _stale: true,
+        _pendingChange: "deployed",
+      };
+      setKiaScopes((prev) => [...prev.filter((s) => s.id !== deployScope.id), provisionalRow]);
+
+      closeDeployModal();
+    } catch (err) {
+      setDeployError(err.message || "Failed to deploy scope — please try again.");
+    } finally {
+      setDeploying(false);
+    }
+  };
 
   return (
     <div className="text-lg flex flex-col items-center">
@@ -376,10 +521,8 @@ const DHCPManager = () => {
               }
             }}
             onKeyDown={(e) => {
-              // Only treat Enter as "navigate to this literal typed text" when nothing in the
-              // list matches it at all — otherwise let the Autocomplete's own Enter-selects-
-              // highlighted-item handling win, instead of also firing this on the stale partial
-              // text still in the box.
+              // Only fall back to free-text navigation when nothing in the list matches —
+              // otherwise let Autocomplete's own Enter-selects-highlighted-item win.
               const hasMatch = sites.some((s) => s.name.toLowerCase().includes(siteInput.trim().toLowerCase()));
               if (e.key === "Enter" && !hasMatch) goToSite(siteInput);
             }}
@@ -430,16 +573,31 @@ const DHCPManager = () => {
           </div>
         )}
 
+        {deleteScopeError && (
+          <div className="mb-4 px-4 py-3 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-sm text-center animate-fadeIn motion-reduce:animate-none">
+            {deleteScopeError}
+          </div>
+        )}
+
         {!scopesLoading && hasLoaded && (
           <div>
             <div className="flex items-center gap-3 mb-3">
               <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                 DHCP Scopes
               </span>
-              {/* View-only for this push — re-enable alongside scope management. */}
-              {/* <span className="ml-auto text-xs px-2 py-0.5 rounded bg-green-900/30 text-green-400 border border-green-700/40">
-                Manageable
-              </span> */}
+              {pendingChangeCount > 0 && (
+                <div className="ml-auto flex items-center gap-2 text-xs">
+                  <span className="text-amber-400">
+                    {pendingChangeCount} change{pendingChangeCount === 1 ? "" : "s"} not yet confirmed
+                  </span>
+                  <button
+                    onClick={() => loadScopes(siteCode)}
+                    className={`font-semibold text-amber-300 underline hover:text-amber-100 transition-colors rounded ${FOCUS_RING}`}
+                  >
+                    Refresh
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2 pb-10">
@@ -452,16 +610,14 @@ const DHCPManager = () => {
                   <ScopeCard
                     key={scope.id}
                     scope={scope}
-                    // manageable, selected, onSelect are commented out with the checkbox above —
-                    // this push is view-only until scope management is built.
-                    // manageable
-                    // selected={selectedScopes.includes(scope.id)}
-                    // onSelect={() => toggleSelect(scope.id)}
+                    deleting={deletingScopeId === scope.id}
                     onExpand={() => toggleKiaExpand(scope.id)}
                     onViewDetail={(tab) => {
                       setActiveTab(tab);
                       setActiveScope(scope);
                     }}
+                    onDelete={setConfirmDeleteScope}
+                    onDeploy={openDeployModal}
                   />
                 ))
               )}
@@ -483,6 +639,197 @@ const DHCPManager = () => {
         initialTab={activeTab}
         onClose={() => setActiveScope(null)}
       />
+
+      {confirmDeleteScope && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="confirm-delete-scope-title"
+            className="w-full max-w-sm rounded-xl border border-zinc-700/60 bg-gray-900 p-6 shadow-xl"
+          >
+            <h3 id="confirm-delete-scope-title" className="text-lg font-bold text-gray-100 mb-3">
+              Delete scope?
+            </h3>
+            <dl className="text-xs mb-4 space-y-1.5 rounded-lg border border-zinc-700/50 bg-gray-800/40 p-3">
+              <div className="flex justify-between gap-3">
+                <dt className="text-zinc-500">Scope</dt>
+                <dd className="font-mono text-gray-100">
+                  {confirmDeleteScope.scopeId}/{confirmDeleteScope.cidr}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-zinc-500">Name</dt>
+                <dd className="text-gray-100 text-right">{confirmDeleteScope.name}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-zinc-500">Active leases</dt>
+                <dd className={`font-semibold ${confirmDeleteScope.leases > 0 ? "text-yellow-400" : "text-gray-100"}`}>
+                  {confirmDeleteScope.leases}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-zinc-500">Reservations</dt>
+                <dd
+                  className={`font-semibold ${
+                    confirmDeleteScope.reservations > 0 ? "text-yellow-400" : "text-gray-100"
+                  }`}
+                >
+                  {confirmDeleteScope.reservations}
+                </dd>
+              </div>
+            </dl>
+            {(confirmDeleteScope.leases > 0 || confirmDeleteScope.reservations > 0) && (
+              <p className="text-xs text-yellow-400 mb-4">
+                This scope has active leases or reservations — deleting it will orphan them.
+              </p>
+            )}
+            <p className="text-xs text-zinc-500 mb-6">This can't be undone.</p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteScope(null)}
+                className={`text-xs px-3 py-1.5 rounded-lg border border-zinc-700/50 text-zinc-300 hover:text-white transition-colors ${FOCUS_RING}`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (unreservedLeaseCount(confirmDeleteScope) > 0) {
+                    setFinalConfirmScope(confirmDeleteScope);
+                    setConfirmDeleteScope(null);
+                  } else {
+                    handleDeleteScope(confirmDeleteScope);
+                  }
+                }}
+                className={`text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-500 transition-colors ${FOCUS_RING}`}
+              >
+                {unreservedLeaseCount(confirmDeleteScope) > 0 ? "Continue" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {finalConfirmScope && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="final-confirm-delete-scope-title"
+            className="w-full max-w-sm rounded-xl border border-red-700/60 bg-gray-900 p-6 shadow-xl"
+          >
+            <h3 id="final-confirm-delete-scope-title" className="text-lg font-bold text-red-400 mb-3">
+              Are you sure?
+            </h3>
+            <p className="text-xs text-gray-200 mb-6">
+              This scope has <span className="font-semibold text-yellow-400">
+                {unreservedLeaseCount(finalConfirmScope)}
+              </span>{" "}
+              active lease(s) that aren't reservations — deleting it will disconnect those devices.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setFinalConfirmScope(null)}
+                className={`text-xs px-3 py-1.5 rounded-lg border border-zinc-700/50 text-zinc-300 hover:text-white transition-colors ${FOCUS_RING}`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteScope(finalConfirmScope)}
+                className={`text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-500 transition-colors ${FOCUS_RING}`}
+              >
+                Yes, delete anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deployScope && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="deploy-scope-title"
+            className="w-full max-w-lg rounded-xl border border-zinc-700/60 bg-gray-900 p-6 shadow-xl"
+          >
+            <h3 id="deploy-scope-title" className="text-lg font-bold text-gray-100 mb-1">
+              Deploy to Kea
+            </h3>
+            <p className="text-xs font-mono text-zinc-500 mb-4">
+              {deployScope.scopeId}/{deployScope.cidr} &mdash; {deployScope.name}
+            </p>
+
+            {deployLoading && (
+              <p className="text-sm text-zinc-500 italic text-center py-8">Generating scope parameters…</p>
+            )}
+
+            {deployError && (
+              <div className="mb-4 px-3 py-2 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-xs text-center">
+                {deployError}
+              </div>
+            )}
+
+            {!deployLoading && deployParams && (
+              <>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div>
+                    <label htmlFor="deploy-start" className="block text-xs text-zinc-400 mb-1">
+                      Start Address
+                    </label>
+                    <input
+                      id="deploy-start"
+                      type="text"
+                      value={deployStart}
+                      onChange={(e) => setDeployStart(e.target.value)}
+                      className={`w-full px-3 py-1.5 text-xs rounded-lg bg-gray-800/60 border border-zinc-700/50 text-gray-100 focus:outline-none focus:border-pink-500/50 ${FOCUS_RING}`}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="deploy-end" className="block text-xs text-zinc-400 mb-1">
+                      End Address
+                    </label>
+                    <input
+                      id="deploy-end"
+                      type="text"
+                      value={deployEnd}
+                      onChange={(e) => setDeployEnd(e.target.value)}
+                      className={`w-full px-3 py-1.5 text-xs rounded-lg bg-gray-800/60 border border-zinc-700/50 text-gray-100 focus:outline-none focus:border-pink-500/50 ${FOCUS_RING}`}
+                    />
+                  </div>
+                </div>
+
+                <p className="text-xs text-zinc-500 mb-1">This is exactly what will be sent:</p>
+                <pre className="mb-4 max-h-48 overflow-auto text-[11px] leading-relaxed text-zinc-300 bg-gray-800/40 border border-zinc-700/50 rounded-lg p-3">
+                  {JSON.stringify([buildDeployPayload(deployParams, deployStart, deployEnd)], null, 2)}
+                </pre>
+              </>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeDeployModal}
+                className={`text-xs px-3 py-1.5 rounded-lg border border-zinc-700/50 text-zinc-300 hover:text-white transition-colors ${FOCUS_RING}`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeploy}
+                disabled={!deployParams || !deployStart.trim() || !deployEnd.trim() || deploying}
+                className={`text-xs px-3 py-1.5 rounded-lg bg-green-600 text-black font-semibold hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${FOCUS_RING}`}
+              >
+                {deploying ? "Deploying…" : "Deploy"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

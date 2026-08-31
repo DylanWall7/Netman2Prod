@@ -9,7 +9,6 @@ import "leaflet/dist/leaflet.css";
 import {
   getActiveWeatherAlerts,
   getCurrentWeather,
-  getScopesForSite,
   getDiagramDevices,
   getLatestRadarFrame,
   getMistDevices,
@@ -27,6 +26,7 @@ import {
   listSites,
   useSiteDashboardToken,
 } from "./siteDashboardApi";
+import { getScopesForSite } from "../ManageDHCP/dhcpApi";
 import { getSnipeitAssetBySerial } from "../DepotOrders/snipeitApi";
 
 const NETBOX_UI_BASE_URL = "https://netbox.kiewit.com";
