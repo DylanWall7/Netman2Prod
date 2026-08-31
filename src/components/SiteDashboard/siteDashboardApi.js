@@ -162,7 +162,6 @@ export async function getOpengearSummary(token) {
   });
   if (!res.ok) throw new Error(`Failed to load Opengear summary (${res.status})`);
   const body = await res.json();
-  console.log("[Opengear summary] response:", body);
   return Array.isArray(body) ? body : (body?.data ?? []);
 }
 
@@ -218,7 +217,6 @@ export async function getRecentIncidents(token, daysAgo = 30, siteCode = "") {
   if (res.status === 404 || (res.status === 500 && (await isNoRecordFoundResponse(res)))) return [];
   if (!res.ok) throw new Error(`Failed to load incidents (${res.status})`);
   const body = await res.json();
-  console.log("[ServiceNow] incidents response:", body);
   return Array.isArray(body) ? body : body?.result || body?.data || [];
 }
 
@@ -246,7 +244,6 @@ export async function getCircuitsForSite(locationSysId, token) {
   if (res.status === 404 || (res.status === 500 && (await isNoRecordFoundResponse(res)))) return [];
   if (!res.ok) throw new Error(`Failed to load circuits (${res.status})`);
   const body = await res.json();
-  console.log("[ServiceNow] circuits response:", body);
   return Array.isArray(body) ? body : body?.result || body?.data || [];
 }
 
@@ -276,7 +273,6 @@ export async function getServiceNowUsers(token, sysIds) {
   });
   if (!res.ok) throw new Error(`Failed to load ServiceNow users (${res.status})`);
   const body = await res.json();
-  console.log("[ServiceNow] users response:", body);
   return Array.isArray(body) ? body : body?.result || body?.data || [];
 }
 
@@ -296,7 +292,6 @@ export async function getServiceNowLocationBySite(siteCode, token) {
   });
   if (!res.ok) throw new Error(`Failed to load ServiceNow location record (${res.status})`);
   const body = await res.json();
-  console.log("[ServiceNow] locations response:", body);
   const list = Array.isArray(body) ? body : body?.result || body?.data || [];
   return list[0] ?? null;
 }

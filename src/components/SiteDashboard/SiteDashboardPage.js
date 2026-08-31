@@ -3,7 +3,13 @@ import { createPortal } from "react-dom";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Autocomplete, AutocompleteItem } from "@nextui-org/react";
 import { MapContainer, TileLayer, Marker } from "react-leaflet";
-import { BuildingOfficeIcon, UsersIcon, DocumentTextIcon, MapPinIcon } from "@heroicons/react/24/outline";
+import {
+  BuildingOfficeIcon,
+  UsersIcon,
+  DocumentTextIcon,
+  MapPinIcon,
+  ArrowTopRightOnSquareIcon,
+} from "@heroicons/react/24/outline";
 import { Icon } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -31,6 +37,7 @@ import { getSnipeitAssetBySerial } from "../DepotOrders/snipeitApi";
 
 const NETBOX_UI_BASE_URL = "https://netbox.kiewit.com";
 const SNIPEIT_UI_BASE_URL = "https://netinv.kiewitplaza.com";
+const SERVICENOW_INCIDENT_BASE_URL = `https://${process.env.REACT_APP_SERVICENOW_BASEURL}/now/nav/ui/classic/params/target/incident.do%3Fsys_id%3D`;
 
 // This endpoint has no site filter (see getRecentIncidents) — every option here pulls every
 // incident assigned to the network group org-wide, filtered down client-side afterward, so
@@ -518,7 +525,20 @@ function IncidentDetailModal({ incident, onClose, userMap }) {
       >
         <div className="flex items-start justify-between mb-3 gap-3">
           <div>
-            <h3 className="text-sm font-mono text-gray-400">{incident.number}</h3>
+            {incident.sys_id ? (
+              <a
+                href={`${SERVICENOW_INCIDENT_BASE_URL}${incident.sys_id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-sm font-mono text-gray-400 hover:text-blue-400 transition-colors"
+                title="Open in ServiceNow"
+              >
+                {incident.number}
+                <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
+              </a>
+            ) : (
+              <h3 className="text-sm font-mono text-gray-400">{incident.number}</h3>
+            )}
             <p id="incident-modal-title" className="text-base font-semibold text-gray-100 mt-0.5">
               {incident.short_description}
             </p>

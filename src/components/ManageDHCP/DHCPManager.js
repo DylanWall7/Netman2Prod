@@ -147,8 +147,8 @@ const ScopeCard = ({ scope, deleting, onExpand, onViewDetail, onDelete, onDeploy
           )}
 
           {source && (
-            <span className="hidden sm:inline-block font-mono text-xs uppercase tracking-wide text-zinc-500 border border-zinc-700 rounded px-1.5 py-0.5">
-              {source}
+            <span className="hidden sm:inline-block">
+              <Badge color={source === "Kea" ? "teal" : "purple"}>{source}</Badge>
             </span>
           )}
 

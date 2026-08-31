@@ -5,6 +5,7 @@ const COLOR_CLASSES = {
   red: "bg-red-500/20 text-red-400",
   gray: "bg-gray-500/20 text-gray-400",
   purple: "bg-purple-500/20 text-purple-400",
+  teal: "bg-teal-500/20 text-teal-400",
 };
 
 const GLOW_CLASSES = {
