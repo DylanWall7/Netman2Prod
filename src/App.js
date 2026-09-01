@@ -5,6 +5,7 @@ import { Routes, Route } from "react-router-dom";
 import { NoMatch } from "./components/NoMatch";
 import "./App.css";
 import { ProvAccordian } from "./components/Provisioning/ProvAccordian";
+import { ProvStepper } from "./components/Provisioning/ProvStepper";
 import { Validate } from "./components/Provisioning/Validate";
 import { HomeLayout } from "./components/HomePage/HomeLayout";
 import {
@@ -147,6 +148,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <ProvAccordian />
+                </ProtectedRoute>
+              }
+            ></Route>
+            <Route
+              path="provision2"
+              element={
+                <ProtectedRoute allowedRoles={["Engineer"]}>
+                  <ProvStepper />
                 </ProtectedRoute>
               }
             ></Route>
