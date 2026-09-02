@@ -109,6 +109,35 @@ function CapacityBar({ percent }) {
   );
 }
 
+function ScopesLoadingState({ siteCode }) {
+  return (
+    <div>
+      <div className="flex items-center justify-center gap-4 pb-6">
+        <span className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center">
+          <span className="absolute inline-flex h-full w-full rounded-full border border-pink-500/50 animate-scanRing motion-reduce:animate-none" />
+          <span
+            className="absolute inline-flex h-full w-full rounded-full border border-pink-500/50 animate-scanRing motion-reduce:animate-none"
+            style={{ animationDelay: "1s" }}
+          />
+          <ServerIcon className="relative h-4 w-4 text-pink-400" />
+        </span>
+        <span className="text-sm text-zinc-400">
+          Loading DHCP scopes for <span className="font-mono text-pink-400">{siteCode}</span>…
+        </span>
+      </div>
+      <div className="space-y-3">
+        {[...Array(4)].map((_, i) => (
+          <div
+            key={i}
+            className="h-12 bg-gray-800/50 rounded-lg animate-pulse border border-zinc-700/20"
+            style={{ animationDelay: `${i * 100}ms` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Active and unknown aren't worth a badge — only surface Inactive/warning/
 // error/not_deployed.
 const QUIET_STATUSES = new Set(["active", "unknown"]);
@@ -550,28 +579,7 @@ const DHCPManager = () => {
           </div>
         )}
 
-        {scopesLoading && (
-          <div>
-            <div className="flex items-center justify-center gap-3 pb-6 text-zinc-400">
-              <span className="relative flex h-3 w-3 flex-shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-500 opacity-75" />
-                <span className="relative inline-flex h-3 w-3 rounded-full bg-pink-600" />
-              </span>
-              <span className="text-sm">
-                Loading DHCP scopes for <span className="font-mono text-pink-400">{siteCode}</span>…
-              </span>
-            </div>
-            <div className="space-y-3">
-              {[...Array(4)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-12 bg-gray-800/50 rounded-lg animate-pulse border border-zinc-700/20"
-                  style={{ animationDelay: `${i * 100}ms` }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        {scopesLoading && <ScopesLoadingState siteCode={siteCode} />}
 
         {deleteScopeError && (
           <div className="mb-4 px-4 py-3 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-sm text-center animate-fadeIn motion-reduce:animate-none">

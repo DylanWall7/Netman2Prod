@@ -35,6 +35,10 @@ module.exports = {
           "0%": { transform: "scale(0.96)", opacity: 0 },
           "100%": { transform: "scale(1)", opacity: 1 },
         },
+        scanRing: {
+          "0%": { transform: "scale(0.6)", opacity: 0.6 },
+          "100%": { transform: "scale(2.2)", opacity: 0 },
+        },
       },
 
       animation: {
@@ -44,6 +48,7 @@ module.exports = {
         iconPop: "iconPop 150ms cubic-bezier(0.16, 1, 0.3, 1)",
         fadeIn: "fadeIn 200ms ease-out",
         modalIn: "modalIn 200ms cubic-bezier(0.16, 1, 0.3, 1)",
+        scanRing: "scanRing 2s cubic-bezier(0.2, 0.6, 0.4, 1) infinite",
       },
 
       colors: {

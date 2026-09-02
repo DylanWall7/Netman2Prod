@@ -1016,6 +1016,7 @@ export const ProvStepper = () => {
                   </div>
                   <div className="p-2 flex justify-end">
                     <Button
+                      size="sm"
                       isLoading={netboxLoading}
                       onPress={handleSubmit(handleAddNetbox)}
                       className="bg-pink-600"
@@ -1045,6 +1046,7 @@ export const ProvStepper = () => {
                   </div>
                   <div className="p-2 flex justify-end">
                     <Button
+                      size="sm"
                       onPress={handleDHCP}
                       onPressStart={() => setValue("siteDHCP", siteCodeSelected)}
                       className="bg-pink-600"
@@ -1091,6 +1093,7 @@ export const ProvStepper = () => {
                   </div>
                   <div className="p-2 flex justify-end">
                     <Button
+                      size="sm"
                       isLoading={mistLoading}
                       onPress={handleSubmit(handleCreateMist)}
                       className="bg-pink-600"
@@ -1375,6 +1378,7 @@ export const ProvStepper = () => {
 
                   <div className="p-2 flex justify-end">
                     <Button
+                      size="sm"
                       onPress={handleSubmit(handleDeployDevice)}
                       isLoading={deployLoading}
                       className="bg-pink-600"
@@ -1404,6 +1408,7 @@ export const ProvStepper = () => {
                   </div>
                   <div className="p-2 flex justify-end">
                     <Button
+                      size="sm"
                       isLoading={netboxToMistLoading}
                       onPress={() => setShowPushMistConfirm(true)}
                       className="bg-pink-600"
@@ -1515,20 +1520,23 @@ export const ProvStepper = () => {
           )}
 
           <div className="flex justify-between mt-6">
-            <button
-              onClick={prevStep}
-              disabled={currentStep === 0}
-              className="px-4 py-2 rounded-lg bg-pink-300 border border-pink-200/20 hover:bg-pink-200/20 disabled:opacity-40"
+            <Button
+              size="sm"
+              onPress={prevStep}
+              isDisabled={currentStep === 0}
+              className="bg-pink-300 border border-pink-200/20 text-pink-400 hover:bg-pink-200/20"
             >
               Back
-            </button>
-            <button
-              onClick={nextStep}
-              disabled={nextDisabled}
-              className="px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-black disabled:opacity-40 disabled:cursor-not-allowed"
+            </Button>
+            <Button
+              size="sm"
+              variant="bordered"
+              onPress={nextStep}
+              isDisabled={nextDisabled}
+              className="border-pink-500 text-pink-500 hover:bg-pink-500/10"
             >
               Next
-            </button>
+            </Button>
           </div>
           {currentStep === 0 && !isSiteFullySelected && (
             <p className="text-xs text-pink-200/50 text-center mt-2">

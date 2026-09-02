@@ -4,7 +4,6 @@ import { NextUIProvider } from "@nextui-org/react";
 import { Routes, Route } from "react-router-dom";
 import { NoMatch } from "./components/NoMatch";
 import "./App.css";
-import { ProvAccordian } from "./components/Provisioning/ProvAccordian";
 import { ProvStepper } from "./components/Provisioning/ProvStepper";
 import { Validate } from "./components/Provisioning/Validate";
 import { HomeLayout } from "./components/HomePage/HomeLayout";
@@ -16,7 +15,7 @@ import {
 import { InteractionStatus } from "@azure/msal-browser";
 import { GizmoRequest, loginRequest } from "./authConfig";
 
-import DemobeStepper from "./components/Demobe/DemobeStepper";
+import { DemobeStepper } from "./components/Demobe/DemobeStepper";
 import UserProfile from "./components/User/UserProfile";
 import LogsPage from "./components/LogPage/LogFile";
 import WorkbenchList from "./components/Workbench/WorkbenchList";
@@ -145,14 +144,6 @@ function App() {
             ></Route> */}
             <Route
               path="provision"
-              element={
-                <ProtectedRoute allowedRoles={["Engineer"]}>
-                  <ProvAccordian />
-                </ProtectedRoute>
-              }
-            ></Route>
-            <Route
-              path="provision2"
               element={
                 <ProtectedRoute allowedRoles={["Engineer"]}>
                   <ProvStepper />

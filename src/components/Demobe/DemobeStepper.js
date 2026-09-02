@@ -6,10 +6,11 @@ import {
   AutocompleteItem,
   Select,
   SelectItem,
+  Button,
 } from "@nextui-org/react";
 import { useSearchParams } from "react-router-dom";
 
-export default function DemobeStepper() {
+export const DemobeStepper = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [currentStep, setCurrentStep] = useState(0);
   const [siteCode, setSiteCode] = useState("");
@@ -34,6 +35,8 @@ export default function DemobeStepper() {
   const [dhcpCheckError, setDhcpCheckError] = useState(null);
   const [scopesCopied, setScopesCopied] = useState(false);
   const [dhcpDeleted, setDhcpDeleted] = useState(false);
+  const [stepRuns, setStepRuns] = useState({});
+  const [summaryCopied, setSummaryCopied] = useState(false);
 
   const siteurl = `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/snowlocations/${selectedDays}`;
 
@@ -57,6 +60,38 @@ export default function DemobeStepper() {
       return null;
     }
   };
+
+  function summarizeLog(log) {
+    if (!Array.isArray(log) || log.length === 0) return "Completed — no details returned.";
+    const total = log.length;
+    const failed = log.filter((m) => m.status === 0).length;
+    const succeeded = total - failed;
+    if (failed === 0) return `All ${total} succeeded.`;
+    if (succeeded === 0) return `All ${total} failed.`;
+    return `${succeeded} succeeded, ${failed} failed (of ${total}).`;
+  }
+
+  const recordStepRun = (stepIndex, status, log) => {
+    setStepRuns((prev) => ({
+      ...prev,
+      [stepIndex]: [
+        ...(prev[stepIndex] || []),
+        { status, log: log || [], summary: summarizeLog(log), timestamp: Date.now() },
+      ],
+    }));
+  };
+
+  const ordinalWords = ["first", "second", "third", "fourth", "fifth", "sixth"];
+  function describeRuns(runs) {
+    if (!runs || runs.length === 0) return { text: "Not run.", tone: "muted" };
+    const last = runs[runs.length - 1];
+    const tone = last.status === 0 ? "bad" : "good";
+    if (runs.length === 1) return { text: last.summary, tone };
+    const attempts = runs
+      .map((r, i) => `${ordinalWords[i] || `${i + 1}th`} time ${r.status === 0 ? "failed" : "succeeded"}`)
+      .join(", ");
+    return { text: `Ran ${runs.length}x — ${attempts}. Latest: ${last.summary}`, tone };
+  }
 
   const daysOptions = [
     { key: "30", label: "30 Days" },
@@ -155,29 +190,53 @@ export default function DemobeStepper() {
     setTimeout(() => setScopesCopied(false), 2000);
   };
 
+  const SUMMARY_STEP = 5;
+
   const steps = [
-    { id: 1, label: "Enter Site Code", url: `` },
+    { id: 1, label: "Enter Site Code", short: "Site", url: `` },
     {
       id: 2,
       label: "Delete DHCP Scopes",
+      short: "DHCP",
       url: `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/dhcp/${siteCode}`,
     },
     {
       id: 3,
       label: "Unassign Mist Devices",
+      short: "Unassign",
       url: `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/mist/site/${siteCode}/devices`,
     },
     {
       id: 4,
       label: "Delete Mist Site",
+      short: "Del Mist",
       url: `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/mist/site/${siteCode}`,
     },
     {
       id: 5,
       label: "Delete Netbox Site",
+      short: "Del Netbox",
       url: `https://${process.env.REACT_APP_API_BASEURL}/api/deprovisioning/netbox/site/${siteCode}`,
     },
+    { id: 6, label: "Summary", short: "Summary" },
   ];
+
+  const copySummaryText = () => {
+    const lines = [`Demobe Summary — ${siteCode}`, `Generated: ${new Date().toLocaleString()}`, ""];
+    [1, 2, 3, 4].forEach((idx) => {
+      const runs = stepRuns[idx];
+      const { text } = describeRuns(runs);
+      lines.push(`${steps[idx].label}: ${text}`);
+      const latestRun = runs && runs.length > 0 ? runs[runs.length - 1] : null;
+      (latestRun?.log || []).forEach((item) => {
+        lines.push(`  [${item.status === 0 ? "ERR" : " OK"}] ${item.msg}`);
+      });
+      lines.push("");
+    });
+    navigator.clipboard.writeText(lines.join("\n").trim());
+    setSummaryCopied(true);
+    setTimeout(() => setSummaryCopied(false), 2000);
+  };
 
   const handleDelete = async () => {
     setShowModal(false);
@@ -198,10 +257,12 @@ export default function DemobeStepper() {
       });
 
       if (!response.ok) {
-        setCreateNetbox([{ msg: `Server error ${response.status}${response.statusText ? ` — ${response.statusText}` : ""}`, status: 0 }]);
+        const msg = `Server error ${response.status}${response.statusText ? ` — ${response.statusText}` : ""}`;
+        setCreateNetbox([{ msg, status: 0 }]);
         setPostStatus(0);
         setResultKey((k) => k + 1);
         setSkeletonLoading(false);
+        recordStepRun(currentStep, 0, [{ msg, status: 0 }]);
         return;
       }
 
@@ -211,11 +272,14 @@ export default function DemobeStepper() {
       setPostStatus(Postresponse?.status);
       setResultKey((k) => k + 1);
       setSkeletonLoading(false);
+      recordStepRun(currentStep, Postresponse?.status, Postresponse?.log);
     } catch (err) {
-      setCreateNetbox([{ msg: err.message || "Unexpected error — check your connection and try again.", status: 0 }]);
+      const msg = err.message || "Unexpected error — check your connection and try again.";
+      setCreateNetbox([{ msg, status: 0 }]);
       setPostStatus(0);
       setResultKey((k) => k + 1);
       setSkeletonLoading(false);
+      recordStepRun(currentStep, 0, [{ msg, status: 0 }]);
     }
   };
 
@@ -251,24 +315,46 @@ export default function DemobeStepper() {
           </div>
         </div>
 
-        <div className="flex items-center justify-center space-x-6 mb-10">
+        <div className="flex items-start justify-center mb-10 flex-wrap gap-y-4">
           {steps.map((step, index) => (
-            <div key={step.id} className="flex items-center">
-              <div
-                className={`flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold
-              ${index === currentStep ? "bg-blue-500" : "bg-gray-700"}`}
-              >
-                {index + 1}
+            <React.Fragment key={step.id}>
+              <div className="flex flex-col items-center gap-1.5 w-16">
+                <div
+                  className={`flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold transition-colors ${
+                    index === currentStep
+                      ? "bg-pink-500 text-pink-100"
+                      : "bg-pink-700 border border-pink-200/30"
+                  }`}
+                >
+                  {index + 1}
+                </div>
+                <span
+                  className={`text-[10px] leading-tight text-center ${
+                    index === currentStep ? "text-pink-500 font-semibold" : "text-pink-200"
+                  }`}
+                >
+                  {step.short}
+                </span>
               </div>
               {index !== steps.length - 1 && (
-                <div className="w-12 h-1 bg-gray-700 mx-2"></div>
+                <div
+                  className={`w-6 h-1 mt-5 shrink-0 rounded-full transition-colors ${
+                    index < currentStep ? "bg-pink-500" : "bg-pink-300"
+                  }`}
+                ></div>
               )}
-            </div>
+            </React.Fragment>
           ))}
         </div>
 
-        <div className="w-full max-w-xl bg-gray-800 rounded-2xl shadow-lg p-6 text-center">
-          <h2 className="text-xl font-bold mb-4">{steps[currentStep].label}</h2>
+        <div
+          className={`w-full ${
+            currentStep === SUMMARY_STEP ? "max-w-2xl" : "max-w-xl"
+          } bg-pink-700 border border-pink-200/20 rounded-2xl shadow-lg p-6 text-center`}
+        >
+          <h2 className="text-xl font-bold mb-4 pb-3 border-b border-pink-200/15">
+            {steps[currentStep].label}
+          </h2>
 
           {currentStep === 0 ? (
             <div className="p-2">
@@ -297,6 +383,7 @@ export default function DemobeStepper() {
                     className="text-pink-400"
                     variant="bordered"
                     isLoading={isLoading}
+                    selectedKey={siteCode || null}
                     onSelectionChange={(key) => {
                       setSiteCode(key ?? "");
                       setDhcpChecked(false);
@@ -305,6 +392,7 @@ export default function DemobeStepper() {
                       setDhcpDeleted(false);
                       setCreateNetbox([]);
                       setPostStatus(null);
+                      setStepRuns({});
                     }}
                     onInputChange={(value) => {
                       if (!value) {
@@ -315,6 +403,7 @@ export default function DemobeStepper() {
                         setDhcpDeleted(false);
                         setCreateNetbox([]);
                         setPostStatus(null);
+                        setStepRuns({});
                       }
                     }}
                   >
@@ -331,7 +420,7 @@ export default function DemobeStepper() {
             <div className="text-left">
               <p className="text-sm text-center mb-4">
                 Site Code:{" "}
-                <span className="font-mono text-blue-400">{siteCode || "N/A"}</span>
+                <span className="font-mono text-pink-500">{siteCode || "N/A"}</span>
               </p>
 
               {dhcpCheckLoading && (
@@ -407,96 +496,125 @@ export default function DemobeStepper() {
                           </li>
                         ))}
                       </ul>
-                      <button
-                        onClick={() => setShowModal(true)}
-                        disabled={skeletonLoading}
-                        className="text-xs px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 transition-colors w-full flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                      <Button
+                        size="sm"
+                        onPress={() => setShowModal(true)}
+                        isDisabled={skeletonLoading}
+                        isLoading={skeletonLoading}
+                        className="bg-red-600 text-white hover:bg-red-500 w-full"
                       >
-                        {skeletonLoading ? (
-                          <>
-                            <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                            </svg>
-                            Deleting…
-                          </>
-                        ) : (
-                          "Delete These Scopes"
-                        )}
-                      </button>
+                        Delete These Scopes
+                      </Button>
                     </div>
                   )}
 
                   {kiaDhcpScopes.length === 0 && gizmoDhcpScopes.length === 0 && (
                     <p className="text-sm text-zinc-400 text-center py-4">
                       No DHCP scopes found for{" "}
-                      <span className="font-mono text-blue-400">{siteCode}</span>.
+                      <span className="font-mono text-pink-500">{siteCode}</span>.
                     </p>
                   )}
                 </div>
               )}
             </div>
+          ) : currentStep === SUMMARY_STEP ? (
+            <div className="text-left">
+              <div className="p-2">
+                <h2 className="text-pink-400 text-lg font-bold text-center">
+                  Summary for {siteCode}
+                </h2>
+              </div>
+              <div className="mx-2 mb-3 rounded-lg border border-pink-200/15 divide-y divide-pink-200/10 text-left overflow-y-auto max-h-[420px]">
+                {[1, 2, 3, 4].map((idx) => {
+                  const runs = stepRuns[idx];
+                  const { text, tone } = describeRuns(runs);
+                  const latestRun = runs && runs.length > 0 ? runs[runs.length - 1] : null;
+                  const failedItems = latestRun?.log?.filter((m) => m.status === 0) || [];
+                  return (
+                    <div key={idx} className="px-3 py-2 text-xs">
+                      <div className="flex items-start gap-2">
+                        <span
+                          className={`font-bold shrink-0 ${
+                            tone === "bad" ? "text-red-400" : tone === "good" ? "text-green-400" : "text-pink-200/40"
+                          }`}
+                        >
+                          {tone === "bad" ? "✗" : tone === "good" ? "✓" : "–"}
+                        </span>
+                        <span>
+                          <span className="font-semibold text-pink-400">{steps[idx].short}:</span>{" "}
+                          <span className="text-pink-200">{text}</span>
+                        </span>
+                      </div>
+                      {failedItems.length > 0 && (
+                        <ul className="mt-1.5 ml-6 list-disc space-y-1 text-red-300/90 marker:text-red-400/60">
+                          {failedItems.map((item, i) => (
+                            <li key={i}>{item.msg}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-center">
+                <Button
+                  size="sm"
+                  onPress={copySummaryText}
+                  className={
+                    summaryCopied
+                      ? "bg-green-700 text-white"
+                      : "bg-pink-600 text-black hover:bg-pink-500"
+                  }
+                >
+                  {summaryCopied ? "Copied!" : "Copy Summary for ServiceNow"}
+                </Button>
+              </div>
+            </div>
           ) : (
             <div>
               <p className="text-lg mb-4">
                 Site Code:{" "}
-                <span className="font-mono text-blue-400">
+                <span className="font-mono text-pink-500">
                   {siteCode || "N/A"}
                 </span>
               </p>
-              <button
-                onClick={() => setShowModal(true)}
-                className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-500 transition"
+              <Button
+                size="sm"
+                onPress={() => setShowModal(true)}
+                className="bg-red-600 text-white hover:bg-red-500"
               >
                 {steps[currentStep].label}
-              </button>
+              </Button>
             </div>
           )}
 
           <div className="flex justify-between mt-6">
-            <button
-              onClick={prevStep}
-              disabled={currentStep === 0}
-              className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-40"
+            <Button
+              size="sm"
+              onPress={prevStep}
+              isDisabled={currentStep === 0}
+              className="bg-pink-300 border border-pink-200/20 text-pink-400 hover:bg-pink-200/20"
             >
               Back
-            </button>
+            </Button>
             {currentStep < steps.length - 1 && (
-              <button
-                onClick={nextStep}
-                disabled={skeletonLoading || (currentStep === 0 && !siteCode)}
-                className="px-4 py-2 flex items-center justify-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
+              <Button
+                size="sm"
+                variant="bordered"
+                onPress={nextStep}
+                isDisabled={skeletonLoading || (currentStep === 0 && !siteCode)}
+                isLoading={skeletonLoading}
+                className="border-pink-500 text-pink-500 hover:bg-pink-500/10"
               >
-                {skeletonLoading ? (
-                  <>
-                    <svg
-                      className="animate-spin h-5 w-5 text-white"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                      ></path>
-                    </svg>
-                    <span>Loading...</span>
-                  </>
-                ) : (
-                  "Next"
-                )}
-              </button>
+                Next
+              </Button>
             )}
           </div>
+          {currentStep === 0 && !siteCode && (
+            <p className="text-xs text-pink-200/50 text-center mt-2">
+              Select a site to continue.
+            </p>
+          )}
         </div>
         <div className="mt-8">
           {skeletonLoading && (
@@ -608,16 +726,16 @@ export default function DemobeStepper() {
 
         {showModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center">
-            <div className="bg-gray-800 rounded-xl p-6 w-96 shadow-xl">
+            <div className="bg-pink-700 border border-pink-200/20 rounded-xl p-6 w-96 shadow-xl">
               <h3 className="text-lg font-bold mb-4">Confirm Deletion</h3>
-              <p className="text-gray-300 mb-6">
+              <p className="text-pink-200 mb-6">
                 Are you sure you want to {steps[currentStep].label} for{" "}
                 <span className="font-semibold text-red-400">{siteCode}</span>?
               </p>
               <div className="flex justify-end space-x-4">
                 <button
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-500"
+                  className="px-4 py-2 rounded-lg bg-pink-300 border border-pink-200/20 hover:bg-pink-200/20"
                 >
                   Cancel
                 </button>
@@ -657,4 +775,4 @@ export default function DemobeStepper() {
       </div>
     </>
   );
-}
+};
