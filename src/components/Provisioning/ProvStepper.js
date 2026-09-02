@@ -133,6 +133,7 @@ export const ProvStepper = () => {
   const SUMMARY_STEP = 6;
 
   const [stepRuns, setStepRuns] = React.useState({});
+  const [summaryCopied, setSummaryCopied] = React.useState(false);
 
   function summarizeLog(log) {
     if (!Array.isArray(log) || log.length === 0) return "Completed — no details returned.";
@@ -871,6 +872,43 @@ export const ProvStepper = () => {
   const [currentStep, setCurrentStep] = React.useState(0);
   const [showPushMistConfirm, setShowPushMistConfirm] = React.useState(false);
 
+  const copySummaryText = () => {
+    const lines = [
+      `Provisioning Summary — ${siteCodeSelected}`,
+      `Generated: ${new Date().toLocaleString()}`,
+      "",
+    ];
+    [NETBOX_STEP, DHCP_STEP, MIST_SITE_STEP, DEVICE_STEP, PUSH_MIST_STEP].forEach((idx) => {
+      const runs = stepRuns[idx];
+      const { text } = describeRuns(runs);
+      lines.push(`${steps[idx].label}: ${text}`);
+
+      if (idx === MIST_SITE_STEP) {
+        lines.push(`  Template: ${[...template][0] || "None selected"}`);
+      }
+
+      if (idx === DEVICE_STEP) {
+        const submittedDevices = devices.filter((d) => d.serial || d.name);
+        if (submittedDevices.length > 0) {
+          lines.push("  Devices submitted:");
+          submittedDevices.forEach((d) => {
+            const parts = [d.name, d.model, d.serial ? `SN:${d.serial}` : null, d.ip ? `IP:${d.ip}` : null, d.oob_ip ? `OOB:${d.oob_ip}` : null].filter(Boolean);
+            lines.push(`    - ${parts.join(" ")}`);
+          });
+        }
+      }
+
+      const latestRun = runs && runs.length > 0 ? runs[runs.length - 1] : null;
+      (latestRun?.log || []).forEach((item) => {
+        lines.push(`  [${item.status === 0 ? "ERR" : " OK"}] ${item.msg}`);
+      });
+      lines.push("");
+    });
+    navigator.clipboard.writeText(lines.join("\n").trim());
+    setSummaryCopied(true);
+    setTimeout(() => setSummaryCopied(false), 2000);
+  };
+
   const isStepDisabled = (index) => index !== 0 && !isSiteFullySelected;
 
   const goToStep = (index) => {
@@ -1461,6 +1499,19 @@ export const ProvStepper = () => {
                       </div>
                     );
                   })}
+                </div>
+                <div className="flex justify-center">
+                  <Button
+                    size="sm"
+                    onPress={copySummaryText}
+                    className={
+                      summaryCopied
+                        ? "bg-green-700 text-white"
+                        : "bg-pink-600 text-black hover:bg-pink-500"
+                    }
+                  >
+                    {summaryCopied ? "Copied!" : "Copy Summary for ServiceNow"}
+                  </Button>
                 </div>
               </div>
             </div>
