@@ -330,7 +330,7 @@ const DHCPManager = () => {
   const getToken = useSiteDashboardToken();
 
   const [scopesLoading, setScopesLoading] = useState(false);
-  const [kiaScopes, setKiaScopes] = useState([]);
+  const [keaScopes, setKeaScopes] = useState([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [scopesError, setScopesError] = useState(null);
   const [activeScope, setActiveScope] = useState(null);
@@ -387,12 +387,12 @@ const DHCPManager = () => {
     setScopesLoading(true);
     setHasLoaded(false);
     setScopesError(null);
-    setKiaScopes([]);
+    setKeaScopes([]);
     try {
       const token = await getToken();
       if (!token) return; // falling back to a redirect — page is about to navigate away
       const scopes = await getScopesForSite(site, token);
-      setKiaScopes(scopes);
+      setKeaScopes(scopes);
       setHasLoaded(true);
     } catch (err) {
       setScopesError(err.message || "Failed to load DHCP scopes — please try again.");
@@ -406,10 +406,10 @@ const DHCPManager = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteCode]);
 
-  const toggleKiaExpand = (id) =>
-    setKiaScopes((prev) => prev.map((s) => (s.id === id ? { ...s, expanded: !s.expanded } : s)));
+  const toggleKeaExpand = (id) =>
+    setKeaScopes((prev) => prev.map((s) => (s.id === id ? { ...s, expanded: !s.expanded } : s)));
 
-  const pendingChangeCount = kiaScopes.filter((s) => s._stale).length;
+  const pendingChangeCount = keaScopes.filter((s) => s._stale).length;
 
   // Skips the full re-fetch after a delete — on a large site, re-gathering every
   // scope just to confirm the one you already know succeeded is slow for no reason.
@@ -424,7 +424,7 @@ const DHCPManager = () => {
       const token = await getToken();
       if (!token) return;
       await deleteSubnet(scope.scopeId, scope.cidr, token);
-      setKiaScopes((prev) =>
+      setKeaScopes((prev) =>
         prev.map((s) =>
           s.id === scope.id
             ? {
@@ -517,7 +517,7 @@ const DHCPManager = () => {
         _stale: true,
         _pendingChange: "deployed",
       };
-      setKiaScopes((prev) => prev.map((s) => (s.id === deployScope.id ? provisionalRow : s)));
+      setKeaScopes((prev) => prev.map((s) => (s.id === deployScope.id ? provisionalRow : s)));
 
       closeDeployModal();
     } catch (err) {
@@ -609,17 +609,17 @@ const DHCPManager = () => {
             </div>
 
             <div className="space-y-2 pb-10">
-              {kiaScopes.length === 0 ? (
+              {keaScopes.length === 0 ? (
                 <p className="text-sm text-zinc-500 italic py-4 text-center">
                   No DHCP scopes found for {siteCode}.
                 </p>
               ) : (
-                kiaScopes.map((scope) => (
+                keaScopes.map((scope) => (
                   <ScopeCard
                     key={scope.id}
                     scope={scope}
                     deleting={deletingScopeId === scope.id}
-                    onExpand={() => toggleKiaExpand(scope.id)}
+                    onExpand={() => toggleKeaExpand(scope.id)}
                     onViewDetail={(tab) => {
                       setActiveTab(tab);
                       setActiveScope(scope);

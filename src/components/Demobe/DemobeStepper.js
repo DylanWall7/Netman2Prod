@@ -30,7 +30,7 @@ export const DemobeStepper = () => {
   const [siteLoadError, setSiteLoadError] = useState(null);
   const [dhcpCheckLoading, setDhcpCheckLoading] = useState(false);
   const [dhcpChecked, setDhcpChecked] = useState(false);
-  const [kiaDhcpScopes, setKiaDhcpScopes] = useState([]);
+  const [keaDhcpScopes, setKeaDhcpScopes] = useState([]);
   const [gizmoDhcpScopes, setGizmoDhcpScopes] = useState([]);
   const [dhcpCheckError, setDhcpCheckError] = useState(null);
   const [scopesCopied, setScopesCopied] = useState(false);
@@ -151,7 +151,7 @@ export const DemobeStepper = () => {
     setDhcpCheckLoading(true);
     setDhcpChecked(false);
     setDhcpCheckError(null);
-    setKiaDhcpScopes([]);
+    setKeaDhcpScopes([]);
     setGizmoDhcpScopes([]);
     try {
       const token = await getToken();
@@ -163,13 +163,13 @@ export const DemobeStepper = () => {
           "Content-Type": "application/json",
         },
       };
-      const [kiaRes, gizmoRes] = await Promise.all([
+      const [keaRes, gizmoRes] = await Promise.all([
         fetch(`${baseUrl}/provisioning/dhcp/${siteCode}`, opts),
         fetch(`${baseUrl}/provisioning/dhcp/${siteCode}/gizmo`, opts).catch(() => null),
       ]);
-      const kiaData = kiaRes.ok ? await kiaRes.json() : [];
+      const keaData = keaRes.ok ? await keaRes.json() : [];
       const gizmoData = gizmoRes?.ok ? await gizmoRes.json() : [];
-      setKiaDhcpScopes(Array.isArray(kiaData) ? kiaData : (kiaData?.scopes ?? []));
+      setKeaDhcpScopes(Array.isArray(keaData) ? keaData : (keaData?.scopes ?? []));
       setGizmoDhcpScopes(Array.isArray(gizmoData) ? gizmoData : (gizmoData?.scopes ?? []));
       setDhcpChecked(true);
     } catch {
@@ -387,7 +387,7 @@ export const DemobeStepper = () => {
                     onSelectionChange={(key) => {
                       setSiteCode(key ?? "");
                       setDhcpChecked(false);
-                      setKiaDhcpScopes([]);
+                      setKeaDhcpScopes([]);
                       setGizmoDhcpScopes([]);
                       setDhcpDeleted(false);
                       setCreateNetbox([]);
@@ -398,7 +398,7 @@ export const DemobeStepper = () => {
                       if (!value) {
                         setSiteCode("");
                         setDhcpChecked(false);
-                        setKiaDhcpScopes([]);
+                        setKeaDhcpScopes([]);
                         setGizmoDhcpScopes([]);
                         setDhcpDeleted(false);
                         setCreateNetbox([]);
@@ -481,16 +481,16 @@ export const DemobeStepper = () => {
                     </div>
                   )}
 
-                  {kiaDhcpScopes.length > 0 && (
+                  {keaDhcpScopes.length > 0 && (
                     <div className="rounded-lg border border-red-600/50 bg-red-900/20 p-4">
                       <p className="text-red-400 text-sm font-semibold mb-1">
-                        Kia DHCP — {kiaDhcpScopes.length} Scope{kiaDhcpScopes.length > 1 ? "s" : ""} to Delete
+                        Kea DHCP — {keaDhcpScopes.length} Scope{keaDhcpScopes.length > 1 ? "s" : ""} to Delete
                       </p>
                       <p className="text-red-200/70 text-xs mb-3">
                         The following scopes will be permanently deleted.
                       </p>
                       <ul className="space-y-1 mb-3">
-                        {kiaDhcpScopes.map((scope, i) => (
+                        {keaDhcpScopes.map((scope, i) => (
                           <li key={i} className="text-xs font-mono text-red-100 bg-red-900/30 rounded px-2 py-1">
                             {scope.subnet ?? scope.scopeId ?? scope.id}
                           </li>
@@ -508,7 +508,7 @@ export const DemobeStepper = () => {
                     </div>
                   )}
 
-                  {kiaDhcpScopes.length === 0 && gizmoDhcpScopes.length === 0 && (
+                  {keaDhcpScopes.length === 0 && gizmoDhcpScopes.length === 0 && (
                     <p className="text-sm text-zinc-400 text-center py-4">
                       No DHCP scopes found for{" "}
                       <span className="font-mono text-pink-500">{siteCode}</span>.

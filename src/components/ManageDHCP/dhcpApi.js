@@ -37,7 +37,7 @@ export async function generateDhcpScopeParams(netboxPrefixId, token) {
   return res.json();
 }
 
-// Returns every Kia + Gizmo scope for a site in one call, replacing the old
+// Returns every Kea + Gizmo scope for a site in one call, replacing the old
 // per-prefix subnetv4 lookup loop.
 export async function getDhcpSiteSummary(siteCode, token) {
   const res = await fetch(`${DHCP_ROOT}/sitesummary/${encodeURIComponent(siteCode)}`, {

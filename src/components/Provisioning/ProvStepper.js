@@ -8,6 +8,7 @@ import {
   AutocompleteItem,
   Select,
   SelectItem,
+  Checkbox,
 } from "@nextui-org/react";
 import { GizmoRequest } from "../../authConfig";
 import { useForm } from "react-hook-form";
@@ -33,6 +34,9 @@ export const ProvStepper = () => {
   const [dhcpStatus, setDhcpStatus] = React.useState("");
   const [deployLoading, setDeployLoading] = React.useState(false);
   const [modelList, setModelList] = React.useState([]);
+  const [mobTypesList, setMobTypesList] = React.useState([]);
+  const [mobTypesLoading, setMobTypesLoading] = React.useState(false);
+  const [selectedMobType, setSelectedMobType] = React.useState("");
   const [netboxLoading, setNetboxLoading] = useState(false);
   const [template, setTemplate] = React.useState(new Set([]));
   const [skeletonLoading, setSkeletonLoading] = React.useState(false);
@@ -83,6 +87,7 @@ export const ProvStepper = () => {
   const DeployDeviceURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/devices`;
   const netboxtomistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/devices`;
   const ModelURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/devicetypes`;
+  const MobTypesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/mobtypes`;
 
   const { instance, accounts } = useMsal();
   const request = {
@@ -123,6 +128,8 @@ export const ProvStepper = () => {
     setDevices([{ serial: "", name: "", model: "", ip: "", oob_ip: "" }]);
     setTemplate(new Set([]));
     setAvailableIps([]);
+    setSelectedMobType("");
+    setMobTypesList([]);
   }
 
   const NETBOX_STEP = 1;
@@ -182,6 +189,7 @@ export const ProvStepper = () => {
   }, [accounts.length === 0]);
 
   const handleAddNetbox = async () => {
+    if (!selectedMobType) return;
     resetforms();
     setNetboxLoading(true);
     setSkeletonLoading(true);
@@ -334,11 +342,45 @@ export const ProvStepper = () => {
       });
   }
 
+  async function GetMobTypes({ token }) {
+    const headers = new Headers();
+    const bearer = `Bearer ${token}`;
+
+    headers.append("Authorization", bearer);
+    headers.append("Content-Type", "application/json");
+
+    const options = {
+      method: "GET",
+      headers: headers,
+    };
+
+    setMobTypesLoading(true);
+    return fetch(MobTypesURL, options)
+      .then(async (response) => {
+        let text = await response.json();
+
+        setMobTypesList(text);
+        setMobTypesLoading(false);
+      })
+      .catch((error) => {
+        console.error("Error fetching mob types:", error);
+        setMobTypesLoading(false);
+      });
+  }
+
   React.useEffect(() => {
     if (siteCodeSelected) {
       setDHCPSite(siteCodeSelected);
     }
   }, [siteCodeSelected]);
+
+  useEffect(() => {
+    if (!isSiteFullySelected) return;
+    (async () => {
+      const token = await getToken();
+      GetMobTypes({ token });
+    })();
+  }, [isSiteFullySelected]);
 
   async function CreateNetbox({ token }) {
     setPostStatus("");
@@ -350,7 +392,7 @@ export const ProvStepper = () => {
 
     const options = {
       method: "POST",
-
+      body: JSON.stringify({ mob_type: selectedMobType }),
       headers: headers,
     };
 
@@ -989,7 +1031,7 @@ export const ProvStepper = () => {
           className={`w-full ${
             currentStep === DEVICE_STEP
               ? "max-w-5xl"
-              : currentStep === SUMMARY_STEP
+              : currentStep === NETBOX_STEP || currentStep === SUMMARY_STEP
               ? "max-w-2xl"
               : "max-w-xl"
           } bg-pink-700 border border-pink-200/20 rounded-2xl shadow-lg p-6 text-center`}
@@ -1042,25 +1084,57 @@ export const ProvStepper = () => {
             <div className="text-lg">
               <form className="w-full flex justify-center">
                 <div className="flex flex-col w-full">
-                  <div className="p-2 dark text-foreground">
+                  <div className="p-2 dark text-foreground flex justify-center">
                     <Input
                       size="sm"
                       label="Selected Site"
-                      className="max-w-lg"
+                      className="max-w-[200px]"
                       variant="bordered"
                       value={siteCodeSelected}
                       isReadOnly
                     />
                   </div>
-                  <div className="p-2 flex justify-end">
+                  <div className="p-2 text-left dark text-foreground">
+                    <p className="text-xs text-pink-400 uppercase tracking-wider font-medium mb-2">
+                      Site Type <span className="text-red-400">*</span>
+                    </p>
+                    {mobTypesLoading ? (
+                      <div className="flex flex-col gap-2">
+                        {[...Array(3)].map((_, i) => (
+                          <div key={i} className="h-5 bg-pink-300/40 rounded animate-pulse w-2/3" />
+                        ))}
+                      </div>
+                    ) : mobTypesList.length > 0 ? (
+                      <div className="flex flex-row flex-wrap gap-x-4 gap-y-1">
+                        {mobTypesList.map((mobType) => (
+                          <Checkbox
+                            key={mobType}
+                            size="sm"
+                            isSelected={selectedMobType === mobType}
+                            onValueChange={(checked) => setSelectedMobType(checked ? mobType : "")}
+                            classNames={{ label: "text-pink-200 text-sm" }}
+                          >
+                            {mobType}
+                          </Checkbox>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-pink-200/50">No site types available.</p>
+                    )}
+                  </div>
+                  <div className="p-2 flex flex-col items-end gap-1">
                     <Button
                       size="sm"
                       isLoading={netboxLoading}
+                      isDisabled={!selectedMobType}
                       onPress={handleSubmit(handleAddNetbox)}
                       className="bg-pink-600"
                     >
                       Add Site
                     </Button>
+                    {!selectedMobType && (
+                      <p className="text-xs text-pink-200/50">Select a site type to continue.</p>
+                    )}
                   </div>
                 </div>
               </form>
@@ -1071,11 +1145,11 @@ export const ProvStepper = () => {
             <div className="text-lg">
               <form className="w-full flex justify-center">
                 <div className="flex flex-col w-full">
-                  <div className="p-2 dark text-foreground bg-transparent">
+                  <div className="p-2 dark text-foreground bg-transparent flex justify-center">
                     <Input
                       size="sm"
                       label="Selected Site"
-                      className="max-w-lg"
+                      className="max-w-[200px]"
                       placeholder="Site Description"
                       variant="bordered"
                       value={siteCodeSelected}
@@ -1102,11 +1176,11 @@ export const ProvStepper = () => {
             <div className="text-lg">
               <form className="w-full flex justify-center">
                 <div className="flex flex-col w-full">
-                  <div className="p-2 dark text-foreground bg-transparent">
+                  <div className="p-2 dark text-foreground bg-transparent flex flex-col items-center">
                     <Input
                       size="sm"
                       label="Selected Site"
-                      className="max-w-lg"
+                      className="max-w-[200px]"
                       variant="bordered"
                       placeholder="Site Description"
                       value={siteCodeSelected}
@@ -1433,11 +1507,11 @@ export const ProvStepper = () => {
             <div className="text-lg">
               <form className="w-full flex justify-center">
                 <div className="flex flex-col w-full">
-                  <div className="p-2 dark text-foreground bg-transparent">
+                  <div className="p-2 dark text-foreground bg-transparent flex justify-center">
                     <Input
                       size="sm"
                       label="Selected Site"
-                      className="max-w-lg"
+                      className="max-w-[200px]"
                       placeholder="Site Description"
                       variant="bordered"
                       value={siteCodeSelected}
