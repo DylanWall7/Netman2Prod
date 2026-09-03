@@ -31,21 +31,33 @@ export async function getSnowLocation(siteCode, token) {
   });
   if (!res.ok) throw new Error(`Failed to load ServiceNow location (${res.status})`);
   const body = await res.json();
-  const list = Array.isArray(body?.data) ? body.data : Array.isArray(body) ? body : [];
-  return list[0] ?? null;
+  // This endpoint wraps the record as { status, log, data } with `data` as a single object —
+  // not an array like most other list endpoints in this app — confirmed 2026-09-03 against a
+  // real response after this was incorrectly treating `data` as a list and always returning null.
+  if (Array.isArray(body?.data)) return body.data[0] ?? null;
+  if (body?.data && typeof body.data === "object") return body.data;
+  return Array.isArray(body) ? body[0] ?? null : null;
 }
 
 // Uses Open-Meteo's current documented param names (current=..., weather_code,
 // wind_speed_unit) — the legacy current_weather=true/windspeed_unit/weathercode aliases
 // still work but aren't documented.
 export async function getCurrentWeather(lat, lon) {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,wind_speed_10m,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,wind_speed_10m,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load weather (${res.status})`);
   const body = await res.json();
   const current = body?.current;
   if (!current) return null;
-  return { temperature: current.temperature_2m, windspeed: current.wind_speed_10m, weathercode: current.weather_code };
+  // timezone=auto makes Open-Meteo resolve an IANA zone for these coordinates (e.g.
+  // "America/Chicago") — piggybacking on this existing call instead of a separate
+  // geo-timezone lookup/library just to show the site's local time.
+  return {
+    temperature: current.temperature_2m,
+    windspeed: current.wind_speed_10m,
+    weathercode: current.weather_code,
+    timezone: body?.timezone || null,
+  };
 }
 
 // Returns raw daily values with no "storm" classification layered on top — Open-Meteo's
@@ -64,7 +76,7 @@ export async function getRecentDailyWeather(lat, lon, days = 7) {
   return dates.map((date, i) => ({ date, code: codes[i], high: highs[i], low: lows[i], precip: precip[i] }));
 }
 
-// /diagrams expects the ID from THIS endpoint, not data.netboxbsite.id from
+// /diagrams expects the ID from THIS endpoint, not data.netboxsite.id from
 // /api/management/netbox — the two aren't confirmed to share an ID space.
 export async function getNetboxSiteIdByCode(siteCode, token) {
   const res = await fetch(`${API_ROOT}/netbox/sites?brief=1`, {

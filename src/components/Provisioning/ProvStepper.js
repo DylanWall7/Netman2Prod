@@ -898,11 +898,14 @@ export const ProvStepper = () => {
     ? "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_1fr_2.5rem]"
     : "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_2.5rem]";
 
+  const isRapType = selectedMobType.includes("RAP");
+
   const steps = [
     { id: 0, label: "Select Site", short: "Site" },
     { id: 1, label: "Create Site in Netbox", short: "Netbox" },
-    { id: 2, label: "Deploy DHCP", short: "DHCP" },
-    { id: 3, label: "Deploy Site to Mist", short: "Mist Site" },
+    // RAP sites don't get their own DHCP scopes or a Mist site — skip both steps.
+    { id: 2, label: "Deploy DHCP", short: "DHCP", hidden: isRapType },
+    { id: 3, label: "Deploy Site to Mist", short: "Mist Site", hidden: isRapType },
     { id: 4, label: "Deploy Devices to Netbox", short: "Devices" },
     { id: 5, label: "Push Devices to Mist", short: "Push to Mist" },
     { id: 6, label: "Summary", short: "Summary" },
@@ -920,7 +923,9 @@ export const ProvStepper = () => {
       `Generated: ${new Date().toLocaleString()}`,
       "",
     ];
-    [NETBOX_STEP, DHCP_STEP, MIST_SITE_STEP, DEVICE_STEP, PUSH_MIST_STEP].forEach((idx) => {
+    [NETBOX_STEP, DHCP_STEP, MIST_SITE_STEP, DEVICE_STEP, PUSH_MIST_STEP]
+      .filter((idx) => !steps.find((s) => s.id === idx)?.hidden)
+      .forEach((idx) => {
       const runs = stepRuns[idx];
       const { text } = describeRuns(runs);
       lines.push(`${steps[idx].label}: ${text}`);
@@ -958,10 +963,18 @@ export const ProvStepper = () => {
     setCurrentStep(index);
   };
   const nextStep = () => {
-    setCurrentStep((prev) => Math.min(prev + 1, maxVisibleStep));
+    setCurrentStep((prev) => {
+      const pos = visibleSteps.findIndex((s) => s.id === prev);
+      const next = visibleSteps[Math.min(pos + 1, visibleSteps.length - 1)];
+      return next ? next.id : prev;
+    });
   };
   const prevStep = () => {
-    setCurrentStep((prev) => Math.max(prev - 1, 0));
+    setCurrentStep((prev) => {
+      const pos = visibleSteps.findIndex((s) => s.id === prev);
+      const previous = visibleSteps[Math.max(pos - 1, 0)];
+      return previous ? previous.id : prev;
+    });
   };
   const nextDisabled =
     currentStep === maxVisibleStep ||
@@ -1001,7 +1014,7 @@ export const ProvStepper = () => {
                         : "bg-pink-700 border border-pink-200/30 hover:bg-pink-300"
                     }`}
                   >
-                    {step.id + 1}
+                    {arrIdx + 1}
                   </button>
                   <span
                     className={`text-[10px] leading-tight text-center ${
@@ -1096,7 +1109,7 @@ export const ProvStepper = () => {
                   </div>
                   <div className="p-2 text-left dark text-foreground">
                     <p className="text-xs text-pink-400 uppercase tracking-wider font-medium mb-2">
-                      Site Type <span className="text-red-400">*</span>
+                      Mob Type <span className="text-red-400">*</span>
                     </p>
                     {mobTypesLoading ? (
                       <div className="flex flex-col gap-2">
@@ -1119,7 +1132,7 @@ export const ProvStepper = () => {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-pink-200/50">No site types available.</p>
+                      <p className="text-xs text-pink-200/50">No mob types available.</p>
                     )}
                   </div>
                   <div className="p-2 flex flex-col items-end gap-1">
@@ -1133,7 +1146,7 @@ export const ProvStepper = () => {
                       Add Site
                     </Button>
                     {!selectedMobType && (
-                      <p className="text-xs text-pink-200/50">Select a site type to continue.</p>
+                      <p className="text-xs text-pink-200/50">Select a mob type to continue.</p>
                     )}
                   </div>
                 </div>
@@ -1543,7 +1556,9 @@ export const ProvStepper = () => {
                 </div>
 
                 <div className="mx-2 mb-3 rounded-lg border border-pink-200/15 divide-y divide-pink-200/10 text-left overflow-y-auto max-h-[420px]">
-                  {[NETBOX_STEP, DHCP_STEP, MIST_SITE_STEP, DEVICE_STEP, PUSH_MIST_STEP].map((idx) => {
+                  {[NETBOX_STEP, DHCP_STEP, MIST_SITE_STEP, DEVICE_STEP, PUSH_MIST_STEP]
+                    .filter((idx) => !steps.find((s) => s.id === idx)?.hidden)
+                    .map((idx) => {
                     const runs = stepRuns[idx];
                     const { text, tone } = describeRuns(runs);
                     const latestRun = runs && runs.length > 0 ? runs[runs.length - 1] : null;

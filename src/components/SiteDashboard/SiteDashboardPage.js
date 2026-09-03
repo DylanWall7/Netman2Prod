@@ -1652,7 +1652,7 @@ function ContactField({ label, refField, userMap, loading }) {
   return <Field label={label} value={resolveReference(refField, userMap)} />;
 }
 
-function SnowLocationCard({ location, error, contacts, userMap, userMapLoading, onRetry }) {
+function SnowLocationCard({ location, error, contacts, userMap, userMapLoading, onRetry, mobType }) {
   const [showNotesModal, setShowNotesModal] = useState(false);
   let body;
   if (error) {
@@ -1695,6 +1695,7 @@ function SnowLocationCard({ location, error, contacts, userMap, userMapLoading, 
           </h4>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3">
             <Field label="Site Type" value={location.u_site_type} />
+            <Field label="Mob Type" value={mobType} />
             <Field label="Priority" value={sitePriorityLabel(location.u_priority)} />
             <Field label="Active" value={boolLabel(get("u_active"))} />
             <Field label="Time Zone" value={location.time_zone} />
@@ -1811,7 +1812,7 @@ function SnowLocationCard({ location, error, contacts, userMap, userMapLoading, 
   }
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 h-full">
-      <h3 className="text-sm font-semibold text-gray-400 mb-3">ServiceNow Location</h3>
+      <h3 className="text-sm font-semibold text-gray-400 mb-3">Location Information</h3>
       {body}
     </div>
   );
@@ -2006,6 +2007,14 @@ function SiteLocationCard({ location }) {
   const [dailyWeather, setDailyWeather] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [alerts, setAlerts] = useState([]);
+  const [now, setNow] = useState(() => new Date());
+
+  // Ticks the site's local-time display — only actually rendered once `weather.timezone`
+  // (from Open-Meteo's timezone=auto) resolves, but cheap enough to just run unconditionally.
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!coords) return;
@@ -2081,6 +2090,16 @@ function SiteLocationCard({ location }) {
           )}
         </div>
         <div className="flex items-center gap-3 min-w-0">
+          {weather?.timezone && (
+            <span className="text-xs text-gray-400 shrink-0">
+              {now.toLocaleTimeString(undefined, {
+                timeZone: weather.timezone,
+                hour: "numeric",
+                minute: "2-digit",
+              })}{" "}
+              local
+            </span>
+          )}
           {weather && (
             <span className="text-xs text-gray-300 truncate">
               {Math.round(weather.temperature)}°F · {WEATHER_CODES[weather.weathercode] || "Unknown conditions"} ·{" "}
@@ -2118,6 +2137,103 @@ function SiteLocationCard({ location }) {
       )}
       {expanded && <SiteMapModal coords={coords} radarUrl={radarUrl} onClose={() => setExpanded(false)} />}
       {showHistory && <WeatherHistoryModal dailyWeather={dailyWeather} onClose={() => setShowHistory(false)} />}
+    </div>
+  );
+}
+
+// Small live analog + digital clock for the site's own timezone — reuses the ServiceNow
+// location record's raw `time_zone` field (e.g. "US/Arizona") that's already fetched for
+// the Site Info card, rather than firing a second network call just for this.
+function SiteClock({ timeZone }) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!timeZone) return null;
+
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+      hour12: false,
+    }).formatToParts(now);
+  } catch {
+    // time_zone came back as something Intl doesn't recognize as a valid IANA zone —
+    // fail quietly rather than crash the whole dashboard over a clock widget.
+    return null;
+  }
+  const get = (type) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const hours = get("hour") % 24;
+  const minutes = get("minute");
+  const seconds = get("second");
+
+  const secondAngle = seconds * 6;
+  const minuteAngle = minutes * 6 + seconds * 0.1;
+  const hourAngle = (hours % 12) * 30 + minutes * 0.5;
+
+  const digital = now.toLocaleTimeString(undefined, { timeZone, hour: "numeric", minute: "2-digit" });
+  const tzAbbrev = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" })
+    .formatToParts(now)
+    .find((p) => p.type === "timeZoneName")?.value;
+
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-gray-900 border border-gray-800">
+      <svg width="40" height="40" viewBox="0 0 44 44" className="shrink-0">
+        <circle cx="22" cy="22" r="20" className="fill-gray-900 stroke-pink-200/30" strokeWidth="1.5" />
+        {[0, 90, 180, 270].map((deg) => (
+          <line
+            key={deg}
+            x1="22"
+            y1="4"
+            x2="22"
+            y2="7"
+            className="stroke-gray-600"
+            strokeWidth="1.5"
+            transform={`rotate(${deg} 22 22)`}
+          />
+        ))}
+        <line
+          x1="22"
+          y1="22"
+          x2="22"
+          y2="12"
+          className="stroke-pink-400"
+          strokeWidth="2"
+          strokeLinecap="round"
+          transform={`rotate(${hourAngle} 22 22)`}
+        />
+        <line
+          x1="22"
+          y1="22"
+          x2="22"
+          y2="8"
+          className="stroke-pink-400"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          transform={`rotate(${minuteAngle} 22 22)`}
+        />
+        <line
+          x1="22"
+          y1="22"
+          x2="22"
+          y2="6"
+          className="stroke-pink-500"
+          strokeWidth="1"
+          strokeLinecap="round"
+          transform={`rotate(${secondAngle} 22 22)`}
+        />
+        <circle cx="22" cy="22" r="1.5" className="fill-pink-500" />
+      </svg>
+      <div className="text-left leading-tight">
+        <p className="text-sm font-semibold text-gray-100 font-mono">{digital}</p>
+        <p className="text-[10px] text-gray-500 uppercase tracking-wide">{tzAbbrev || "Local"} · Site Time</p>
+      </div>
     </div>
   );
 }
@@ -2356,7 +2472,7 @@ export default function SiteDashboardPage() {
 
   const retryData = () => setDataRetryNonce((n) => n + 1);
 
-  const netboxSite = data?.netboxbsite;
+  const netboxSite = data?.netboxsite;
   const mistSite = data?.mistsite;
   const devices = data?.devices || [];
   const mistSiteId = mistSite?.id;
@@ -2533,7 +2649,7 @@ export default function SiteDashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteIncidents, locationRecord]);
 
-  // Resolved via its own lookup rather than data.netboxbsite.id, which isn't confirmed to be
+  // Resolved via its own lookup rather than data.netboxsite.id, which isn't confirmed to be
   // in the same ID space the diagrams endpoint expects.
   useEffect(() => {
     if (!siteCode) {
@@ -2605,42 +2721,47 @@ export default function SiteDashboardPage() {
           <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-1 rounded-full bg-gradient-to-r from-pink-400 to-pink-500" />
         </h1>
         <p className="text-sm text-pink-400 mb-4">Site Dashboard</p>
-        <div className="dark text-foreground max-w-xs mx-auto">
-          <Autocomplete
-            size="sm"
-            label="Site Code"
-            menuTrigger="input"
-            placeholder="Search sites…"
-            variant="bordered"
-            isLoading={sitesLoading}
-            allowsCustomValue
-            inputValue={siteInput}
-            onInputChange={setSiteInput}
-            onSelectionChange={(key) => {
-              if (key) {
-                // Set immediately rather than waiting on the siteCode-driven effect —
-                // the library's own post-selection state update can otherwise race it
-                // and leave the input showing blank/placeholder after navigating.
-                setSiteInput(key);
-                goToSite(key);
-              }
-            }}
-            onKeyDown={(e) => {
-              // Only treat Enter as "navigate to this literal typed text" when nothing in the
-              // list matches it at all. If any site matches (even a partial, arrow-key-
-              // highlighted one), leave Enter to the Autocomplete's own selection handling —
-              // otherwise this fired in addition to it, navigating to whatever partial text
-              // was still in the box instead of the highlighted suggestion.
-              const hasMatch = sites.some((s) => s.name.toLowerCase().includes(siteInput.trim().toLowerCase()));
-              if (e.key === "Enter" && !hasMatch) goToSite(siteInput);
-            }}
-          >
-            {sites.map((site) => (
-              <AutocompleteItem key={site.name} value={site.name}>
-                {site.name || "No Site Code"}
-              </AutocompleteItem>
-            ))}
-          </Autocomplete>
+        <div className="relative flex items-center justify-center">
+          <div className="absolute right-0 hidden sm:block">
+            <SiteClock timeZone={snowLocation?.time_zone} />
+          </div>
+          <div className="dark text-foreground max-w-xs">
+            <Autocomplete
+              size="sm"
+              label="Site Code"
+              menuTrigger="input"
+              placeholder="Search sites…"
+              variant="bordered"
+              isLoading={sitesLoading}
+              allowsCustomValue
+              inputValue={siteInput}
+              onInputChange={setSiteInput}
+              onSelectionChange={(key) => {
+                if (key) {
+                  // Set immediately rather than waiting on the siteCode-driven effect —
+                  // the library's own post-selection state update can otherwise race it
+                  // and leave the input showing blank/placeholder after navigating.
+                  setSiteInput(key);
+                  goToSite(key);
+                }
+              }}
+              onKeyDown={(e) => {
+                // Only treat Enter as "navigate to this literal typed text" when nothing in the
+                // list matches it at all. If any site matches (even a partial, arrow-key-
+                // highlighted one), leave Enter to the Autocomplete's own selection handling —
+                // otherwise this fired in addition to it, navigating to whatever partial text
+                // was still in the box instead of the highlighted suggestion.
+                const hasMatch = sites.some((s) => s.name.toLowerCase().includes(siteInput.trim().toLowerCase()));
+                if (e.key === "Enter" && !hasMatch) goToSite(siteInput);
+              }}
+            >
+              {sites.map((site) => (
+                <AutocompleteItem key={site.name} value={site.name}>
+                  {site.name || "No Site Code"}
+                </AutocompleteItem>
+              ))}
+            </Autocomplete>
+          </div>
         </div>
       </div>
 
@@ -2676,6 +2797,7 @@ export default function SiteDashboardPage() {
               contacts={locationRecord}
               userMap={userDisplayMap}
               userMapLoading={userMapLoading}
+              mobType={netboxSite?.custom_fields?.MOB_TYPE}
               onRetry={retryData}
             />
             <SiteLocationCard location={snowLocation} />
