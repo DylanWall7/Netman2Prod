@@ -11,7 +11,14 @@ import {
 } from "@heroicons/react/24/outline";
 import DHCPScopeModal from "./DHCPScopeModal";
 import { listSites, useSiteDashboardToken } from "../SiteDashboard/siteDashboardApi";
-import { createSubnet, deleteSubnet, firstKeaPoolRange, generateDhcpScopeParams, getScopesForSite } from "./dhcpApi";
+import {
+  buildKeaDeployPayload,
+  createSubnet,
+  deleteSubnet,
+  firstKeaPoolRange,
+  generateDhcpScopeParams,
+  getScopesForSite,
+} from "./dhcpApi";
 import Badge from "../DepotOrders/Badge";
 
 // Scopes come from Netbox — a not-yet-deployed prefix can be pushed to Kea from here,
@@ -337,7 +344,7 @@ const DHCPManager = () => {
   const [activeTab, setActiveTab] = useState("leases");
   const [confirmDeleteScope, setConfirmDeleteScope] = useState(null);
   const [finalConfirmScope, setFinalConfirmScope] = useState(null);
-  const [deletingScopeId, setDeletingScopeId] = useState(null);
+  const [deletingScopeIds, setDeletingScopeIds] = useState(() => new Set());
   const [deleteScopeError, setDeleteScopeError] = useState(null);
 
   const [deployScope, setDeployScope] = useState(null);
@@ -418,7 +425,7 @@ const DHCPManager = () => {
   const handleDeleteScope = async (scope) => {
     setConfirmDeleteScope(null);
     setFinalConfirmScope(null);
-    setDeletingScopeId(scope.id);
+    setDeletingScopeIds((prev) => new Set(prev).add(scope.id));
     setDeleteScopeError(null);
     try {
       const token = await getToken();
@@ -443,7 +450,11 @@ const DHCPManager = () => {
     } catch (err) {
       setDeleteScopeError(err.message || "Failed to delete scope — please try again.");
     } finally {
-      setDeletingScopeId(null);
+      setDeletingScopeIds((prev) => {
+        const next = new Set(prev);
+        next.delete(scope.id);
+        return next;
+      });
     }
   };
 
@@ -480,14 +491,9 @@ const DHCPManager = () => {
     setDeployError(null);
   };
 
-  // Generated params are otherwise passed straight through — the range is the only
-  // thing the user is asked to edit before this deploys, per the initial cut of this flow.
-  // shared-network-name isn't part of the generate response, but Kea's create API requires it.
-  const buildDeployPayload = (params, start, end) => ({
-    ...params,
-    "shared-network-name": params["shared-network-name"] ?? null,
-    pools: [{ ...(params.pools?.[0] || {}), pool: `${start.trim()}-${end.trim()}` }],
-  });
+  // The range is the only thing the user is asked to edit before this deploys, per the
+  // initial cut of this flow — buildKeaDeployPayload (dhcpApi.js) does the rest.
+  const buildDeployPayload = buildKeaDeployPayload;
 
   // Same reasoning as handleDeleteScope: no full re-fetch, just a provisional row built
   // from what we submitted (not Kea's authoritative response) so it's flagged stale
@@ -618,7 +624,7 @@ const DHCPManager = () => {
                   <ScopeCard
                     key={scope.id}
                     scope={scope}
-                    deleting={deletingScopeId === scope.id}
+                    deleting={deletingScopeIds.has(scope.id)}
                     onExpand={() => toggleKeaExpand(scope.id)}
                     onViewDetail={(tab) => {
                       setActiveTab(tab);

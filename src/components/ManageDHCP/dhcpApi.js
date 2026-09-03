@@ -27,6 +27,16 @@ export async function createSubnet(payload, token) {
   return res.json();
 }
 
+// Generated params are otherwise passed straight through — shared-network-name isn't part of
+// the generate response, but Kea's create API requires it.
+export function buildKeaDeployPayload(params, start, end) {
+  return {
+    ...params,
+    "shared-network-name": params["shared-network-name"] ?? null,
+    pools: [{ ...(params.pools?.[0] || {}), pool: `${start.trim()}-${end.trim()}` }],
+  };
+}
+
 // Generates the Kea subnet params for a Netbox prefix that isn't deployed yet —
 // used to pre-fill the deploy-to-Kea form before POSTing to createSubnet.
 export async function generateDhcpScopeParams(netboxPrefixId, token) {
@@ -43,6 +53,13 @@ export async function getDhcpSiteSummary(siteCode, token) {
   const res = await fetch(`${DHCP_ROOT}/sitesummary/${encodeURIComponent(siteCode)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  // A real, common state (e.g. this site hasn't been created in Netbox yet) — not a
+  // transient failure, so callers can tell it apart from an actual error worth retrying.
+  if (res.status === 404) {
+    const err = new Error("Site not found in Netbox.");
+    err.siteNotFound = true;
+    throw err;
+  }
   if (!res.ok) throw new Error(`Failed to load DHCP site summary (${res.status})`);
   return res.json();
 }

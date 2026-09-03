@@ -12,6 +12,14 @@ import {
 } from "@nextui-org/react";
 import { GizmoRequest } from "../../authConfig";
 import { useForm } from "react-hook-form";
+import {
+  buildKeaDeployPayload,
+  createSubnet,
+  firstKeaPoolRange,
+  generateDhcpScopeParams,
+  getScopesForSite,
+} from "../ManageDHCP/dhcpApi";
+import DHCPScopeModal from "../ManageDHCP/DHCPScopeModal";
 
 export const ProvStepper = () => {
   const [dhcpSite, setDHCPSite] = React.useState("");
@@ -25,14 +33,16 @@ export const ProvStepper = () => {
   const [postStatus, setPostStatus] = useState("");
   const [validation, setValidation] = useState([]);
   const [validateLoading, setValidateLoading] = React.useState(false);
-  const [dhcpLoading, setDhcpLoading] = React.useState("");
   const [mistLoading, setMistLoading] = React.useState("");
-  const [vlan1, setVlan1] = React.useState([]);
-  const [vlan5, setVlan5] = React.useState([]);
-  const [vlan9, setVlan9] = React.useState([]);
-  const [vlan13, setVlan13] = React.useState([]);
-  const [dhcpStatus, setDhcpStatus] = React.useState("");
   const [deployLoading, setDeployLoading] = React.useState(false);
+  const [dhcpScopes, setDhcpScopes] = useState([]);
+  const [dhcpScopesLoading, setDhcpScopesLoading] = useState(false);
+  const [dhcpScopesError, setDhcpScopesError] = useState(null);
+  const [dhcpSiteNotFound, setDhcpSiteNotFound] = useState(false);
+  const [deployingScopeIds, setDeployingScopeIds] = useState(() => new Set());
+  const [deployAllLoading, setDeployAllLoading] = useState(false);
+  const [dhcpModalScope, setDhcpModalScope] = useState(null);
+  const [dhcpModalTab, setDhcpModalTab] = useState("leases");
   const [modelList, setModelList] = React.useState([]);
   const [mobTypesList, setMobTypesList] = React.useState([]);
   const [mobTypesLoading, setMobTypesLoading] = React.useState(false);
@@ -49,7 +59,6 @@ export const ProvStepper = () => {
   const [resultKey, setResultKey] = React.useState(0);
   const [csvLimitWarning, setCsvLimitWarning] = React.useState(false);
 
-  const [dhcpData, setDhcpData] = useState({ status: null, logs: {} });
   const [fillIpData, setFillIpData] = useState({
     status: null,
     log: [],
@@ -58,7 +67,6 @@ export const ProvStepper = () => {
   const {
     register: registerDHCP,
     handleSubmit: handleSubmitDHCP,
-    setValue,
     formState: { touched },
   } = useForm({
     defaultValues: {
@@ -79,10 +87,6 @@ export const ProvStepper = () => {
   const url = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/snowlocations`;
   const NetboxURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}`;
   const ValidateURL = `https://${process.env.REACT_APP_API_BASEURL}/api/validation/netboxsite/${siteCodeSelected}`;
-  const vlan1URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/1`;
-  const vlan5URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/5`;
-  const vlan9URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/9`;
-  const vlan13URL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/dhcp/${siteCodeSelected}/vlan/13`;
   const CreateMistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}`;
   const DeployDeviceURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/devices`;
   const netboxtomistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/devices`;
@@ -114,12 +118,6 @@ export const ProvStepper = () => {
   function resetforms() {
     setValidation([]);
     setPostStatus("");
-    setDhcpStatus("");
-    setVlan1([]);
-    setVlan5([]);
-    setVlan9([]);
-    setVlan13([]);
-    setDhcpData({ status: null, logs: {} });
   }
 
   function resetForNewSite() {
@@ -130,6 +128,9 @@ export const ProvStepper = () => {
     setAvailableIps([]);
     setSelectedMobType("");
     setMobTypesList([]);
+    setDhcpScopes([]);
+    setDhcpScopesError(null);
+    setDhcpSiteNotFound(false);
   }
 
   const NETBOX_STEP = 1;
@@ -222,7 +223,6 @@ export const ProvStepper = () => {
   const handleValidate = async () => {
     setValidateLoading(true);
     setPostStatus([]);
-    setDhcpStatus([]);
     try {
       const token = await getToken();
       ValidateSite({ token });
@@ -230,23 +230,6 @@ export const ProvStepper = () => {
       setValidateLoading(false);
       setPostStatus(0);
       setCreateNetbox([{ msg: err.message || "Authentication failed." }]);
-    }
-  };
-  const handleDHCP = async () => {
-    resetforms();
-    setDhcpLoading(true);
-    setSkeletonLoading(true);
-    try {
-      await CreatDHCPAllVlan({
-        token: await instance.acquireTokenSilent(request).then((response) => {
-          return response.accessToken;
-        }),
-      });
-    } catch (err) {
-      setDhcpLoading(false);
-      setSkeletonLoading(false);
-      setLoading(false);
-      recordStepRun(DHCP_STEP, 0, [{ msg: err.message || "Deploy DHCP failed.", status: 0 }]);
     }
   };
   const handleCreateMist = async () => {
@@ -260,7 +243,6 @@ export const ProvStepper = () => {
         }),
       });
     } catch (err) {
-      setDhcpLoading(false);
       setMistLoading(false);
       setSkeletonLoading(false);
       setLoading(false);
@@ -278,7 +260,6 @@ export const ProvStepper = () => {
         }),
       });
     } catch (err) {
-      setDhcpLoading(false);
       setDeployLoading(false);
       setSkeletonLoading(false);
       setLoading(false);
@@ -521,35 +502,85 @@ export const ProvStepper = () => {
         setValidateLoading(false);
       });
   }
-  async function CreatDHCPAllVlan({ token }) {
-    const headers = new Headers();
-    const bearer = `Bearer ${token}`;
-    headers.append("Authorization", bearer);
-    headers.append("Content-Type", "application/json");
-    const options = { method: "POST", headers: headers };
-    const allresponses = await Promise.all([
-      fetch(vlan1URL, options),
-      fetch(vlan5URL, options),
-      fetch(vlan9URL, options),
-      fetch(vlan13URL, options),
-    ]).catch((error) => { console.error("Error:", error); setLoading(false); });
-    for (const res of allresponses) {
-      if (!res.ok) throw new Error(`DHCP request failed (${res.status})`);
+  // Scopes come from Netbox (see getScopesForSite) — Gizmo rows are dropped since new sites
+  // are only ever deployed to Kea from here. hasKea tells each row apart from a not-yet-
+  // deployed one.
+  const loadDhcpScopes = async (site) => {
+    if (!site) return;
+    setDhcpScopesLoading(true);
+    setDhcpScopesError(null);
+    setDhcpSiteNotFound(false);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const scopes = await getScopesForSite(site, token);
+      setDhcpScopes(scopes.filter((s) => !s.hasGizmo));
+    } catch (err) {
+      if (err.siteNotFound) {
+        setDhcpSiteNotFound(true);
+      } else {
+        setDhcpScopesError(err.message || "Failed to load DHCP scopes.");
+      }
+    } finally {
+      setDhcpScopesLoading(false);
     }
-    const data = await Promise.all(allresponses.map((response) => response.json()));
-    const vlanKeys = ["vlan1", "vlan5", "vlan9", "vlan13"];
-    const logs = vlanKeys.reduce((acc, key, i) => { acc[key] = data[i].log || []; return acc; }, {});
-    setDhcpData({ status: data[0].status, logs });
-    const allLogs = vlanKeys.flatMap((key, i) => data[i].log || []);
-    const overallStatus = data.some((d) => d.status === 0) ? 0 : 1;
-    setPostStatus(overallStatus);
-    setCreateNetbox(allLogs);
-    setResultKey((k) => k + 1);
-    setDhcpLoading(false);
-    setSkeletonLoading(false);
-    setLoading(false);
-    recordStepRun(DHCP_STEP, overallStatus, allLogs);
-  }
+  };
+
+  useEffect(() => {
+    if (!isSiteFullySelected) return;
+    loadDhcpScopes(siteCodeSelected);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSiteFullySelected]);
+
+  // Same generate-params-then-create flow DHCPManager uses, minus its edit-the-range modal —
+  // the generated pool is deployed as-is, one click per scope (or via Deploy All below).
+  const deployDhcpScope = async (scope) => {
+    setDeployingScopeIds((prev) => new Set(prev).add(scope.id));
+    let result;
+    try {
+      const token = await getToken();
+      const params = await generateDhcpScopeParams(scope.netboxPrefixId, token);
+      const range = firstKeaPoolRange(params?.pools);
+      const payload = buildKeaDeployPayload(params, range.start || "", range.end || "");
+      await createSubnet(payload, token);
+      setDhcpScopes((prev) =>
+        prev.map((s) =>
+          s.id === scope.id
+            ? { ...s, hasKea: true, status: "unknown", start: range.start || s.start, end: range.end || s.end }
+            : s
+        )
+      );
+      result = { msg: `${scope.scopeId}/${scope.cidr} deployed to Kea.`, status: 1 };
+    } catch (err) {
+      result = { msg: `${scope.scopeId}/${scope.cidr}: ${err.message || "Deploy failed."}`, status: 0 };
+    } finally {
+      setDeployingScopeIds((prev) => {
+        const next = new Set(prev);
+        next.delete(scope.id);
+        return next;
+      });
+    }
+    return result;
+  };
+
+  const handleDeployScope = async (scope) => {
+    const result = await deployDhcpScope(scope);
+    recordStepRun(DHCP_STEP, result.status, [result]);
+  };
+
+  const handleDeployAllDhcp = async () => {
+    const pending = dhcpScopes.filter((s) => !s.hasKea && s.netboxPrefixId);
+    if (pending.length === 0) return;
+    setDeployAllLoading(true);
+    // All at once, not one at a time — deployDhcpScope's own state updates (deployingScopeIds,
+    // dhcpScopes) are both functional setState calls, so they compose correctly regardless of
+    // which of these resolves first.
+    const results = await Promise.all(pending.map((scope) => deployDhcpScope(scope)));
+    setDeployAllLoading(false);
+    const overallStatus = results.some((r) => r.status === 0) ? 0 : 1;
+    recordStepRun(DHCP_STEP, overallStatus, results);
+  };
+
   async function PushDevicesFromNetboxToMist({ token }) {
     setPostStatus("");
     const headers = new Headers();
@@ -1042,7 +1073,7 @@ export const ProvStepper = () => {
 
         <div
           className={`w-full ${
-            currentStep === DEVICE_STEP
+            currentStep === DEVICE_STEP || currentStep === DHCP_STEP
               ? "max-w-5xl"
               : currentStep === NETBOX_STEP || currentStep === SUMMARY_STEP
               ? "max-w-2xl"
@@ -1155,33 +1186,142 @@ export const ProvStepper = () => {
           )}
 
           {currentStep === 2 && (
-            <div className="text-lg">
-              <form className="w-full flex justify-center">
-                <div className="flex flex-col w-full">
-                  <div className="p-2 dark text-foreground bg-transparent flex justify-center">
-                    <Input
-                      size="sm"
-                      label="Selected Site"
-                      className="max-w-[200px]"
-                      placeholder="Site Description"
-                      variant="bordered"
-                      value={siteCodeSelected}
-                      isDisabled={!isSiteFullySelected}
-                    />
-                  </div>
-                  <div className="p-2 flex justify-end">
-                    <Button
-                      size="sm"
-                      onPress={handleDHCP}
-                      onPressStart={() => setValue("siteDHCP", siteCodeSelected)}
-                      className="bg-pink-600"
-                      isLoading={dhcpLoading}
-                    >
-                      Deploy DHCP
-                    </Button>
-                  </div>
+            <div className="text-lg text-left">
+              <div className="p-2 dark text-foreground bg-transparent flex justify-center">
+                <Input
+                  size="sm"
+                  label="Selected Site"
+                  className="max-w-[200px]"
+                  placeholder="Site Description"
+                  variant="bordered"
+                  value={siteCodeSelected}
+                  isDisabled={!isSiteFullySelected}
+                />
+              </div>
+
+              {dhcpSiteNotFound && (
+                <div className="mt-4 px-4 py-3 rounded-lg bg-amber-900/20 border border-amber-600/40 text-amber-300 text-sm text-center">
+                  <p>This site hasn't been created in Netbox yet.</p>
+                  <p className="text-xs text-amber-300/70 mt-1">
+                    Complete the "Create Site in Netbox" step first, then come back here.
+                  </p>
+                  <button
+                    onClick={() => loadDhcpScopes(siteCodeSelected)}
+                    className="mt-2 text-xs font-semibold underline hover:text-amber-100 transition-colors"
+                  >
+                    Check again
+                  </button>
                 </div>
-              </form>
+              )}
+
+              {dhcpScopesError && (
+                <div className="mt-4 px-4 py-3 rounded-lg bg-red-900/40 border border-red-500/50 text-red-300 text-sm text-center">
+                  <p>{dhcpScopesError}</p>
+                  <button
+                    onClick={() => loadDhcpScopes(siteCodeSelected)}
+                    className="mt-2 text-xs font-semibold underline hover:text-red-100 transition-colors"
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+
+              {dhcpScopesLoading ? (
+                <div className="mt-4 space-y-2">
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className="h-12 bg-pink-300/20 rounded-lg animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                !dhcpScopesError &&
+                !dhcpSiteNotFound && (
+                  <div className="mt-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-pink-200/70">
+                        DHCP Scopes
+                      </span>
+                      {(() => {
+                        const pending = dhcpScopes.filter((s) => !s.hasKea && s.netboxPrefixId);
+                        return (
+                          pending.length > 0 && (
+                            <Button
+                              size="sm"
+                              isLoading={deployAllLoading}
+                              isDisabled={deployAllLoading}
+                              onPress={handleDeployAllDhcp}
+                              className="ml-auto bg-pink-600"
+                            >
+                              Deploy All ({pending.length})
+                            </Button>
+                          )
+                        );
+                      })()}
+                    </div>
+
+                    {dhcpScopes.length === 0 ? (
+                      <p className="text-xs text-pink-200/50 italic text-center py-6">
+                        No DHCP prefixes found in Netbox for this site.
+                      </p>
+                    ) : (
+                      <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                        {dhcpScopes.map((scope) => (
+                          <div
+                            key={scope.id}
+                            className="flex items-center gap-3 px-3 py-2 rounded-lg border border-pink-200/20 bg-[#0d2438]"
+                          >
+                            <span
+                              className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                scope.hasKea ? "bg-green-400" : "bg-gray-500"
+                              }`}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="font-mono text-sm text-pink-400 truncate">
+                                {scope.scopeId}/{scope.cidr}
+                              </p>
+                              <p className="text-sm text-pink-400 truncate">{scope.name}</p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setDhcpModalTab("leases");
+                                setDhcpModalScope(scope);
+                              }}
+                              disabled={!scope.hasKea}
+                              className="text-xs px-2 py-1 rounded bg-[#081b2a] border border-pink-200/20 text-pink-400 hover:border-pink-500/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              Leases <span className="font-semibold text-pink-100">{scope.leases}</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDhcpModalTab("reservations");
+                                setDhcpModalScope(scope);
+                              }}
+                              disabled={!scope.hasKea}
+                              className="text-xs px-2 py-1 rounded bg-[#081b2a] border border-pink-200/20 text-pink-400 hover:border-pink-500/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              Reservations <span className="font-semibold text-pink-100">{scope.reservations}</span>
+                            </button>
+                            {scope.hasKea ? (
+                              <span className="text-xs px-2 py-1 rounded bg-green-900/20 border border-green-700/40 text-green-400">
+                                Deployed
+                              </span>
+                            ) : scope.netboxPrefixId ? (
+                              <button
+                                onClick={() => handleDeployScope(scope)}
+                                disabled={deployingScopeIds.has(scope.id) || deployAllLoading}
+                                className="text-xs px-2 py-1 rounded bg-pink-600 text-black font-semibold hover:bg-pink-500 transition-colors disabled:opacity-40"
+                              >
+                                {deployingScopeIds.has(scope.id) ? "Deploying…" : "Deploy"}
+                              </button>
+                            ) : (
+                              <span className="text-xs text-pink-200/40 italic">No Netbox prefix</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
             </div>
           )}
 
@@ -1788,6 +1928,13 @@ export const ProvStepper = () => {
           </div>
         </div>
       )}
+
+      <DHCPScopeModal
+        scope={dhcpModalScope}
+        siteCode={siteCodeSelected}
+        initialTab={dhcpModalTab}
+        onClose={() => setDhcpModalScope(null)}
+      />
 
       {siteLoadError && (
         <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
