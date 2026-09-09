@@ -124,6 +124,7 @@ export const ProvStepper = () => {
     setStepRuns({});
     resetforms();
     setDevices([{ serial: "", name: "", model: "", ip: "", oob_ip: "" }]);
+    setDeviceDeployStatus([]);
     setTemplate(new Set([]));
     setAvailableIps([]);
     setSelectedMobType("");
@@ -253,6 +254,7 @@ export const ProvStepper = () => {
     resetforms();
     setDeployLoading(true);
     setSkeletonLoading(true);
+    setDeviceDeployStatus(devices.map((d) => ({ serial: d.serial, name: d.name, status: "pending" })));
     try {
       await DeplyDevicetoNetbox({
         token: await instance.acquireTokenSilent(request).then((response) => {
@@ -439,39 +441,73 @@ export const ProvStepper = () => {
   async function DeplyDevicetoNetbox({ token }) {
     setPostStatus("");
     const headers = new Headers();
-    const bearer = `Bearer ${token}`;
-
-    headers.append("Authorization", bearer);
+    headers.append("Authorization", `Bearer ${token}`);
     headers.append("Content-Type", "application/json");
 
-    const options = {
-      method: "POST",
-      body: JSON.stringify(devices),
-
-      headers: headers,
-    };
-
-    return fetch(DeployDeviceURL, options)
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Deploy devices failed (${response.status})`);
-        let DeployDevicePostResponse = await response.json();
-
-        setCreateNetbox(DeployDevicePostResponse?.log);
-        setPostStatus(DeployDevicePostResponse?.status);
-        setResultKey((k) => k + 1);
-        setSkeletonLoading(false);
-        setDeployLoading(false);
-        recordStepRun(DEVICE_STEP, DeployDevicePostResponse?.status, DeployDevicePostResponse?.log);
+    // One request per device, fired concurrently, instead of a single bulk POST — faster, and
+    // each device's own result updates deviceDeployStatus as soon as it lands rather than
+    // everything appearing at once after the whole batch finishes.
+    const results = await Promise.all(
+      devices.map(async (device, index) => {
+        try {
+          const response = await fetch(DeployDeviceURL, {
+            method: "POST",
+            body: JSON.stringify([device]),
+            headers,
+          });
+          if (!response.ok) throw new Error(`Deploy devices failed (${response.status})`);
+          const data = await response.json();
+          const log = data?.log || [];
+          const status = data?.status ?? (log.some((m) => m.status === 0) ? 0 : 1);
+          setDeviceDeployStatus((prev) => prev.map((d, i) => (i === index ? { ...d, status } : d)));
+          return { status, log };
+        } catch (err) {
+          const label = device.name || device.serial || `Device ${index + 1}`;
+          const log = [{ msg: `${label}: ${err.message || "Deploy failed."}`, status: 0 }];
+          setDeviceDeployStatus((prev) => prev.map((d, i) => (i === index ? { ...d, status: 0 } : d)));
+          return { status: 0, log };
+        }
       })
+    );
 
-      .catch((error) => {
-        console.error("Error:", error);
-        setDeployLoading(false);
-        setSkeletonLoading(false);
-        setLoading(false);
-        recordStepRun(DEVICE_STEP, 0, [{ msg: error.message || "Deploy devices failed.", status: 0 }]);
-      });
+    const allLogs = results.flatMap((r) => r.log);
+    const overallStatus = results.some((r) => r.status === 0) ? 0 : 1;
+    setCreateNetbox(allLogs);
+    setPostStatus(overallStatus);
+    setResultKey((k) => k + 1);
+    setSkeletonLoading(false);
+    setDeployLoading(false);
+    recordStepRun(DEVICE_STEP, overallStatus, allLogs);
   }
+
+  // Re-sends just the one device that failed, instead of re-running the whole batch.
+  const handleRedeployDevice = async (index) => {
+    const device = devices[index];
+    if (!device) return;
+    setDeviceDeployStatus((prev) => prev.map((d, i) => (i === index ? { ...d, status: "pending" } : d)));
+    const label = device.name || device.serial || `Device ${index + 1}`;
+    try {
+      const token = await getToken();
+      const response = await fetch(DeployDeviceURL, {
+        method: "POST",
+        body: JSON.stringify([device]),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (!response.ok) throw new Error(`Deploy devices failed (${response.status})`);
+      const data = await response.json();
+      const log = data?.log || [];
+      const status = data?.status ?? (log.some((m) => m.status === 0) ? 0 : 1);
+      setDeviceDeployStatus((prev) => prev.map((d, i) => (i === index ? { ...d, status } : d)));
+      setCreateNetbox((prev) => [...(Array.isArray(prev) ? prev : []), ...log]);
+      recordStepRun(DEVICE_STEP, status, log);
+    } catch (err) {
+      const entry = { msg: `${label}: ${err.message || "Deploy failed."}`, status: 0 };
+      setDeviceDeployStatus((prev) => prev.map((d, i) => (i === index ? { ...d, status: 0 } : d)));
+      setCreateNetbox((prev) => [...(Array.isArray(prev) ? prev : []), entry]);
+      recordStepRun(DEVICE_STEP, 0, [entry]);
+    }
+  };
+
   async function ValidateSite({ token }) {
     const headers = new Headers();
     const bearer = `Bearer ${token}`;
@@ -513,8 +549,11 @@ export const ProvStepper = () => {
     try {
       const token = await getToken();
       if (!token) return;
+      // Gizmo rows are still shown (a real scope deployed there is real, even though this
+      // wizard has no Gizmo deploy/manage action) — only actually-not-deployed rows offer
+      // Deploy, via scope.status below, so nothing existing gets hidden or mislabeled.
       const scopes = await getScopesForSite(site, token);
-      setDhcpScopes(scopes.filter((s) => !s.hasGizmo));
+      setDhcpScopes(scopes);
     } catch (err) {
       if (err.siteNotFound) {
         setDhcpSiteNotFound(true);
@@ -569,7 +608,7 @@ export const ProvStepper = () => {
   };
 
   const handleDeployAllDhcp = async () => {
-    const pending = dhcpScopes.filter((s) => !s.hasKea && s.netboxPrefixId);
+    const pending = dhcpScopes.filter((s) => s.status === "not_deployed" && s.netboxPrefixId);
     if (pending.length === 0) return;
     setDeployAllLoading(true);
     // All at once, not one at a time — deployDhcpScope's own state updates (deployingScopeIds,
@@ -696,8 +735,8 @@ export const ProvStepper = () => {
         return device;
       });
 
-      const limitedDevices = parsedDevices.slice(0, 20);
-      if (parsedDevices.length > 20) setCsvLimitWarning(true);
+      const limitedDevices = parsedDevices.slice(0, 500);
+      if (parsedDevices.length > 500) setCsvLimitWarning(true);
 
       setDevices((prev) => [...prev, ...limitedDevices]);
     };
@@ -747,6 +786,7 @@ export const ProvStepper = () => {
   const [devices, setDevices] = React.useState([
     { serial: "", name: "", model: "", ip: "", oob_ip: "" },
   ]);
+  const [deviceDeployStatus, setDeviceDeployStatus] = React.useState([]);
 
   const [dragState, setDragState] = React.useState({
     active: false,
@@ -925,8 +965,16 @@ export const ProvStepper = () => {
   );
 
   const hasACM = devices.some((d) => d.model?.startsWith("ACM"));
+  // An extra column for deploy-status/redeploy appears once a deploy has run, ahead of the
+  // regular (always-present) delete column — kept separate so redeploy never sits next to
+  // delete in a way that's easy to misclick.
+  const hasDeployStatus = deviceDeployStatus.length > 0;
   const gridCols = hasACM
-    ? "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_1fr_2.5rem]"
+    ? hasDeployStatus
+      ? "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_1fr_2.5rem_2.5rem]"
+      : "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_1fr_2.5rem]"
+    : hasDeployStatus
+    ? "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_2.5rem_2.5rem]"
     : "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_2.5rem]";
 
   const isRapType = selectedMobType.includes("RAP");
@@ -1241,7 +1289,7 @@ export const ProvStepper = () => {
                         DHCP Scopes
                       </span>
                       {(() => {
-                        const pending = dhcpScopes.filter((s) => !s.hasKea && s.netboxPrefixId);
+                        const pending = dhcpScopes.filter((s) => s.status === "not_deployed" && s.netboxPrefixId);
                         return (
                           pending.length > 0 && (
                             <Button
@@ -1271,7 +1319,7 @@ export const ProvStepper = () => {
                           >
                             <span
                               className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                scope.hasKea ? "bg-green-400" : "bg-gray-500"
+                                scope.hasKea ? "bg-green-400" : scope.hasGizmo ? "bg-purple-400" : "bg-gray-500"
                               }`}
                             />
                             <div className="min-w-0 flex-1">
@@ -1285,24 +1333,30 @@ export const ProvStepper = () => {
                                 setDhcpModalTab("leases");
                                 setDhcpModalScope(scope);
                               }}
-                              disabled={!scope.hasKea}
-                              className="text-xs px-2 py-1 rounded bg-[#081b2a] border border-pink-200/20 text-pink-400 hover:border-pink-500/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                              disabled={!scope.hasKea && !scope.hasGizmo}
+                              className="flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-[#081b2a] border border-pink-200/20 text-pink-400 hover:border-pink-500/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                             >
-                              Leases <span className="font-semibold text-pink-100">{scope.leases}</span>
+                              <span>Leases</span>
+                              <span className="font-semibold text-pink-400">{scope.leases}</span>
                             </button>
                             <button
                               onClick={() => {
                                 setDhcpModalTab("reservations");
                                 setDhcpModalScope(scope);
                               }}
-                              disabled={!scope.hasKea}
-                              className="text-xs px-2 py-1 rounded bg-[#081b2a] border border-pink-200/20 text-pink-400 hover:border-pink-500/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                              disabled={!scope.hasKea && !scope.hasGizmo}
+                              className="flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-[#081b2a] border border-pink-200/20 text-pink-400 hover:border-pink-500/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                             >
-                              Reservations <span className="font-semibold text-pink-100">{scope.reservations}</span>
+                              <span>Reservations</span>
+                              <span className="font-semibold text-pink-400">{scope.reservations}</span>
                             </button>
                             {scope.hasKea ? (
                               <span className="text-xs px-2 py-1 rounded bg-green-900/20 border border-green-700/40 text-green-400">
                                 Deployed
+                              </span>
+                            ) : scope.hasGizmo ? (
+                              <span className="text-xs px-2 py-1 rounded bg-purple-900/20 border border-purple-700/40 text-purple-300">
+                                Gizmo
                               </span>
                             ) : scope.netboxPrefixId ? (
                               <button
@@ -1403,6 +1457,7 @@ export const ProvStepper = () => {
                           <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">Model</div>
                           <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">IP</div>
                           {hasACM && <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">OOB IP</div>}
+                          {hasDeployStatus && <div className="py-2 border-r border-zinc-600/40" />}
                           <div className="py-2" />
                         </div>
                         {/* Device rows */}
@@ -1514,21 +1569,52 @@ export const ProvStepper = () => {
                                 )}
                               </div>
                             )}
+                            {hasDeployStatus && (
+                              <div className="flex items-center justify-center gap-1 border-r border-zinc-700/40">
+                                {deviceDeployStatus[index]?.status === "pending" ? (
+                                  <span
+                                    className="w-4 h-4 rounded-full border-2 border-pink-400/40 border-t-pink-400 animate-spin"
+                                    title="Deploying…"
+                                  />
+                                ) : deviceDeployStatus[index]?.status === 1 ? (
+                                  <span className="text-green-400 text-base" title="Deployed">
+                                    ✓
+                                  </span>
+                                ) : deviceDeployStatus[index]?.status === 0 ? (
+                                  <>
+                                    <span className="text-red-400 text-base" title="Deploy failed">
+                                      ✗
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRedeployDevice(index)}
+                                      title="Redeploy this device"
+                                      className="text-pink-400 hover:text-pink-300 transition-colors text-sm leading-none"
+                                    >
+                                      ↻
+                                    </button>
+                                  </>
+                                ) : null}
+                              </div>
+                            )}
                             <div className="flex items-center justify-center">
-                              <Button
-                                onPress={() => handleRemoveDevice(index)}
-                                isIconOnly
-                                variant="light"
-                                size="sm"
+                              {/* Always available, deployed or not — clearing a row after a
+                                  deploy (e.g. to add more and redeploy just those) shouldn't
+                                  require redeploying everything first. */}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDevice(index)}
+                                title="Remove this device"
+                                className="flex items-center"
                               >
-                                <RedTrashIcon size={16} />
-                              </Button>
+                                <RedTrashIcon size={14} />
+                              </button>
                             </div>
                           </div>
                         ))}
                         {/* Ghost rows — shown while dragging to preview new rows */}
-                        {dragState.active && devices.length < 20 && (
-                          Array.from({ length: 20 - devices.length }).map((_, i) => {
+                        {dragState.active && devices.length < 500 && (
+                          Array.from({ length: 500 - devices.length }).map((_, i) => {
                             const ghostIndex = devices.length + i;
                             const isActive = ghostIndex <= dragState.toIndex;
                             const sourceValue = devices[dragState.fromIndex]?.[dragState.field] ?? "";
@@ -1561,6 +1647,7 @@ export const ProvStepper = () => {
                                 </div>
                                 <div className="border-r border-dashed border-zinc-600/30" />
                                 {hasACM && <div className="border-r border-dashed border-zinc-600/30" />}
+                                {hasDeployStatus && <div className="border-r border-dashed border-zinc-600/30" />}
                                 <div />
                               </div>
                             );
@@ -1613,7 +1700,7 @@ export const ProvStepper = () => {
                             </div>
                             {csvLimitWarning && (
                               <p className="text-xs text-yellow-400 mt-1">
-                                CSV truncated to 20 devices (max limit).
+                                CSV truncated to 500 devices (max limit).
                               </p>
                             )}
                             <div className="flex gap-2 mt-2">
@@ -1648,7 +1735,9 @@ export const ProvStepper = () => {
                       isLoading={deployLoading}
                       className="bg-pink-600"
                     >
-                      Deploy Devices to Netbox
+                      {deployLoading && deviceDeployStatus.length > 0
+                        ? `Deploying ${deviceDeployStatus.filter((d) => d.status !== "pending").length}/${deviceDeployStatus.length}…`
+                        : "Deploy Devices to Netbox"}
                     </Button>
                   </div>
                 </div>
