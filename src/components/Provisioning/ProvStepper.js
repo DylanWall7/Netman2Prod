@@ -743,7 +743,7 @@ export const ProvStepper = () => {
     reader.readAsText(file);
   };
 
-  const RedTrashIcon = ({ size = 24, ...props }) => (
+  const RedMinusIcon = ({ size = 24, ...props }) => (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       width={size}
@@ -757,10 +757,8 @@ export const ProvStepper = () => {
       className="cursor-pointer hover:scale-110 transition-transform duration-200"
       {...props}
     >
-      <path d="M3 6h18" />
-      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-      <path d="M10 11v6M14 11v6" />
-      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12h8" />
     </svg>
   );
   const GreenPlusIcon = ({ fill = "currentColor", size = 24, ...props }) => (
@@ -969,13 +967,17 @@ export const ProvStepper = () => {
   // regular (always-present) delete column — kept separate so redeploy never sits next to
   // delete in a way that's easy to misclick.
   const hasDeployStatus = deviceDeployStatus.length > 0;
-  const gridCols = hasACM
+  // Plain inline grid-template-columns instead of a Tailwind arbitrary-value class — this
+  // combination of columns changes at runtime (hasACM/hasDeployStatus), and relying on
+  // Tailwind's build-time class scanner to have already generated every combination it can
+  // take on was the reason widening these wasn't showing up; inline style always applies.
+  const gridColsTemplate = hasACM
     ? hasDeployStatus
-      ? "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_1fr_2.5rem_2.5rem]"
-      : "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_1fr_2.5rem]"
+      ? "2rem 1.5fr 1.5fr 1.5fr 1fr 1fr 5.5rem 5.5rem"
+      : "2rem 1.5fr 1.5fr 1.5fr 1fr 1fr 5.5rem"
     : hasDeployStatus
-    ? "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_2.5rem_2.5rem]"
-    : "grid-cols-[2rem_1.5fr_1.5fr_1.5fr_1fr_2.5rem]";
+    ? "2rem 1.5fr 1.5fr 1.5fr 1fr 5.5rem 5.5rem"
+    : "2rem 1.5fr 1.5fr 1.5fr 1fr 5.5rem";
 
   const isRapType = selectedMobType.includes("RAP");
 
@@ -1450,21 +1452,28 @@ export const ProvStepper = () => {
                     <div className="overflow-x-auto">
                       <div className="overflow-hidden rounded-lg border border-zinc-600/60 min-w-[640px]">
                         {/* Table header */}
-                        <div className={`grid ${gridCols} bg-zinc-800/70 border-b border-zinc-600/60 text-xs uppercase tracking-wider text-zinc-400 font-semibold select-none`}>
+                        <div
+                          className="grid bg-zinc-800/70 border-b border-zinc-600/60 text-xs uppercase tracking-wider text-zinc-400 font-semibold select-none"
+                          style={{ gridTemplateColumns: gridColsTemplate }}
+                        >
                           <div className="flex items-center justify-center py-2 border-r border-zinc-600/40">#</div>
                           <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">Serial</div>
                           <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">Name</div>
                           <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">Model</div>
                           <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">IP</div>
                           {hasACM && <div className="flex items-center px-2 py-2 border-r border-zinc-600/40">OOB IP</div>}
-                          {hasDeployStatus && <div className="py-2 border-r border-zinc-600/40" />}
-                          <div className="py-2" />
+                          {hasDeployStatus && (
+                            <div className="flex items-center justify-center px-2 py-2 border-r border-zinc-600/40 whitespace-nowrap">
+                              Status
+                            </div>
+                          )}
+                          <div className="flex items-center justify-center px-2 py-2 whitespace-nowrap">Remove</div>
                         </div>
                         {/* Device rows */}
                         {devices.map((device, index) => (
                           <div
                             key={index}
-                            className={`grid ${gridCols} border-b border-zinc-700/40 h-10 transition-colors ${
+                            className={`grid border-b border-zinc-700/40 h-10 transition-colors ${
                               dragState.active &&
                               index !== dragState.fromIndex &&
                               index >= Math.min(dragState.fromIndex, Math.min(dragState.toIndex, devices.length - 1)) &&
@@ -1472,6 +1481,7 @@ export const ProvStepper = () => {
                                 ? "bg-pink-400/15 ring-1 ring-inset ring-pink-400"
                                 : "hover:bg-zinc-800/20"
                             }`}
+                            style={{ gridTemplateColumns: gridColsTemplate }}
                             onMouseMove={() => {
                               if (dragState.active && dragState.toIndex !== index) {
                                 setDragState((prev) => ({ ...prev, toIndex: index }));
@@ -1607,7 +1617,7 @@ export const ProvStepper = () => {
                                 title="Remove this device"
                                 className="flex items-center"
                               >
-                                <RedTrashIcon size={14} />
+                                <RedMinusIcon size={14} />
                               </button>
                             </div>
                           </div>
@@ -1624,11 +1634,12 @@ export const ProvStepper = () => {
                             return (
                               <div
                                 key={`ghost-${ghostIndex}`}
-                                className={`grid ${gridCols} border-b border-dashed h-10 transition-colors ${
+                                className={`grid border-b border-dashed h-10 transition-colors ${
                                   isActive
                                     ? "border-pink-400/50 bg-pink-400/10"
                                     : "border-zinc-600/20 opacity-20"
                                 }`}
+                                style={{ gridTemplateColumns: gridColsTemplate }}
                                 onMouseMove={() => {
                                   if (dragState.active) {
                                     setDragState((prev) => ({ ...prev, toIndex: ghostIndex }));
