@@ -23,10 +23,10 @@ import DHCPScopeModal from "../ManageDHCP/DHCPScopeModal";
 import { getMistDevices } from "../SiteDashboard/siteDashboardApi";
 
 export const ProvStepper = () => {
-  const [dhcpSite, setDHCPSite] = React.useState("");
+  const [, setDHCPSite] = React.useState("");
   const [createNetbox, setCreateNetbox] = React.useState("");
-  const { register, handleSubmit } = useForm();
-  const [loading, setLoading] = React.useState(false);
+  const { handleSubmit } = useForm();
+  const [, setLoading] = React.useState(false);
   const [siteCodeSelected, setSiteCodeSelected] = React.useState("");
   const [isSiteFullySelected, setIsSiteFullySelected] = React.useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -54,7 +54,6 @@ export const ProvStepper = () => {
   const [skeletonLoading, setSkeletonLoading] = React.useState(false);
   const [netboxToMistLoading, setNetboxToMistLoading] = React.useState(false);
   const [availableIps, setAvailableIps] = useState([]);
-  const [ipIndex, setIpIndex] = useState(0);
   const [nextIpLoading, setNextIpLoading] = React.useState(false);
   const [logsCopied, setLogsCopied] = React.useState(false);
   const [logFilter, setLogFilter] = React.useState(null);
@@ -73,7 +72,7 @@ export const ProvStepper = () => {
   const [deviceProfilesError, setDeviceProfilesError] = React.useState(null);
   const [deviceProfileSelections, setDeviceProfileSelections] = React.useState({});
 
-  const [fillIpData, setFillIpData] = useState({
+  const [, setFillIpData] = useState({
     status: null,
     log: [],
   });
@@ -87,12 +86,7 @@ export const ProvStepper = () => {
       siteDHCP: "",
     },
   });
-  const {
-    register: registerMist,
-    handleSubmit: handleSubmitMist,
-    setValue: setValueMist,
-    formState: { touchedMist },
-  } = useForm({
+  const { register: registerMist } = useForm({
     defaultValues: {
       siteMist: "",
     },

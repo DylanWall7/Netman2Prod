@@ -2210,7 +2210,7 @@ export default function SiteDashboardPage() {
   const [snowLocationError, setSnowLocationError] = useState(null);
   // A different record than snowLocation above — fetched only for the contact fields that one doesn't carry.
   const [locationRecord, setLocationRecord] = useState(null);
-  const [locationRecordLoading, setLocationRecordLoading] = useState(true);
+  const [, setLocationRecordLoading] = useState(true);
   const [dhcpScopes, setDhcpScopes] = useState([]);
   const [dhcpLoading, setDhcpLoading] = useState(true);
   const [dhcpError, setDhcpError] = useState(null);

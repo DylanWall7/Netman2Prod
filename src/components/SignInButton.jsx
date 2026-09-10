@@ -1,7 +1,7 @@
 import React from "react";
 import { useMsal } from "@azure/msal-react";
 import { loginRequest } from "../authConfig";
-import { Button, ButtonGroup } from "@nextui-org/react";
+import { Button } from "@nextui-org/react";
 function handleLogin(instance) {
   instance
     .loginRedirect({ ...loginRequest, redirectStartPage: window.location.href })

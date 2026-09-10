@@ -13,7 +13,7 @@ import {
   useMsal,
 } from "@azure/msal-react";
 import { InteractionStatus } from "@azure/msal-browser";
-import { GizmoRequest, loginRequest } from "./authConfig";
+import { loginRequest } from "./authConfig";
 
 import { DemobeStepper } from "./components/Demobe/DemobeStepper";
 import UserProfile from "./components/User/UserProfile";
@@ -28,7 +28,6 @@ import NetworkSearchHome from "./components/NetworkSearch/NetworkSearchHome";
 import NetworkSearch from "./components/NetworkSearch/NetworkSearch";
 import DeviceOutputsBySite from "./components/NetworkSearch/DeviceOutputsBySite";
 import TopologyView from "./components/Topology/topologyView";
-import SiteDiagramsView from "./components/SiteDiagrams/SiteDiagramsView";
 import InventoryScanPage from "./components/InventoryScan/InventoryScanPage";
 import DepotManagerHome from "./components/DepotOrders/DepotManagerHome";
 import DashboardPage from "./components/DepotOrders/DashboardPage";

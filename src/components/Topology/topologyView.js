@@ -27,23 +27,6 @@ const normMac = (mac) => (mac ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
 
 const PortLabelsCtx = React.createContext(false);
 
-// Ubiquiti OUI prefixes — Nanobeams use CDP not LLDP, so neighbor_system_name is empty but neighbor_mac still carries a Ubiquiti OUI from the CDP frame
-const UBIQUITI_OUIS = new Set([
-  "24a43c",
-  "788a20",
-  "dc9fdb",
-  "18e829",
-  "44d9e7",
-  "70a741",
-  "e063da",
-  "802aa8",
-  "f09fc2",
-  "b4fbe4",
-  "68722d",
-  "00272d",
-  "04180d",
-]);
-
 function formatUptime(seconds) {
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);

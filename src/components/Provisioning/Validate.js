@@ -10,8 +10,8 @@ import { GizmoRequest } from "../../authConfig";
 export const Validate = () => {
   const [siteName, setSiteName] = React.useState("");
   const [validateLoading, setValidateLoading] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
+  const [, setIsLoading] = React.useState(false);
+  const [, setLoading] = React.useState(false);
   const [validation, setValidation] = useState([]);
   const ValidateURL = `https://${process.env.REACT_APP_API_BASEURL}/api/validation/netboxsite/${siteName}`;
 
