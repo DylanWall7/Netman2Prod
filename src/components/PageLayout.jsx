@@ -147,7 +147,7 @@ export const PageLayout = (props) => {
     },
     {
       to: "/managedevices",
-      label: "Manage Devices",
+      label: "Manage Netbox",
       description: "Manage devices in Netbox.",
       show: isEngineer,
       external: false,

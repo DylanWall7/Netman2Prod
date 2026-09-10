@@ -20,6 +20,7 @@ import {
   getScopesForSite,
 } from "../ManageDHCP/dhcpApi";
 import DHCPScopeModal from "../ManageDHCP/DHCPScopeModal";
+import { getMistDevices } from "../SiteDashboard/siteDashboardApi";
 
 export const ProvStepper = () => {
   const [dhcpSite, setDHCPSite] = React.useState("");
@@ -46,6 +47,7 @@ export const ProvStepper = () => {
   const [modelList, setModelList] = React.useState([]);
   const [mobTypesList, setMobTypesList] = React.useState([]);
   const [mobTypesLoading, setMobTypesLoading] = React.useState(false);
+  const [mobTypesError, setMobTypesError] = React.useState(null);
   const [selectedMobType, setSelectedMobType] = React.useState("");
   const [netboxLoading, setNetboxLoading] = useState(false);
   const [template, setTemplate] = React.useState(new Set([]));
@@ -58,6 +60,18 @@ export const ProvStepper = () => {
   const [logFilter, setLogFilter] = React.useState(null);
   const [resultKey, setResultKey] = React.useState(0);
   const [csvLimitWarning, setCsvLimitWarning] = React.useState(false);
+  const [mistDevices, setMistDevices] = React.useState([]);
+  const [mistDeviceSite, setMistDeviceSite] = React.useState(null);
+  const [mistLiveDevices, setMistLiveDevices] = React.useState([]);
+  const [mistDevicesLoading, setMistDevicesLoading] = React.useState(false);
+  const [mistDevicesError, setMistDevicesError] = React.useState(null);
+  const [selectedMistKeys, setSelectedMistKeys] = React.useState(() => new Set());
+  const [mistPushStatus, setMistPushStatus] = React.useState({});
+  const [mistPushRunning, setMistPushRunning] = React.useState(false);
+  const [deviceProfiles, setDeviceProfiles] = React.useState([]);
+  const [deviceProfilesLoading, setDeviceProfilesLoading] = React.useState(false);
+  const [deviceProfilesError, setDeviceProfilesError] = React.useState(null);
+  const [deviceProfileSelections, setDeviceProfileSelections] = React.useState({});
 
   const [fillIpData, setFillIpData] = useState({
     status: null,
@@ -92,6 +106,9 @@ export const ProvStepper = () => {
   const netboxtomistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/devices`;
   const ModelURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/devicetypes`;
   const MobTypesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/mobtypes`;
+  const NetboxDevicesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/management/netbox/${siteCodeSelected}/devices/`;
+  const DeviceProfilesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/deviceprofiles`;
+  const PushDeviceToMistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/device`;
 
   const { instance, accounts } = useMsal();
   const request = {
@@ -128,10 +145,16 @@ export const ProvStepper = () => {
     setTemplate(new Set([]));
     setAvailableIps([]);
     setSelectedMobType("");
-    setMobTypesList([]);
     setDhcpScopes([]);
     setDhcpScopesError(null);
     setDhcpSiteNotFound(false);
+    setMistDevices([]);
+    setMistDeviceSite(null);
+    setMistLiveDevices([]);
+    setMistDevicesError(null);
+    setSelectedMistKeys(new Set());
+    setMistPushStatus({});
+    setDeviceProfileSelections({});
   }
 
   const NETBOX_STEP = 1;
@@ -302,6 +325,7 @@ export const ProvStepper = () => {
 
     return fetch(url, options)
       .then(async (response) => {
+        if (!response.ok) throw new Error(`Failed to load sites (${response.status})`);
         let text = await response.json();
 
         setSiteList(text);
@@ -321,7 +345,8 @@ export const ProvStepper = () => {
 
       .catch((error) => {
         console.error("Error:", error);
-        setLoading(false);
+        setIsLoading(false);
+        setSiteLoadError(error.message || "Failed to load sites — please try again.");
       });
   }
 
@@ -338,8 +363,10 @@ export const ProvStepper = () => {
     };
 
     setMobTypesLoading(true);
+    setMobTypesError(null);
     return fetch(MobTypesURL, options)
       .then(async (response) => {
+        if (!response.ok) throw new Error(`Failed to load mob types (${response.status})`);
         let text = await response.json();
 
         setMobTypesList(text);
@@ -348,6 +375,7 @@ export const ProvStepper = () => {
       .catch((error) => {
         console.error("Error fetching mob types:", error);
         setMobTypesLoading(false);
+        setMobTypesError(error.message || "Failed to load mob types.");
       });
   }
 
@@ -358,12 +386,11 @@ export const ProvStepper = () => {
   }, [siteCodeSelected]);
 
   useEffect(() => {
-    if (!isSiteFullySelected) return;
     (async () => {
       const token = await getToken();
       GetMobTypes({ token });
     })();
-  }, [isSiteFullySelected]);
+  }, []);
 
   async function CreateNetbox({ token }) {
     setPostStatus("");
@@ -398,7 +425,11 @@ export const ProvStepper = () => {
         setLoading(false);
         setNetboxLoading(false);
         setSkeletonLoading(false);
-        recordStepRun(NETBOX_STEP, 0, [{ msg: error.message || "Create Netbox site failed.", status: 0 }]);
+        const errLog = [{ msg: error.message || "Create Netbox site failed.", status: 0 }];
+        setCreateNetbox(errLog);
+        setPostStatus(0);
+        setResultKey((k) => k + 1);
+        recordStepRun(NETBOX_STEP, 0, errLog);
       });
   }
   async function CreateMistSite({ token }) {
@@ -435,7 +466,11 @@ export const ProvStepper = () => {
         setMistLoading(false);
         setSkeletonLoading(false);
         setLoading(false);
-        recordStepRun(MIST_SITE_STEP, 0, [{ msg: error.message || "Create Mist site failed.", status: 0 }]);
+        const errLog = [{ msg: error.message || "Create Mist site failed.", status: 0 }];
+        setCreateNetbox(errLog);
+        setPostStatus(0);
+        setResultKey((k) => k + 1);
+        recordStepRun(MIST_SITE_STEP, 0, errLog);
       });
   }
   async function DeplyDevicetoNetbox({ token }) {
@@ -604,6 +639,9 @@ export const ProvStepper = () => {
 
   const handleDeployScope = async (scope) => {
     const result = await deployDhcpScope(scope);
+    setCreateNetbox((prev) => [...(Array.isArray(prev) ? prev : []), result]);
+    setPostStatus(result.status === 0 ? 0 : 1);
+    setResultKey((k) => k + 1);
     recordStepRun(DHCP_STEP, result.status, [result]);
   };
 
@@ -617,6 +655,9 @@ export const ProvStepper = () => {
     const results = await Promise.all(pending.map((scope) => deployDhcpScope(scope)));
     setDeployAllLoading(false);
     const overallStatus = results.some((r) => r.status === 0) ? 0 : 1;
+    setCreateNetbox((prev) => [...(Array.isArray(prev) ? prev : []), ...results]);
+    setPostStatus(overallStatus);
+    setResultKey((k) => k + 1);
     recordStepRun(DHCP_STEP, overallStatus, results);
   };
 
@@ -654,8 +695,204 @@ export const ProvStepper = () => {
         setNetboxToMistLoading(false);
         setSkeletonLoading(false);
         recordStepRun(PUSH_MIST_STEP, 0, [{ msg: error.message || "Push to Mist failed.", status: 0 }]);
+      })
+      .finally(() => {
+        loadMistDeviceStatus();
       });
   }
+
+  async function loadMistDeviceStatus() {
+    if (!siteCodeSelected) return;
+    setMistDevicesLoading(true);
+    setMistDevicesError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(NetboxDevicesURL, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) throw new Error(`Failed to load devices from Netbox (${res.status})`);
+      const response = await res.json();
+      const dataArray = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.data)
+        ? response.data
+        : [];
+      const siteItem = dataArray[0];
+      const mistSite = siteItem?.data?.mistsite || null;
+      setMistDeviceSite(mistSite);
+      setMistDevices(siteItem?.data?.devices || []);
+      setSelectedMistKeys(new Set());
+      setMistPushStatus({});
+
+      // Netbox's own custom.mistdevice/mistdevicesite fields lag behind a real push (they
+      // only reflect Netbox's own sync with Mist, which our push endpoint doesn't trigger) —
+      // same as the Site Dashboard, the live Mist devicesummary list is the actual source of
+      // truth for whether a device is in Mist.
+      if (mistSite?.id) {
+        try {
+          const liveList = await getMistDevices(mistSite.id, token);
+          setMistLiveDevices(liveList);
+        } catch (err) {
+          setMistLiveDevices([]);
+        }
+      } else {
+        setMistLiveDevices([]);
+      }
+    } catch (err) {
+      setMistDevicesError(err.message || "Failed to load devices from Netbox.");
+    } finally {
+      setMistDevicesLoading(false);
+    }
+  }
+
+  async function loadDeviceProfiles() {
+    setDeviceProfilesLoading(true);
+    setDeviceProfilesError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(DeviceProfilesURL, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) throw new Error(`Failed to load device profiles (${res.status})`);
+      const response = await res.json();
+      const dataArray = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.data)
+        ? response.data
+        : [];
+      setDeviceProfiles(dataArray);
+    } catch (err) {
+      setDeviceProfilesError(err.message || "Failed to load device profiles.");
+    } finally {
+      setDeviceProfilesLoading(false);
+    }
+  }
+
+  const notInMistDevices = React.useMemo(() => {
+    // Name is the only field consistently present on both sides — same merge key the Site
+    // Dashboard uses against this same live Mist devicesummary list.
+    const liveMistNames = new Set(
+      mistLiveDevices.map((d) => (d.name || "").trim().toLowerCase()).filter(Boolean)
+    );
+    return mistDevices.filter((device) => {
+      const name = (device.name || "").trim().toLowerCase();
+      return !name || !liveMistNames.has(name);
+    });
+  }, [mistDevices, mistLiveDevices]);
+
+  const getMistDeviceKey = (device, idx) => device.serial || device.name || `idx-${idx}`;
+
+  // AP12 is the RAP hardware model — only these devices get claimed into Mist via a
+  // device profile, regardless of the site's overall mob type.
+  const isRapDevice = (device) => {
+    const model = device.device_type?.model || device.device_type?.display || "";
+    return model.toUpperCase().includes("AP12");
+  };
+
+  const toggleMistDeviceSelected = (key) => {
+    setSelectedMistKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleSelectAllMistDevices = () => {
+    setSelectedMistKeys((prev) => {
+      if (prev.size === notInMistDevices.length) return new Set();
+      return new Set(notInMistDevices.map((device, idx) => getMistDeviceKey(device, idx)));
+    });
+  };
+
+  const missingRequiredProfile = React.useMemo(() => {
+    return notInMistDevices.some((device, idx) => {
+      const key = getMistDeviceKey(device, idx);
+      if (!selectedMistKeys.has(key)) return false;
+      return isRapDevice(device) && !deviceProfileSelections[key];
+    });
+  }, [notInMistDevices, selectedMistKeys, deviceProfileSelections]);
+
+  const pushDeviceToMist = async (device, key) => {
+    setMistPushStatus((prev) => ({ ...prev, [key]: "pending" }));
+
+    const body = isRapDevice(device)
+      ? {
+          name: device.name,
+          serial: device.serial,
+          deviceprofile_id: deviceProfileSelections[key],
+        }
+      : {
+          site_code: siteCodeSelected,
+          mist_site_id: mistDeviceSite?.id ?? null,
+          mob_type: selectedMobType,
+          name: device.name,
+          serial: device.serial,
+        };
+
+    const label = device.name || device.serial || "Device";
+    try {
+      const token = await getToken();
+      const response = await fetch(PushDeviceToMistURL, {
+        method: "POST",
+        body: JSON.stringify([body]),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) throw new Error(`Push to Mist failed (${response.status})`);
+      const data = await response.json();
+      const log = data?.log?.length ? data.log : [{ msg: `${label}: pushed to Mist.`, status: 1 }];
+      const status = data?.status ?? (log.some((m) => m.status === 0) ? 0 : 1);
+
+      setMistPushStatus((prev) => ({ ...prev, [key]: status === 0 ? "failed" : "done" }));
+      return { status, log };
+    } catch (err) {
+      const entry = { msg: `${label}: ${err.message || "Push to Mist failed."}`, status: 0 };
+      setMistPushStatus((prev) => ({ ...prev, [key]: "failed" }));
+      return { status: 0, log: [entry] };
+    }
+  };
+
+  const handleRetryMistPush = async (device, idx) => {
+    const result = await pushDeviceToMist(device, getMistDeviceKey(device, idx));
+    setCreateNetbox(result.log);
+    setPostStatus(result.status);
+    setResultKey((k) => k + 1);
+    recordStepRun(PUSH_MIST_STEP, result.status, result.log);
+  };
+
+  const handlePushAllToMist = async () => {
+    const targets = notInMistDevices.filter((device, idx) =>
+      selectedMistKeys.has(getMistDeviceKey(device, idx))
+    );
+    if (targets.length === 0) return;
+
+    setMistPushRunning(true);
+    // All at once, not one at a time — pushDeviceToMist's own mistPushStatus updates are a
+    // functional setState call, so they compose correctly regardless of which request
+    // resolves first; the aggregate result below is computed once everything settles.
+    const results = await Promise.all(
+      targets.map((device) => pushDeviceToMist(device, getMistDeviceKey(device, notInMistDevices.indexOf(device))))
+    );
+    setMistPushRunning(false);
+
+    const overallStatus = results.some((r) => r.status === 0) ? 0 : 1;
+    const allLogs = results.flatMap((r) => r.log);
+    setCreateNetbox(allLogs);
+    setPostStatus(overallStatus);
+    setResultKey((k) => k + 1);
+    recordStepRun(PUSH_MIST_STEP, overallStatus, allLogs);
+  };
 
   async function GetAvailableIps({ token }) {
     const headers = new Headers();
@@ -668,6 +905,7 @@ export const ProvStepper = () => {
 
     try {
       const response = await fetch(nextIPURL, options);
+      if (!response.ok) throw new Error(`Failed to fetch available IPs (${response.status})`);
       const nextipList = await response.json();
 
       setNextIpLoading(false);
@@ -681,7 +919,7 @@ export const ProvStepper = () => {
       setLoading(false);
       return {
         status: 0,
-        log: [{ msg: "Failed to fetch available IPs" }],
+        log: [{ msg: error.message || "Failed to fetch available IPs", status: 0 }],
         data: { routers: [], switches: [] },
       };
     }
@@ -856,7 +1094,7 @@ export const ProvStepper = () => {
   };
 
   const handleAddDevice = () => {
-    if (devices?.length >= 20) return;
+    if (devices?.length >= 500) return;
     setDevices([
       ...devices,
       { serial: "", name: "", model: "", ip: "", oob_ip: "" },
@@ -896,7 +1134,7 @@ export const ProvStepper = () => {
           const updated = [...prev];
           const sourceValue = updated[fromIndex]?.[field] ?? "";
           const existingEnd = Math.min(end, prev.length - 1);
-          const newRowCount = Math.min(Math.max(0, end - (prev.length - 1)), 20 - prev.length);
+          const newRowCount = Math.min(Math.max(0, end - (prev.length - 1)), 500 - prev.length);
           for (let i = start; i <= existingEnd; i++) {
             if (i === fromIndex) continue;
             if (field === "name") {
@@ -998,6 +1236,22 @@ export const ProvStepper = () => {
   const [currentStep, setCurrentStep] = React.useState(0);
   const [showPushMistConfirm, setShowPushMistConfirm] = React.useState(false);
 
+  useEffect(() => {
+    if (currentStep === PUSH_MIST_STEP && isSiteFullySelected) {
+      loadMistDeviceStatus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, isSiteFullySelected]);
+
+  useEffect(() => {
+    // Fetched regardless of the site's mob type — whether a device needs a profile is a
+    // per-device (AP12 model) thing, not a per-site one.
+    if (currentStep === PUSH_MIST_STEP) {
+      loadDeviceProfiles();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep]);
+
   const copySummaryText = () => {
     const lines = [
       `Provisioning Summary — ${siteCodeSelected}`,
@@ -1037,7 +1291,7 @@ export const ProvStepper = () => {
     setTimeout(() => setSummaryCopied(false), 2000);
   };
 
-  const isStepDisabled = (index) => index !== 0 && !isSiteFullySelected;
+  const isStepDisabled = (index) => index !== 0 && (!isSiteFullySelected || !selectedMobType);
 
   const goToStep = (index) => {
     if (isStepDisabled(index)) return;
@@ -1059,7 +1313,7 @@ export const ProvStepper = () => {
   };
   const nextDisabled =
     currentStep === maxVisibleStep ||
-    (currentStep === 0 && !isSiteFullySelected);
+    (currentStep === 0 && (!isSiteFullySelected || !selectedMobType));
 
   return (
     <>
@@ -1123,9 +1377,9 @@ export const ProvStepper = () => {
 
         <div
           className={`w-full ${
-            currentStep === DEVICE_STEP || currentStep === DHCP_STEP
+            currentStep === DEVICE_STEP || currentStep === DHCP_STEP || currentStep === PUSH_MIST_STEP
               ? "max-w-5xl"
-              : currentStep === NETBOX_STEP || currentStep === SUMMARY_STEP
+              : currentStep === 0 || currentStep === NETBOX_STEP || currentStep === SUMMARY_STEP
               ? "max-w-2xl"
               : "max-w-xl"
           } bg-pink-700 border border-pink-200/20 rounded-2xl shadow-lg p-6 text-center`}
@@ -1147,7 +1401,7 @@ export const ProvStepper = () => {
                   isLoading={isLoading}
                   selectedKey={siteCodeSelected || null}
                   onSelectionChange={(key) => {
-                    if ((key ?? "") !== siteCodeSelected) resetForNewSite();
+                    if (siteCodeSelected && (key ?? "") !== siteCodeSelected) resetForNewSite();
                     setSiteCodeSelected(key ?? "");
                     setIsSiteFullySelected(!!key);
                   }}
@@ -1171,6 +1425,44 @@ export const ProvStepper = () => {
                   Selected: <span className="font-mono text-pink-400">{siteCodeSelected}</span>
                 </p>
               )}
+              <div className="p-2 text-left dark text-foreground mt-2">
+                <p className="text-xs text-pink-400 uppercase tracking-wider font-medium mb-2">
+                  Mob Type <span className="text-red-400">*</span>
+                </p>
+                {mobTypesLoading ? (
+                  <div className="flex flex-col gap-2">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="h-5 bg-pink-300/40 rounded animate-pulse w-2/3" />
+                    ))}
+                  </div>
+                ) : mobTypesError ? (
+                  <div>
+                    <p className="text-xs text-red-400">{mobTypesError}</p>
+                    <button
+                      onClick={() => getToken().then((token) => GetMobTypes({ token }))}
+                      className="mt-1 text-xs font-semibold text-red-300 underline hover:text-red-100 transition-colors"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : mobTypesList.length > 0 ? (
+                  <div className="flex flex-row flex-wrap gap-x-4 gap-y-1">
+                    {mobTypesList.map((mobType) => (
+                      <Checkbox
+                        key={mobType}
+                        size="sm"
+                        isSelected={selectedMobType === mobType}
+                        onValueChange={(checked) => setSelectedMobType(checked ? mobType : "")}
+                        classNames={{ label: "text-pink-200 text-sm" }}
+                      >
+                        {mobType}
+                      </Checkbox>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-pink-200/50">No mob types available.</p>
+                )}
+              </div>
             </div>
           )}
 
@@ -1178,7 +1470,7 @@ export const ProvStepper = () => {
             <div className="text-lg">
               <form className="w-full flex justify-center">
                 <div className="flex flex-col w-full">
-                  <div className="p-2 dark text-foreground flex justify-center">
+                  <div className="p-2 dark text-foreground flex justify-center gap-2">
                     <Input
                       size="sm"
                       label="Selected Site"
@@ -1187,34 +1479,14 @@ export const ProvStepper = () => {
                       value={siteCodeSelected}
                       isReadOnly
                     />
-                  </div>
-                  <div className="p-2 text-left dark text-foreground">
-                    <p className="text-xs text-pink-400 uppercase tracking-wider font-medium mb-2">
-                      Mob Type <span className="text-red-400">*</span>
-                    </p>
-                    {mobTypesLoading ? (
-                      <div className="flex flex-col gap-2">
-                        {[...Array(3)].map((_, i) => (
-                          <div key={i} className="h-5 bg-pink-300/40 rounded animate-pulse w-2/3" />
-                        ))}
-                      </div>
-                    ) : mobTypesList.length > 0 ? (
-                      <div className="flex flex-row flex-wrap gap-x-4 gap-y-1">
-                        {mobTypesList.map((mobType) => (
-                          <Checkbox
-                            key={mobType}
-                            size="sm"
-                            isSelected={selectedMobType === mobType}
-                            onValueChange={(checked) => setSelectedMobType(checked ? mobType : "")}
-                            classNames={{ label: "text-pink-200 text-sm" }}
-                          >
-                            {mobType}
-                          </Checkbox>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-pink-200/50">No mob types available.</p>
-                    )}
+                    <Input
+                      size="sm"
+                      label="Mob Type"
+                      className="max-w-[200px]"
+                      variant="bordered"
+                      value={selectedMobType}
+                      isReadOnly
+                    />
                   </div>
                   <div className="p-2 flex flex-col items-end gap-1">
                     <Button
@@ -1599,7 +1871,7 @@ export const ProvStepper = () => {
                                       type="button"
                                       onClick={() => handleRedeployDevice(index)}
                                       title="Redeploy this device"
-                                      className="text-pink-400 hover:text-pink-300 transition-colors text-sm leading-none"
+                                      className="appearance-none bg-transparent border-0 p-0 text-pink-400 hover:text-pink-500 transition-colors text-sm leading-none"
                                     >
                                       ↻
                                     </button>
@@ -1758,31 +2030,181 @@ export const ProvStepper = () => {
 
           {currentStep === 5 && (
             <div className="text-lg">
-              <form className="w-full flex justify-center">
-                <div className="flex flex-col w-full">
-                  <div className="p-2 dark text-foreground bg-transparent flex justify-center">
-                    <Input
-                      size="sm"
-                      label="Selected Site"
-                      className="max-w-[200px]"
-                      placeholder="Site Description"
-                      variant="bordered"
-                      value={siteCodeSelected}
-                      isDisabled={!isSiteFullySelected}
-                    />
+              <div className="flex flex-col w-full">
+                <div className="p-2 dark text-foreground bg-transparent flex justify-center">
+                  <Input
+                    size="sm"
+                    label="Selected Site"
+                    className="max-w-[200px]"
+                    placeholder="Site Description"
+                    variant="bordered"
+                    value={siteCodeSelected}
+                    isDisabled={!isSiteFullySelected}
+                  />
+                </div>
+
+                <div className="p-2 text-left">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-pink-400 uppercase tracking-wider font-medium">
+                      Devices Not in Mist
+                    </p>
+                    {!mistDevicesLoading && notInMistDevices.length > 0 && (
+                      <Checkbox
+                        size="sm"
+                        isSelected={selectedMistKeys.size === notInMistDevices.length}
+                        isIndeterminate={
+                          selectedMistKeys.size > 0 && selectedMistKeys.size < notInMistDevices.length
+                        }
+                        onValueChange={toggleSelectAllMistDevices}
+                        classNames={{ label: "text-pink-200 text-xs" }}
+                      >
+                        Select All
+                      </Checkbox>
+                    )}
                   </div>
+                  {mistDevicesLoading ? (
+                    <div className="flex flex-col gap-2">
+                      {[...Array(3)].map((_, i) => (
+                        <div key={i} className="h-6 bg-pink-300/40 rounded animate-pulse w-full" />
+                      ))}
+                    </div>
+                  ) : mistDevicesError ? (
+                    <p className="text-xs text-red-400">{mistDevicesError}</p>
+                  ) : notInMistDevices.length > 0 ? (
+                    <div className="rounded-lg border border-pink-200/15 divide-y divide-pink-200/10 max-h-[320px] overflow-y-auto">
+                      {notInMistDevices.map((device, idx) => {
+                        const key = getMistDeviceKey(device, idx);
+                        const pushStatus = mistPushStatus[key];
+                        const needsProfile = isRapDevice(device);
+                        return (
+                          <div key={key} className="px-3 py-2 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Checkbox
+                                  size="sm"
+                                  isSelected={selectedMistKeys.has(key)}
+                                  onValueChange={() => toggleMistDeviceSelected(key)}
+                                  isDisabled={mistPushRunning}
+                                />
+                                <div className="flex flex-col text-left min-w-0">
+                                  <span className="text-pink-400 font-medium truncate">
+                                    {device.name || "Unnamed device"}
+                                  </span>
+                                  <span className="text-xs text-pink-400/70 truncate">
+                                    {device.device_type?.display || "—"}
+                                    {device.serial ? ` · ${device.serial}` : ""}
+                                  </span>
+                                </div>
+                              </div>
+                              {pushStatus === "pending" ? (
+                                <div
+                                  className="w-4 h-4 rounded-full border-2 border-pink-400/40 border-t-pink-400 animate-spin shrink-0"
+                                  title="Pushing…"
+                                />
+                              ) : pushStatus === "done" ? (
+                                <span className="text-green-400 text-base shrink-0" title="Pushed to Mist">
+                                  ✓
+                                </span>
+                              ) : pushStatus === "failed" ? (
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <span className="text-red-400 text-base" title="Push failed">
+                                    ✗
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRetryMistPush(device, idx)}
+                                    title="Retry push to Mist"
+                                    className="appearance-none bg-transparent border-0 p-0 text-pink-400 hover:text-pink-500 transition-colors text-sm leading-none"
+                                  >
+                                    ↻
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-xs font-bold text-red-500 shrink-0">✗ Not in Mist</span>
+                              )}
+                            </div>
+                            {needsProfile && (
+                              <div className="mt-1.5 pl-7 dark text-foreground">
+                                {deviceProfilesLoading ? (
+                                  <div className="h-8 bg-pink-300/40 rounded animate-pulse w-full max-w-md" />
+                                ) : deviceProfilesError ? (
+                                  <div>
+                                    <p className="text-xs text-red-400">{deviceProfilesError}</p>
+                                    <button
+                                      onClick={loadDeviceProfiles}
+                                      className="text-xs font-semibold text-red-300 underline hover:text-red-100 transition-colors"
+                                    >
+                                      Try again
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <Select
+                                    size="sm"
+                                    isRequired
+                                    label="Device Profile (AP12)"
+                                    placeholder="Select a device profile"
+                                    selectedKeys={
+                                      deviceProfileSelections[key] ? [deviceProfileSelections[key]] : []
+                                    }
+                                    onSelectionChange={(keys) =>
+                                      setDeviceProfileSelections((prev) => ({
+                                        ...prev,
+                                        [key]: [...keys][0] || "",
+                                      }))
+                                    }
+                                    isDisabled={mistPushRunning}
+                                    className="max-w-md w-full text-pink-400"
+                                    variant="bordered"
+                                  >
+                                    {deviceProfiles.map((profile) => (
+                                      <SelectItem key={profile.id}>{profile.name}</SelectItem>
+                                    ))}
+                                  </Select>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : mistDevices.length > 0 ? (
+                    <p className="text-xs text-green-400">
+                      ✓ All {mistDevices.length} devices are already in Mist.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-pink-200/50">No devices found in Netbox for this site.</p>
+                  )}
+                </div>
+
+                <div className="p-2 flex justify-end">
+                  <Button
+                    size="sm"
+                    isLoading={mistPushRunning}
+                    isDisabled={
+                      mistDevicesLoading ||
+                      selectedMistKeys.size === 0 ||
+                      missingRequiredProfile
+                    }
+                    onPress={handlePushAllToMist}
+                    className="bg-pink-600"
+                  >
+                    {selectedMistKeys.size === 1 ? "Push Device to Mist" : "Push Devices to Mist"}
+                  </Button>
+                </div>
+                {false && (
                   <div className="p-2 flex justify-end">
                     <Button
                       size="sm"
                       isLoading={netboxToMistLoading}
+                      isDisabled={mistDevicesLoading || notInMistDevices.length === 0}
                       onPress={() => setShowPushMistConfirm(true)}
                       className="bg-pink-600"
                     >
                       Push Devices to Mist
                     </Button>
                   </div>
-                </div>
-              </form>
+                )}
+              </div>
             </div>
           )}
 
@@ -1921,6 +2343,11 @@ export const ProvStepper = () => {
           {currentStep === 0 && !isSiteFullySelected && (
             <p className="text-xs text-pink-200/50 text-center mt-2">
               Select a site to continue.
+            </p>
+          )}
+          {currentStep === 0 && isSiteFullySelected && !selectedMobType && (
+            <p className="text-xs text-pink-200/50 text-center mt-2">
+              Select a mob type to continue.
             </p>
           )}
         </div>
