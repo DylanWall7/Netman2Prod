@@ -122,11 +122,7 @@ export const ProvStepper = () => {
       const res = await instance.acquireTokenSilent(request);
       return res.accessToken;
     } catch {
-      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so
-      // a popup just loads the whole app inside itself instead of closing. Redirect reuses
-      // the already-registered URI (no Azure changes needed) and navigates the tab away, so
-      // this never meaningfully returns — the user lands back freshly authenticated and
-      // just retries whatever they were doing.
+      // Full-page redirect, not a popup — a popup would just reload the whole SPA inside itself.
       await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
       return null;
     }
@@ -479,9 +475,7 @@ export const ProvStepper = () => {
     headers.append("Authorization", `Bearer ${token}`);
     headers.append("Content-Type", "application/json");
 
-    // One request per device, fired concurrently, instead of a single bulk POST — faster, and
-    // each device's own result updates deviceDeployStatus as soon as it lands rather than
-    // everything appearing at once after the whole batch finishes.
+    // One request per device, concurrent — each updates status as soon as it lands.
     const results = await Promise.all(
       devices.map(async (device, index) => {
         try {
@@ -515,7 +509,7 @@ export const ProvStepper = () => {
     recordStepRun(DEVICE_STEP, overallStatus, allLogs);
   }
 
-  // Re-sends just the one device that failed, instead of re-running the whole batch.
+  // Re-sends only the failed device, not the whole batch.
   const handleRedeployDevice = async (index) => {
     const device = devices[index];
     if (!device) return;
@@ -573,9 +567,7 @@ export const ProvStepper = () => {
         setValidateLoading(false);
       });
   }
-  // Scopes come from Netbox (see getScopesForSite) — Gizmo rows are dropped since new sites
-  // are only ever deployed to Kea from here. hasKea tells each row apart from a not-yet-
-  // deployed one.
+  // New sites only ever deploy to Kea from here — hasKea marks already-deployed rows.
   const loadDhcpScopes = async (site) => {
     if (!site) return;
     setDhcpScopesLoading(true);
@@ -584,9 +576,7 @@ export const ProvStepper = () => {
     try {
       const token = await getToken();
       if (!token) return;
-      // Gizmo rows are still shown (a real scope deployed there is real, even though this
-      // wizard has no Gizmo deploy/manage action) — only actually-not-deployed rows offer
-      // Deploy, via scope.status below, so nothing existing gets hidden or mislabeled.
+      // Gizmo rows show up too, just without a Deploy button — this wizard doesn't manage Gizmo.
       const scopes = await getScopesForSite(site, token);
       setDhcpScopes(scopes);
     } catch (err) {
@@ -606,8 +596,7 @@ export const ProvStepper = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSiteFullySelected]);
 
-  // Same generate-params-then-create flow DHCPManager uses, minus its edit-the-range modal —
-  // the generated pool is deployed as-is, one click per scope (or via Deploy All below).
+  // Same generate-then-create flow as DHCPManager, minus the range-edit modal.
   const deployDhcpScope = async (scope) => {
     setDeployingScopeIds((prev) => new Set(prev).add(scope.id));
     let result;
@@ -649,9 +638,7 @@ export const ProvStepper = () => {
     const pending = dhcpScopes.filter((s) => s.status === "not_deployed" && s.netboxPrefixId);
     if (pending.length === 0) return;
     setDeployAllLoading(true);
-    // All at once, not one at a time — deployDhcpScope's own state updates (deployingScopeIds,
-    // dhcpScopes) are both functional setState calls, so they compose correctly regardless of
-    // which of these resolves first.
+    // Parallel, not sequential — deployDhcpScope's own state updates are functional setState.
     const results = await Promise.all(pending.map((scope) => deployDhcpScope(scope)));
     setDeployAllLoading(false);
     const overallStatus = results.some((r) => r.status === 0) ? 0 : 1;
@@ -728,10 +715,7 @@ export const ProvStepper = () => {
       setSelectedMistKeys(new Set());
       setMistPushStatus({});
 
-      // Netbox's own custom.mistdevice/mistdevicesite fields lag behind a real push (they
-      // only reflect Netbox's own sync with Mist, which our push endpoint doesn't trigger) —
-      // same as the Site Dashboard, the live Mist devicesummary list is the actual source of
-      // truth for whether a device is in Mist.
+      // Netbox's custom.mistdevice fields lag — the live Mist devicesummary list is authoritative.
       if (mistSite?.id) {
         try {
           const liveList = await getMistDevices(mistSite.id, token);
@@ -777,8 +761,7 @@ export const ProvStepper = () => {
   }
 
   const notInMistDevices = React.useMemo(() => {
-    // Name is the only field consistently present on both sides — same merge key the Site
-    // Dashboard uses against this same live Mist devicesummary list.
+    // Name is the merge key — same one the Site Dashboard uses against this list.
     const liveMistNames = new Set(
       mistLiveDevices.map((d) => (d.name || "").trim().toLowerCase()).filter(Boolean)
     );
@@ -790,8 +773,7 @@ export const ProvStepper = () => {
 
   const getMistDeviceKey = (device, idx) => device.serial || device.name || `idx-${idx}`;
 
-  // AP12 is the RAP hardware model — only these devices get claimed into Mist via a
-  // device profile, regardless of the site's overall mob type.
+  // AP12 is the RAP hardware model — only these need a device profile to push.
   const isRapDevice = (device) => {
     const model = device.device_type?.model || device.device_type?.display || "";
     return model.toUpperCase().includes("AP12");
@@ -878,9 +860,7 @@ export const ProvStepper = () => {
     if (targets.length === 0) return;
 
     setMistPushRunning(true);
-    // All at once, not one at a time — pushDeviceToMist's own mistPushStatus updates are a
-    // functional setState call, so they compose correctly regardless of which request
-    // resolves first; the aggregate result below is computed once everything settles.
+    // Parallel — aggregate result is computed once every request settles.
     const results = await Promise.all(
       targets.map((device) => pushDeviceToMist(device, getMistDeviceKey(device, notInMistDevices.indexOf(device))))
     );
@@ -1201,14 +1181,9 @@ export const ProvStepper = () => {
   );
 
   const hasACM = devices.some((d) => d.model?.startsWith("ACM"));
-  // An extra column for deploy-status/redeploy appears once a deploy has run, ahead of the
-  // regular (always-present) delete column — kept separate so redeploy never sits next to
-  // delete in a way that's easy to misclick.
+  // Deploy-status column stays separate from delete so redeploy is never a misclick away.
   const hasDeployStatus = deviceDeployStatus.length > 0;
-  // Plain inline grid-template-columns instead of a Tailwind arbitrary-value class — this
-  // combination of columns changes at runtime (hasACM/hasDeployStatus), and relying on
-  // Tailwind's build-time class scanner to have already generated every combination it can
-  // take on was the reason widening these wasn't showing up; inline style always applies.
+  // Inline style, not a Tailwind class — combo changes at runtime, JIT can't precompile it.
   const gridColsTemplate = hasACM
     ? hasDeployStatus
       ? "2rem 1.5fr 1.5fr 1.5fr 1fr 1fr 5.5rem 5.5rem"
@@ -1244,8 +1219,7 @@ export const ProvStepper = () => {
   }, [currentStep, isSiteFullySelected]);
 
   useEffect(() => {
-    // Fetched regardless of the site's mob type — whether a device needs a profile is a
-    // per-device (AP12 model) thing, not a per-site one.
+    // Not gated on mob type — profile need is per-device (AP12), not per-site.
     if (currentStep === PUSH_MIST_STEP) {
       loadDeviceProfiles();
     }

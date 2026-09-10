@@ -98,11 +98,7 @@ export const ProvAccordian = () => {
       const res = await instance.acquireTokenSilent(request);
       return res.accessToken;
     } catch {
-      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so
-      // a popup just loads the whole app inside itself instead of closing. Redirect reuses
-      // the already-registered URI (no Azure changes needed) and navigates the tab away, so
-      // this never meaningfully returns — the user lands back freshly authenticated and
-      // just retries whatever they were doing.
+      // Uses redirect, not a popup — this app's redirectUri points at the SPA root, so a popup would just load the whole app inside itself instead of closing; the tab navigates away and the user comes back already authenticated.
       await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
       return null;
     }

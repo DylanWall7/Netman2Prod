@@ -72,14 +72,13 @@ export const HomeLayout = () => {
   const isAuthorized = isEngineer || isFieldServices;
   const [search, setSearch] = useState("");
 
-  // Mirrors the title/description/visibility of the Card tiles below, purely so the
-  // "no results" message can be shown without threading a match callback through Card.
+  // Mirrors the Card tiles below so the "no results" message can show without threading a match callback through Card.
   const TOOL_INDEX = [
     { title: "Site Dashboard", description: "View live device, DHCP, circuit, and incident status for any job site.", show: isEngineer },
     { title: "Provisioning Wizard", description: "Deploy new sites, DHCP, and Netbox using the provisioning wizard.", show: isEngineer },
     { title: "Demobe Tool", description: "Demobe sites and delete DHCP scopes by sitecode.", show: isEngineer },
     { title: "Workbench Info", description: "List of workbenches and their details.", show: isEngineer },
-    { title: "Manage Devices", description: "Manage devices in Netbox.", show: isEngineer },
+    { title: "Netbox Device Manager", description: "Manage devices in Netbox.", show: isEngineer },
     { title: "DHCP Manager", description: "View DHCP scopes, leases, and reservations across Gizmo and Kea.", show: isEngineer },
     { title: "GitLab", description: "Device configuration repository.", show: isEngineer },
     { title: "DHCP Tool", description: "Manage DHCP reservations easily and efficiently.", show: isAuthorized },

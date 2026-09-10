@@ -42,10 +42,7 @@ function byIp(a, b) {
   return aInt - bInt;
 }
 
-// Gizmo: { ipAddress, scopeId, clientId, name, description } — clientId is
-// already a dash-separated MAC. Kea: { ipAddress, hwAddress, hostname,
-// usercontext: { description } } — description is nested. Neither source's
-// name/hostname is a reliable real hostname, so it's dropped entirely.
+// Gizmo's clientId is already a dash-separated MAC; Kea nests description under usercontext — neither source's name/hostname field is a reliable real hostname, so it's dropped entirely.
 function mapReservation(r, i) {
   return {
     ip: r.ipAddress ?? "—",
@@ -55,11 +52,7 @@ function mapReservation(r, i) {
   };
 }
 
-// Gizmo: { ipAddress, scopeId, clientId, hostName, addressState }. Kea's
-// leasev4 has a real colon-formatted MAC in hwAddress, unlike Gizmo's
-// encoded clientId. hostName/hostname can be "" (not missing), hence `||`
-// instead of `??`. Only Gizmo's addressState maps to `status` — Kea's
-// `state` is a different kind of value (an unconfirmed numeric code).
+// Kea's hwAddress is a real colon-formatted MAC unlike Gizmo's encoded clientId; hostName/hostname can be "" (not missing) hence `||` not `??`; only Gizmo's addressState maps to `status` since Kea's `state` is a different, unconfirmed numeric code.
 function mapLease(l, i) {
   return {
     ip: l.ipAddress ?? l["ip-address"] ?? l.IPAddress ?? l.ip ?? "—",
@@ -70,9 +63,7 @@ function mapLease(l, i) {
   };
 }
 
-// Gizmo's leases endpoint returns a row for every reservation, not just real
-// active leases — addressState tells them apart. Trims the redundant
-// "Reservation" suffix to read as a plain word.
+// Gizmo's leases endpoint returns a row for every reservation, not just active leases — addressState tells them apart; trims the redundant "Reservation" suffix so it reads as a plain word.
 function formatAddressState(status) {
   if (!status) return null;
   return status.replace(/Reservation$/, "") || status;
@@ -99,16 +90,13 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
   const [confirmDeleteRes, setConfirmDeleteRes] = useState(null);
   const dialogRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
-  // Mirrors confirmDeleteRes for the Escape handler below, which would otherwise
-  // close over a stale value.
+  // Mirrors confirmDeleteRes for the Escape handler below, which would otherwise close over a stale value.
   const confirmDeleteResRef = useRef(null);
   useEffect(() => {
     confirmDeleteResRef.current = confirmDeleteRes;
   }, [confirmDeleteRes]);
 
-  // reservationv4 (same family as subnetv4) is Kea-specific — it returned Kea's
-  // reservations even when queried for a Gizmo scope. Gizmo uses its own
-  // /dhcp/gizmo/{id}/reservations endpoint instead.
+  // reservationv4 is Kea-specific and returned Kea's reservations even when queried for a Gizmo scope, so Gizmo uses its own /dhcp/gizmo/{id}/reservations endpoint instead.
   const loadReservations = async (currentScope) => {
     if (!currentScope?.hasGizmo && !currentScope?.hasKea) {
       setReservations([]);
@@ -219,8 +207,7 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
     )
     .sort(byIp);
 
-  // Reservations load in the background regardless of tab, so this is available
-  // on the leases tab too.
+  // Reservations load in the background regardless of tab, so this is available on the leases tab too.
   const reservedIps = new Set(reservations.map((r) => r.ip));
 
   const filteredLeases = leases
@@ -266,8 +253,7 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
     }
   };
 
-  // PATCH's payload matches create — ipaddress is likely the lookup key, so it
-  // stays disabled in edit mode to avoid a silent no-op or wrong match.
+  // PATCH's payload matches create and ipaddress is likely the lookup key, so it stays disabled in edit mode to avoid a silent no-op or wrong match.
   const handleEditReservation = (res) => {
     setEditingReservation(res);
     setNewReservation({ ip: res.ip, mac: res.mac, description: res.description === "—" ? "" : res.description });
@@ -275,8 +261,7 @@ export default function DHCPScopeModal({ scope, siteCode, initialTab, onClose })
     setAddingReservation(true);
   };
 
-  // reservationv4 only resolves against Kea, so delete is Kea-only too — hidden
-  // for Gizmo to avoid hitting an unrelated Kea reservation on the same IP.
+  // reservationv4 only resolves against Kea, so delete is Kea-only too — hidden for Gizmo to avoid hitting an unrelated Kea reservation on the same IP.
   const handleConfirmDeleteReservation = async () => {
     if (!confirmDeleteRes) return;
     const ip = confirmDeleteRes.ip;

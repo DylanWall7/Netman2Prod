@@ -87,10 +87,7 @@ const ProtectedRoute = ({ children, allowedRoles, allowNoRoles = false }) => {
   return children;
 };
 
-// Guards the auto-login redirect to once per browser session, so a user who explicitly
-// signs out (or cancels sign-in) isn't bounced straight back in on reload. ssoSilent's
-// hidden-iframe approach was tried first but this network blocks it (monitor_window_timeout
-// every time), so it just added a guaranteed 6s wait with no chance of succeeding.
+// Guards the auto-login redirect to once per session so signing out (or cancelling sign-in) isn't bounced straight back in — ssoSilent's hidden-iframe approach was tried first but this network blocks it every time (monitor_window_timeout), just adding a guaranteed 6s wait.
 const AUTO_LOGIN_REDIRECT_KEY = "netman2.autoLoginRedirectAttempted";
 
 function App() {

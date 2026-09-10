@@ -82,11 +82,7 @@ export default function ScanSettings({
       const res = await instance.acquireTokenSilent(request);
       return res.accessToken;
     } catch {
-      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so
-      // a popup just loads the whole app inside itself instead of closing. Redirect reuses
-      // the already-registered URI (no Azure changes needed) and navigates the tab away, so
-      // this never meaningfully returns — the user lands back freshly authenticated and
-      // just retries whatever they were doing.
+      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so a popup would just load the whole app inside itself instead of closing; the tab navigates away and the user lands back freshly authenticated.
       await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
       return null;
     }
@@ -103,8 +99,7 @@ export default function ScanSettings({
       const res = await fetch(`${baseUrl}/api/snipeit/locations`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      // A 2xx status doesn't guarantee a JSON body — parse defensively before trusting it,
-      // same as DepotOrders/snipeitApi.js does for this same backend.
+      // A 2xx status doesn't guarantee a JSON body — parse defensively before trusting it, same as DepotOrders/snipeitApi.js does for this same backend.
       const body = await res.json().catch(() => null);
       if (!res.ok || body === null)
         throw new Error(
@@ -130,8 +125,7 @@ export default function ScanSettings({
         fetch(`${baseUrl}/api/snipeit/categories`, { headers }),
         fetch(`${baseUrl}/api/snipeit/statuslabels`, { headers }),
       ]);
-      // A 2xx status doesn't guarantee a JSON body — parse defensively before trusting it,
-      // same as DepotOrders/snipeitApi.js does for this same backend.
+      // A 2xx status doesn't guarantee a JSON body — parse defensively before trusting it, same as DepotOrders/snipeitApi.js does for this same backend.
       const [catBody, statusBody] = await Promise.all([
         catRes.json().catch(() => null),
         statusRes.json().catch(() => null),
@@ -172,8 +166,7 @@ export default function ScanSettings({
           headers: { Authorization: `Bearer ${token}` },
         },
       );
-      // A 2xx status doesn't guarantee a JSON body — parse defensively before trusting it,
-      // same as DepotOrders/snipeitApi.js does for this same backend.
+      // A 2xx status doesn't guarantee a JSON body — parse defensively before trusting it, same as DepotOrders/snipeitApi.js does for this same backend.
       const body = await res.json().catch(() => null);
       if (!res.ok || body === null)
         throw new Error(

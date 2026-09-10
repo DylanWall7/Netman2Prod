@@ -345,10 +345,7 @@ function ValueRenderer({ value, label, depth = 0, searchTerm }) {
 
     if (!label) return body;
 
-    // Deeply nested sections (2+ levels in) default collapsed so a large tree
-    // (e.g. a full device config) doesn't dump everything open at once — the
-    // top-level sections stay visible so the outline is still scannable. A
-    // search match anywhere inside forces the section open too.
+    // Sections nested 2+ levels in default collapsed so a large tree doesn't dump fully open — a search match anywhere inside forces it open.
     if (depth <= 1) {
       return (
         <div className="space-y-3">

@@ -14,8 +14,7 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// For virtualized lists (only a slice is ever in the DOM), matches have to be found
-// by scanning the underlying data directly, not by querying the DOM.
+// Lists are virtualized (only a slice is ever in the DOM), so matches are found by scanning the underlying data, not the DOM.
 export function findMatchIndices(items, term, getText) {
   if (!term) return [];
   const lower = term.toLowerCase();

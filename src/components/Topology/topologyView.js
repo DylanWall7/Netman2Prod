@@ -27,8 +27,7 @@ const normMac = (mac) => (mac ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
 
 const PortLabelsCtx = React.createContext(false);
 
-// Ubiquiti OUI prefixes — Nanobeams use CDP (not LLDP), so neighbor_system_name is empty
-// but neighbor_mac still has a Ubiquiti OUI from the CDP frame
+// Ubiquiti OUI prefixes — Nanobeams use CDP not LLDP, so neighbor_system_name is empty but neighbor_mac still carries a Ubiquiti OUI from the CDP frame
 const UBIQUITI_OUIS = new Set([
   "24a43c",
   "788a20",
@@ -67,9 +66,7 @@ function resolvePortFromPortDetails(detail, localPort) {
   return null;
 }
 
-// Resolve the local port on `detail`'s device by looking for a vc_members port
-// whose neighbor_system_name (stripping _nodeN suffix) matches `neighborName`.
-// Used as a fallback when the peer reports a virtual/RETH MAC not in deviceByMac.
+// Fallback for when the peer reports a virtual/RETH MAC not in deviceByMac — matches by neighbor_system_name (stripping the _nodeN suffix) instead.
 function resolvePortByNeighborName(detail, neighborName) {
   const stripped = (neighborName ?? "").replace(/_node\d+$/i, "").toLowerCase();
   if (!stripped) return null;
@@ -708,10 +705,7 @@ function buildTopology(
     if (d._id) deviceByMac[normMac(d._id)] = d;
   });
 
-  // Juniper switches often advertise a per-port MAC in LLDP rather than the chassis MAC.
-  // Add every port_mac from detail data so those LLDP advertisements can be resolved.
-  // Also index HA cluster node MACs from module_stat/module2_stat — SRX HA pairs have
-  // two nodes each with their own MAC; only d.mac covers node 0.
+  // Index per-port MACs (Juniper LLDP often advertises those instead of the chassis MAC) and HA cluster node MACs from module_stat/module2_stat — SRX pairs have two nodes, and d.mac alone only covers node 0.
   devices.forEach((d) => {
     const detail = detailsMap[d.id];
     for (const member of detail?.custom?.vc_members ?? []) {
@@ -729,8 +723,7 @@ function buildTopology(
     }
   });
 
-  // Name-based device index — fallback when LLDP advertises a virtual MAC (RETH, LAG)
-  // that isn't tracked in deviceByMac. Strips _nodeN suffix before inserting.
+  // Name-based fallback for when LLDP advertises a virtual MAC (RETH, LAG) not in deviceByMac — strips the _nodeN suffix before indexing.
   const deviceByName = {};
   devices.forEach((d) => {
     if (d.name) deviceByName[d.name.toLowerCase()] = d;
@@ -749,9 +742,7 @@ function buildTopology(
       .forEach((c) => {
         let peer = deviceByMac[normMac(c.mac)];
 
-        // Fallback: LLDP entry whose MAC is a virtual/RETH address not in deviceByMac.
-        // Scan this device's vc_members for a port matching one of the client port_ids
-        // that has a neighbor_system_name we can resolve by name.
+        // Fallback for a virtual/RETH MAC not in deviceByMac — resolve the peer by matching client port_ids to a vc_members port's neighbor_system_name.
         if (!peer && c.source === "lldp") {
           const clientPorts = new Set(c.port_ids ?? []);
           outer: for (const member of detail?.custom?.vc_members ?? []) {
@@ -812,9 +803,7 @@ function buildTopology(
       });
   });
 
-  // Wireless edge detection: if a Nanobeam operates in transparent bridge mode the
-  // upstream Juniper switch's MAC passes through and neighbor_mac resolves in deviceByMac.
-  // Scan every uplink port with an empty neighbor_system_name for that case.
+  // Wireless edge detection — a Nanobeam in transparent bridge mode passes the upstream switch's MAC through, so scan uplink ports with empty neighbor_system_name and resolve neighbor_mac in deviceByMac.
   devices.forEach((dev) => {
     for (const member of detailsMap[dev.id]?.custom?.vc_members ?? []) {
       for (const pic of member.pics ?? []) {
@@ -854,8 +843,7 @@ function buildTopology(
     adjacency[e.peerId]?.push(e.devId);
   });
 
-  // BFS starts from routers only so SWD/AGG get their correct rank from LLDP connections.
-  // Fallback chain if no router: use SWD, then AGG, then most-connected device.
+  // BFS ranks from routers only so SWD/AGG get correct LLDP-based depth; if there's no router, fall back to SWD, then AGG, then the most-connected device.
   const rootIds = devices.filter(isRouter).map((d) => d.id);
   if (rootIds.length === 0) {
     const swds = devices.filter(isSwd);
@@ -875,8 +863,7 @@ function buildTopology(
     }
   }
 
-  // assign ranks by naming tier first so the hierarchy is always correct,
-  // even when LLDP data is partial or asymmetric
+  // assign ranks by naming tier first so the hierarchy stays correct even with partial or asymmetric LLDP data
   const hasRouter = devices.some(isRouter);
   const hasSwd = devices.some(isSwd);
 
@@ -942,8 +929,7 @@ function buildTopology(
     };
   });
 
-  // node widths - widen nodes that have lots of children so handles don't crowd together
-  // need edgesByParent first for the child count, will sort by position after layout
+  // widen nodes with lots of children so handles don't crowd — needs edgesByParent's child count first, sorted by position after layout
   const edgesByParent = {};
   edgeList.forEach((e) => {
     (edgesByParent[e.source] ??= []).push(e);
@@ -995,9 +981,7 @@ function buildTopology(
     connectedIds.add(e.target);
   });
 
-  // Detect all devices that have a Nanobeam-style uplink (uplink=true, no LLDP system name,
-  // valid neighbor_mac). This covers both devices already in the topology via other links
-  // AND isolated devices whose only path is through a wireless bridge.
+  // Detect devices with a Nanobeam-style uplink (uplink=true, no LLDP system name, valid neighbor_mac) — covers both already-linked devices and ones isolated behind a wireless bridge.
   const nanobeamDeviceIds = new Set();
   devices.forEach((dev) => {
     for (const member of detailsMap[dev.id]?.custom?.vc_members ?? []) {
@@ -1016,8 +1000,7 @@ function buildTopology(
     }
   });
 
-  // Devices whose ONLY upstream path is through a Nanobeam — no Mist LLDP peers at all.
-  // Show them in the topology connected to the wireless cloud node, not in offlineIsolated.
+  // Devices with no LLDP peers at all, only a Nanobeam uplink — show them wired to the wireless cloud node instead of in offlineIsolated.
   const nanobeamOnlyIds = new Set(
     [...nanobeamDeviceIds].filter((id) => !connectedIds.has(id)),
   );
@@ -1173,11 +1156,7 @@ export default function TopologyView() {
       return r.accessToken;
     } catch (silentErr) {
       console.warn("Silent token acquisition failed, redirecting to re-auth:", silentErr);
-      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so
-      // a popup just loads the whole app inside itself instead of closing. Redirect reuses
-      // the already-registered URI (no Azure changes needed) and navigates the tab away, so
-      // this never meaningfully returns — the user lands back freshly authenticated and
-      // just retries whatever they were doing.
+      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so a popup would just reload the whole app inside itself instead of closing.
       await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
       return null;
     }

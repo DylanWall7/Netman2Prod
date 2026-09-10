@@ -55,8 +55,7 @@ export const ManageDevicePage = () => {
   const GetDevicesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/management/netbox/${siteCodeSelected}/devices/`;
   const DeviceProfilesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/deviceprofiles`;
 
-  // AP12 is the RAP hardware model — only these devices get claimed into Mist via a device
-  // profile, regardless of the site's overall mob type. Same rule the Prov tool uses.
+  // AP12 is the RAP hardware model — only these need a device profile to push.
   const isRapDevice = (device) => {
     const model = device.device_type?.model || device.device_type?.display || "";
     return model.toUpperCase().includes("AP12");
@@ -90,11 +89,7 @@ export const ManageDevicePage = () => {
       return response.accessToken;
     } catch (error) {
       if (error instanceof InteractionRequiredAuthError) {
-        // Full-page redirect, not a popup — this app's redirectUri points at the SPA root,
-        // so a popup just loads the whole app inside itself instead of closing. Redirect
-        // reuses the already-registered URI (no Azure changes needed) and navigates the tab
-        // away, so this never meaningfully returns — the user lands back freshly
-        // authenticated and just retries whatever they were doing.
+        // Full-page redirect, not a popup — a popup would just reload the whole SPA inside itself.
         await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
         return null;
       }
@@ -102,9 +97,7 @@ export const ManageDevicePage = () => {
     }
   }
 
-  // Guarded with a ref so a re-render mid-redirect (e.g. `inProgress` settling to `None`
-  // a tick before `accounts` reflects a just-cached account) can't fire ssoSilent/loginRedirect
-  // a second time and bounce the user through two redirect round-trips instead of one.
+  // Guards against a re-render mid-redirect firing ssoSilent/loginRedirect twice.
   const ssoAttempted = useRef(false);
   useEffect(() => {
     if (ssoAttempted.current) return;
@@ -118,9 +111,7 @@ export const ManageDevicePage = () => {
   }, [inProgress, accounts, instance]);
 
   useEffect(() => {
-    // No account yet means we're either mid sign-in (the effect above will redirect) or
-    // about to be — acquiring a token here too would just fail with no account to use, so
-    // wait for an account instead of racing the sign-in flow.
+    // No account yet — wait rather than race the sign-in flow above.
     if (accounts.length === 0) return;
     (async () => {
       setIsLoading(true);
@@ -252,11 +243,7 @@ export const ManageDevicePage = () => {
         : [];
       setGetDeviceData(dataArray);
 
-      // Netbox's own custom.mistdevice/mistdevicesite fields only reflect Netbox's own sync
-      // with Mist — that lags (or never fires at all) behind a device pushed through the
-      // provisioning tool, so they're not a reliable "is this in Mist" signal on their own.
-      // The live Mist devicesummary list (same one the Site Dashboard and Prov tool use) is
-      // the actual source of truth.
+      // Netbox's custom.mistdevice fields lag — the live Mist devicesummary list is authoritative.
       const entries = await Promise.all(
         dataArray.map(async (siteItem) => {
           const mistId = siteItem?.data?.mistsite?.id;
@@ -374,8 +361,7 @@ export const ManageDevicePage = () => {
             const site = siteItem.data?.netboxsite;
             const mist = siteItem.data?.mistsite;
             const devices = siteItem.data?.devices || [];
-            // Name is the merge key — same one the Site Dashboard and Prov tool use against
-            // this same live Mist devicesummary list.
+            // Name is the merge key — same one the Site Dashboard and Prov tool use.
             const liveMistNames = new Set(
               (mistLiveBySite[mist?.id] || [])
                 .map((d) => (d.name || "").trim().toLowerCase())
@@ -535,9 +521,7 @@ export const ManageDevicePage = () => {
                             const pushStatus = mistPushStatus[key];
                             const effectivelyInMist = inMist || pushStatus === "done";
                             const needsProfile = !effectivelyInMist && isRapDevice(device);
-                            // Only a genuine "assigned elsewhere" if Netbox actually names a
-                            // different site — a null/unset mistdevicesite just means the
-                            // device isn't in Mist yet, not that it's in the wrong place.
+                            // Null mistdevicesite means "not in Mist yet," not "wrong site."
                             const wrongSite =
                               !inMist &&
                               !!device.custom?.mistdevicesite &&

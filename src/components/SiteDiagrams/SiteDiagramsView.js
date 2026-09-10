@@ -335,21 +335,14 @@ export default function SiteDiagramsView() {
         if (latestRequestRef.current !== requestId) return;
         const diagramNodes = diagram.nodes ?? [];
         const { nodes: n, edges: e, childrenMap: cm } = buildSiteDiagramTopology(diagramNodes, diagram.links);
-        // Determine "isolated" from the edges actually resolved, not the API's own
-        // `unlinked` list — that flag can go stale (e.g. a device gains a real link
-        // in `links` but the backend's precomputed `unlinked` array isn't updated to
-        // match), which would otherwise strip a connected device out of the canvas
-        // for no visible reason.
+        // Determine "isolated" from the edges actually resolved, not the API's `unlinked` list — that flag can go stale and wrongly strip a connected device off the canvas.
         const connectedIds = new Set();
         e.forEach((edge) => {
           connectedIds.add(edge.source);
           connectedIds.add(edge.target);
         });
         const linkedNodes = n.filter((node) => connectedIds.has(node.id));
-        // `buildSiteDiagramTopology` normalizes ids to strings (falling back through
-        // netbox_id/id/mist_id/name) for React Flow, but `diagramNodes` here still
-        // has the API's raw shape — mirror that same id resolution so a device isn't
-        // misclassified as isolated just because of a raw/string or id-field mismatch.
+        // Mirror buildSiteDiagramTopology's id resolution (netbox_id/id/mist_id/name, stringified) here since diagramNodes is still in the API's raw shape, so a device isn't misclassified as isolated over a field/type mismatch.
         const isolatedNodes = diagramNodes.filter(
           (node) => !connectedIds.has(String(node.netbox_id ?? node.id ?? node.mist_id ?? node.name)),
         );

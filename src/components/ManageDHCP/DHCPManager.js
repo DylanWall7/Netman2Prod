@@ -21,8 +21,7 @@ import {
 } from "./dhcpApi";
 import Badge from "../DepotOrders/Badge";
 
-// Scopes come from Netbox — a not-yet-deployed prefix can be pushed to Kea from here,
-// but nothing is ever created in Netbox itself from this tool.
+// Scopes come from Netbox; nothing is ever created in Netbox itself from this tool.
 
 const FOCUS_RING =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-500";
@@ -34,8 +33,7 @@ const STATUS_STYLES = {
   warning: { dot: "bg-yellow-400", color: "amber", label: "Warning" },
   error: { dot: "bg-red-400", color: "red", label: "Error" },
   unknown: { dot: "bg-gray-500", color: "gray", label: "Status unknown" },
-  // Netbox prefix with no matching Gizmo/Kea record — a real, common case,
-  // distinct from "unknown".
+  // Netbox prefix with no matching Gizmo/Kea record — distinct from "unknown".
   not_deployed: { dot: "bg-gray-600", color: "gray", label: "Not deployed" },
 };
 
@@ -45,8 +43,7 @@ function ipToInt(ip) {
   return parts.reduce((acc, p) => acc * 256 + p, 0);
 }
 
-// Fallback only — the API returns a real `utilization` value (see
-// getScopesForSite); this only kicks in if that's missing.
+// Fallback only — getScopesForSite already provides a real `utilization` value.
 function utilizationPercent(scope) {
   const start = ipToInt(scope.start);
   const end = ipToInt(scope.end);
@@ -56,9 +53,7 @@ function utilizationPercent(scope) {
   return Math.min(100, Math.round((scope.leases / poolSize) * 100));
 }
 
-// Whether this scope has a matching Netbox prefix — independent of Active/
-// Inactive. Gizmo/Kea scopes can exist without ever being in Netbox, which
-// Active doesn't capture.
+// Independent of Active/Inactive — a Gizmo/Kea scope can exist without ever being in Netbox.
 function NetboxMark({ hasNetbox }) {
   return (
     <span
@@ -75,17 +70,14 @@ function NetboxMark({ hasNetbox }) {
   );
 }
 
-// Each row is one server's deployment — a subnet on both Gizmo and Kea gets
-// two rows, not one with both flags. Null for not-deployed (status badge
-// already covers that).
+// A subnet on both Gizmo and Kea gets two rows here, not one with both flags.
 function sourceLabel(scope) {
   if (scope.hasGizmo) return "Gizmo";
   if (scope.hasKea) return "Kea";
   return null;
 }
 
-// Fill sweeps from 0 on mount; color interpolates green->red via the
-// --dhcp-hue custom property (registered in index.css) instead of snapping.
+// Color interpolates green->red via the --dhcp-hue custom property instead of snapping.
 function CapacityBar({ percent }) {
   const [displayPercent, setDisplayPercent] = useState(0);
 
@@ -145,8 +137,7 @@ function ScopesLoadingState({ siteCode }) {
   );
 }
 
-// Active and unknown aren't worth a badge — only surface Inactive/warning/
-// error/not_deployed.
+// Active and unknown aren't worth a badge.
 const QUIET_STATUSES = new Set(["active", "unknown"]);
 
 const ScopeCard = ({ scope, deleting, onExpand, onViewDetail, onDelete, onDeploy }) => {
@@ -418,10 +409,7 @@ const DHCPManager = () => {
 
   const pendingChangeCount = keaScopes.filter((s) => s._stale).length;
 
-  // Skips the full re-fetch after a delete — on a large site, re-gathering every
-  // scope just to confirm the one you already know succeeded is slow for no reason.
-  // Instead this downgrades the row locally to what a real refresh would eventually
-  // show (no more Kea presence) and flags it stale until that refresh actually happens.
+  // Skips the full re-fetch — downgrades the row locally instead and flags it stale.
   const handleDeleteScope = async (scope) => {
     setConfirmDeleteScope(null);
     setFinalConfirmScope(null);
@@ -458,9 +446,7 @@ const DHCPManager = () => {
     }
   };
 
-  // scope.leases includes reservation-backed leases too, so anything beyond
-  // scope.reservations is a real dynamic lease that'll be orphaned — worth a
-  // second, harder confirmation before deleting.
+  // Leases beyond reservations are real dynamic leases that'd be orphaned by a delete.
   const unreservedLeaseCount = (scope) => Math.max(0, scope.leases - scope.reservations);
 
   const openDeployModal = async (scope) => {
@@ -491,13 +477,9 @@ const DHCPManager = () => {
     setDeployError(null);
   };
 
-  // The range is the only thing the user is asked to edit before this deploys, per the
-  // initial cut of this flow — buildKeaDeployPayload (dhcpApi.js) does the rest.
   const buildDeployPayload = buildKeaDeployPayload;
 
-  // Same reasoning as handleDeleteScope: no full re-fetch, just a provisional row built
-  // from what we submitted (not Kea's authoritative response) so it's flagged stale
-  // rather than presented as confirmed.
+  // Same as handleDeleteScope — a provisional row built locally, flagged stale, not authoritative.
   const handleDeploy = async () => {
     if (!deployParams || !deployScope) return;
     setDeploying(true);
@@ -556,8 +538,7 @@ const DHCPManager = () => {
               }
             }}
             onKeyDown={(e) => {
-              // Only fall back to free-text navigation when nothing in the list matches —
-              // otherwise let Autocomplete's own Enter-selects-highlighted-item win.
+              // Free-text nav only when nothing matches — otherwise let Autocomplete's own Enter win.
               const hasMatch = sites.some((s) => s.name.toLowerCase().includes(siteInput.trim().toLowerCase()));
               if (e.key === "Enter" && !hasMatch) goToSite(siteInput);
             }}

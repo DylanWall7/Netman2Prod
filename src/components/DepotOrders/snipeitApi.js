@@ -43,8 +43,7 @@ export async function listSnipeitHardwareByPO(poNumber, token) {
   const url = `${BASE_URL}/hardware?${PO_NUMBER_CUSTOM_FIELD}=${encodeURIComponent(poNumber)}`;
   const body = await request(url, { headers: authHeaders(token) });
   const rows = safeArray(body);
-  // Snipe-IT/the proxy doesn't reliably honor this filter param server-side, so
-  // re-filter client-side against the actual custom field value as a safety net.
+  // Snipe-IT/the proxy doesn't reliably honor this filter param server-side, so re-filter client-side as a safety net.
   return rows.filter((d) => String(customFieldValue(d, PO_NUMBER_CUSTOM_FIELD) ?? "") === String(poNumber ?? ""));
 }
 
@@ -93,11 +92,7 @@ export function useSnipeitToken() {
       const res = await instance.acquireTokenSilent(request);
       return res.accessToken;
     } catch {
-      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so
-      // a popup just loads the whole app inside itself instead of closing. Redirect reuses
-      // the already-registered URI (no Azure changes needed) and navigates the tab away, so
-      // this never meaningfully returns — the user lands back freshly authenticated and
-      // just retries whatever they were doing.
+      // Uses redirect, not a popup — this app's redirectUri points at the SPA root, so a popup would just load the whole app inside itself instead of closing; the tab navigates away and the user comes back already authenticated.
       await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
       return null;
     }

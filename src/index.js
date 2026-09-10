@@ -11,8 +11,7 @@ import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
-// CRA5/webpack 5 dropped the automatic `process` polyfill; some deps (NextUI's
-// shared-utils warn() helper) reference the bare identifier and crash without it.
+// CRA5/webpack 5 dropped the automatic `process` polyfill, but NextUI's shared-utils warn() helper references the bare identifier and crashes without it.
 window.process = window.process || { env: {} };
 
 const queryClient = new QueryClient();
@@ -32,7 +31,5 @@ root.render(
   </BrowserRouter>
 );
 
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
+// Pass a function to log performance results (e.g. reportWebVitals(console.log)) or send to an analytics endpoint — see https://bit.ly/CRA-vitals
 reportWebVitals();

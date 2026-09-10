@@ -2,9 +2,7 @@ function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-// Junos RPC output (converted from XML) wraps every leaf value as [{ "data": value }]
-// and nests single-item nodes as one-element arrays. This strips that noise down to
-// plain values/objects/arrays so it can be rendered generically for any output type.
+// Junos's XML-to-JSON conversion wraps every leaf as [{ "data": value }] and nests single items as one-element arrays — this strips that down to plain values so any output type renders generically.
 function normalizeJunosXmlJson(node) {
   if (Array.isArray(node)) {
     const normalized = node.map(normalizeJunosXmlJson).filter((v) => v !== undefined);
@@ -17,8 +15,7 @@ function normalizeJunosXmlJson(node) {
       const value = normalizeJunosXmlJson(node[key]);
       if (value !== undefined) result[key] = value;
     }
-    // "@" holds XML attributes from the parent element (e.g. junos:commit-seconds) —
-    // fold it into the parent instead of showing it as its own unlabeled section.
+    // "@" holds XML attributes from the parent element (e.g. junos:commit-seconds) — fold it into the parent instead of showing it as its own unlabeled section.
     if (isPlainObject(result["@"])) {
       Object.assign(result, result["@"]);
       delete result["@"];
@@ -32,8 +29,7 @@ function normalizeJunosXmlJson(node) {
   return node;
 }
 
-// Returns { kind: "text", value: string } for non-JSON output (e.g. raw config),
-// or { kind: "structured", value: <normalized JSON>, raw: <untouched parsed JSON> } when it parses as JSON.
+// Returns { kind: "text", value } for non-JSON output, or { kind: "structured", value: normalized, raw: untouched } when it parses as JSON.
 export function parseOutputData(data) {
   if (typeof data !== "string") return { kind: "structured", value: data, raw: data };
   try {

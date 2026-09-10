@@ -4,11 +4,7 @@ import { InteractionRequiredAuthError } from "@azure/msal-browser";
 import { Autocomplete, AutocompleteItem, Button } from "@nextui-org/react";
 import { GizmoRequest } from "../../authConfig";
 
-// Same device-assign table and per-device deploy flow as the Provisioning wizard's
-// "Deploy Devices to Netbox" step (ProvStepper.js) — ported here as a standalone modal so it
-// can be reused for adding devices to a site that's already live in Netbox, not just brand-new
-// ones. Kept as its own copy rather than a shared import so this page can evolve into a full
-// device manager without every change also needing to be safe for the provisioning wizard.
+// Ported from ProvStepper's "Deploy Devices to Netbox" step as its own copy, not a shared import.
 
 const RedMinusIcon = ({ size = 24, ...props }) => (
   <svg
@@ -64,8 +60,7 @@ export default function AddDevicesModal({ siteCode, onClose, onDeployed }) {
       return res.accessToken;
     } catch (error) {
       if (error instanceof InteractionRequiredAuthError) {
-        // Full-page redirect — this app's redirectUri points at the SPA root, so a popup just
-        // loads the whole app inside itself instead of closing.
+        // Full-page redirect, not a popup — a popup would just reload the whole SPA inside itself.
         await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
         return null;
       }
@@ -279,8 +274,7 @@ export default function AddDevicesModal({ siteCode, onClose, onDeployed }) {
     ? "2rem 1.5fr 1.5fr 1.5fr 1fr 5.5rem 5.5rem"
     : "2rem 1.5fr 1.5fr 1.5fr 1fr 5.5rem";
 
-  // One request per device, fired concurrently, instead of a single bulk POST — each device's
-  // own result updates deviceDeployStatus as soon as it lands.
+  // One request per device, concurrent — each updates status as soon as it lands.
   const handleDeploy = async () => {
     setDeployLoading(true);
     setResultStatus(null);
@@ -325,7 +319,7 @@ export default function AddDevicesModal({ siteCode, onClose, onDeployed }) {
     onDeployed?.();
   };
 
-  // Re-sends just the one device that failed, instead of re-running the whole batch.
+  // Re-sends only the failed device, not the whole batch.
   const handleRedeployDevice = async (index) => {
     const device = devices[index];
     if (!device) return;

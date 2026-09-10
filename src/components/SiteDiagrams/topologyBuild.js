@@ -5,10 +5,7 @@ export const NODE_H = 150;
 const H_GAP = 60;
 const V_GAP = 120;
 
-// Role strings aren't a fixed enum (we've seen "Router", "Core Router", "Distribution",
-// "Aggregation", "Access", and there will be more) — match by keyword instead of an
-// exact dictionary lookup so a new variant like "Core Router" still gets colored/typed
-// correctly instead of silently falling back to the default access styling.
+// Role strings aren't a fixed enum (seen "Router", "Core Router", "Distribution", etc.) — match by keyword so a new variant like "Core Router" still gets typed correctly instead of falling back to access styling.
 function nodeTypeForRole(role) {
   if (role.includes("router")) return "routerNode";
   if (role.includes("distribution")) return "swdNode";
@@ -26,23 +23,8 @@ function formatUptime(seconds) {
   return `${h}h ${m}m`;
 }
 
-// Ranks and positions nodes with dagre's layered layout instead of a hand-rolled
-// "one global row per role tier" grid. A plain per-tier grid puts every access
-// device from every branch in one row sorted by port name, with no regard for
-// which parent it actually belongs to — fine for a single-branch tree, but this
-// page can have several independent branches (one per location) sharing a tier,
-// which scattered a branch's devices across the row far from their parent.
-// dagre's ordering pass groups each branch together and minimizes edge crossings.
-// Tiers are preserved by giving each edge between two ranked nodes a minlen equal
-// to the exact gap between their ranks (e.g. a distribution device linking straight
-// to an access device, skipping aggregation, still gets minlen=2 so the access
-// device lands in the access row, not the aggregation row). An edge between two
-// same-rank nodes (e.g. a redundant peer link between twin core routers) is left
-// out of dagre's ranking graph entirely rather than given minlen 0 — dagre's rank
-// assignment throws internally on a 0-length edge — so the pair is free to land
-// side by side via their other edges instead of one being forced below the other.
-// The edge itself still renders normally since the returned `edges` list below is
-// built from `resolvedLinks` directly, independent of what was fed to dagre here.
+// Uses dagre's layered layout instead of a per-tier grid — a plain grid scattered a branch's devices far from their parent whenever multiple branches shared a tier, but dagre's ordering groups each branch and minimizes crossings.
+// minlen is set to each edge's rank gap so skipped tiers (e.g. distribution straight to access) still land in the right row; same-rank edges (peer links) are excluded from dagre's graph entirely, since dagre throws on 0-length edges, so peers land side by side via their other edges instead of being stacked.
 function layoutWithDagre(graphNodes, resolvedLinks, nodeWidths, rankById) {
   const g = new graphlib.Graph();
   g.setGraph({ rankdir: "TB", nodesep: H_GAP, ranksep: V_GAP });
@@ -73,12 +55,7 @@ function normalizeRole(role) {
   return (role ?? "").toLowerCase().replace(/\s+/g, "_");
 }
 
-// Peer edges are deliberately left out of dagre's ranking graph (see layoutWithDagre),
-// so dagre has no idea two same-rank peers like a pair of redundant core routers
-// should sit next to each other — it places each one whatever the crossing-
-// minimization for its own subtree happens to produce, which can land them far apart.
-// Pull each peer pair together after the fact: keep their rank (y) as dagre computed,
-// but recenter them side by side with a single H_GAP between them.
+// Peer edges are excluded from dagre's ranking graph (see layoutWithDagre), so dagre can land same-rank peers far apart — recenter each pair side by side afterward, keeping dagre's computed rank (y).
 function pullPeersTogether(positions, resolvedLinks, nodeWidths) {
   const adjusted = { ...positions };
   const seenPairs = new Set();
@@ -101,21 +78,8 @@ function pullPeersTogether(positions, resolvedLinks, nodeWidths) {
   return adjusted;
 }
 
-// Rank reflects actual hop-distance from the core, not an assumed depth per role: a
-// device's `priority` says roughly where it sits in the hierarchy (lower = closer to
-// the core), but two devices can have different priorities and still be direct peers
-// of the core (e.g. Aggregation with a direct router uplink sits at the same depth as
-// Distribution, even though "Aggregation" implies a lower tier than "Distribution").
-//
-// Every backbone device is seeded at its own priority tier (not just the lowest one),
-// then a multi-source shortest-path pass (Dial's algorithm / bucket BFS — all edges
-// weight 1) lets a device's rank drop below its tier-seed if it has a genuinely
-// shorter real path to a lower-tier device. This does double duty: it lets a device
-// with a topology shortcut win over its role-implied depth (the Aggregation-with-
-// direct-router-uplink case), and it keeps the rest of the hierarchy intact when the
-// nominal lowest-priority "root" device turns out to have no discovered links at
-// all — seeding every tier independently means one disconnected root can no longer
-// starve BFS propagation for the entire rest of the site.
+// Rank reflects real hop-distance from the core, not role-assumed depth — priority seeds a device at its own tier, then a bucket BFS lets its rank drop if there's a genuinely shorter path, so e.g. Aggregation with a direct router uplink isn't forced below Distribution.
+// Seeding every tier independently (not just the lowest) also means a disconnected lowest-priority "root" device can't starve BFS propagation for the rest of the site.
 function computeRank(graphNodes, adjacency) {
   const backbone = graphNodes.filter((n) => n.role !== "access" && typeof n.priority === "number");
   const distinctPriorities = [...new Set(backbone.map((n) => n.priority))].sort((a, b) => a - b);
@@ -149,15 +113,7 @@ function computeRank(graphNodes, adjacency) {
 }
 
 export function buildSiteDiagramTopology(rawGraphNodes, graphLinks) {
-  // The API has used a few different id fields across responses, and not every
-  // device in a given response carries the same ones (e.g. devices appended without
-  // a Netbox record have only `mist_id`, no `netbox_id`/`id`) — falling back through
-  // netbox_id/id/mist_id and finally `name` (always present, always unique) means
-  // devices missing the "preferred" field don't all collapse onto the same id and
-  // silently share edges with each other. Also stringified: React Flow's node `id`
-  // (and edge `source`/`target`) must be a string, and a bare numeric id silently
-  // fails to render even though the node still exists in data (selectable via
-  // search, just invisible on canvas).
+  // Falls back through netbox_id/id/mist_id/name (devices without a Netbox record only have mist_id) so devices missing the preferred field don't collapse onto the same id and silently merge edges; stringified because React Flow's node id must be a string or the node silently fails to render.
   const graphNodes = (rawGraphNodes ?? []).map((n) => ({
     ...n,
     id: String(n.netbox_id ?? n.id ?? n.mist_id ?? n.name),
@@ -166,23 +122,14 @@ export function buildSiteDiagramTopology(rawGraphNodes, graphLinks) {
   const nodeById = Object.fromEntries(graphNodes.map((n) => [n.id, n]));
   // The diagram API identifies link endpoints by device name rather than id.
   const idByName = Object.fromEntries(graphNodes.map((n) => [n.name, n.id]));
-  // A device's own neighbor name for another node doesn't always match that node's
-  // `name` exactly — e.g. a clustered router's LLDP name carries a chassis-node
-  // suffix ("kostxingrwa01_node0" vs. the node's real name "KOSTXINGRWA01") — so
-  // resolve case-insensitively and retry with that suffix stripped.
+  // A neighbor's reported name doesn't always match the target node's name exactly (e.g. a clustered router's LLDP name carries a chassis-node suffix like "_node0") — resolve case-insensitively and retry with that suffix stripped.
   const idByLowerName = Object.fromEntries(graphNodes.map((n) => [n.name.toLowerCase(), n.id]));
   const resolveNeighborId = (neighborName) => {
     const lower = (neighborName ?? "").toLowerCase();
     return idByLowerName[lower] ?? idByLowerName[lower.replace(/_node\d+$/, "")];
   };
 
-  // Every physical link is reported twice in the API's `links` array — once from
-  // each endpoint's own neighbor/LLDP table — so resolve to device ids and drop the
-  // second occurrence before building anything else. The dedup key includes each
-  // side's port (not just the device pair): two devices can legitimately have more
-  // than one physical link between them (a redundant fiber pair, LAG members), and
-  // those need to stay as separate edges — only the mirrored re-report of the exact
-  // same two ports (source/target swapped) should collapse to one.
+  // Every physical link is reported twice (once from each endpoint's LLDP table) — dedup by device+port pair, not just device pair, so legitimate parallel links (redundant fiber, LAG members) stay separate and only the mirrored source/target-swapped re-report collapses.
   const seenPairs = new Set();
   const uniqueLinks = [];
   const addUniqueLink = (l, aId, bId) => {
@@ -197,12 +144,7 @@ export function buildSiteDiagramTopology(rawGraphNodes, graphLinks) {
     addUniqueLink(l, idByName[l.source?.deviceName], idByName[l.target?.deviceName]);
   });
 
-  // Fallback for links the API's own `links` array missed entirely (seen with a
-  // router whose neighbor-reported name didn't resolve): each device's raw
-  // `neighbors` list is the more complete, per-device source LLDP came from, so
-  // sweep it for any neighbor that resolves to a real node in this site. This is
-  // additive only — anything already captured above collapses via the same
-  // device+port dedup key, so it can't create duplicate lines.
+  // Fallback for links the API's `links` array missed entirely — sweep each device's raw `neighbors` list (the fuller per-device LLDP source) for resolvable peers; additive only, since the same device+port dedup key prevents duplicates.
   graphNodes.forEach((n) => {
     (n.neighbors ?? []).forEach((nb, idx) => {
       const otherId = resolveNeighborId(nb.name);
@@ -229,12 +171,7 @@ export function buildSiteDiagramTopology(rawGraphNodes, graphLinks) {
 
   const rankById = computeRank(graphNodes, adjacency);
 
-  // The API's source/target labeling doesn't reflect which side is upstream (a link
-  // to the distribution switch can list the access switch as "source"), so orient
-  // every link by rank instead: whichever endpoint has the lower rank is the parent.
-  // A same-rank link (e.g. a redundant peer link between twin core routers) isn't a
-  // parent/child relationship at all — flagged as `isPeer` so it's excluded from the
-  // hierarchy map and rendered via side handles instead of top/bottom.
+  // The API's source/target labeling doesn't reflect which side is upstream, so orient every link by rank instead (lower rank = parent); same-rank links (e.g. redundant peer links) aren't parent/child at all — flagged `isPeer` and rendered via side handles instead.
   const resolvedLinks = uniqueLinks.map((l) => {
     const rankGap = rankById[l.bId] - rankById[l.aId];
     if (rankGap === 0) {
@@ -246,12 +183,7 @@ export function buildSiteDiagramTopology(rawGraphNodes, graphLinks) {
       : { ...l, isPeer: false, parentId: l.aId, childId: l.bId, parentPort: l.source.port, childPort: l.target.port };
   });
 
-  // `childrenMap` tracks distinct children per parent (for collapse/expand and the
-  // "N devices hidden" count) — deduped even if two links go to the same child, since
-  // that's a wiring detail, not a second descendant. `linksByParent`/`linksByChild`
-  // keep every individual link (duplicates included) for handle spreading below, so
-  // a redundant pair of links to the same child still gets two distinct, fanned
-  // attachment points instead of overlapping on one.
+  // `childrenMap` dedupes children per parent (a second link to the same child is a wiring detail, not a second descendant) for collapse/expand and the hidden-count; `linksByParent`/`linksByChild` keep every individual link so redundant pairs still get separate fanned handle positions.
   const childrenMap = {};
   const linksByParent = {};
   const linksByChild = {};
@@ -297,10 +229,7 @@ export function buildSiteDiagramTopology(rawGraphNodes, graphLinks) {
     }));
   });
 
-  // A node with more than one parent (e.g. dual-homed to both redundant core routers)
-  // would otherwise have every incoming edge pinch into the single fixed top-center
-  // target handle before fanning back out. Spread target handles the same way source
-  // handles are already spread, so each link gets its own attachment point.
+  // A dual-homed node would otherwise have every incoming edge pinch into one fixed top-center target handle — spread target handles the same way source handles are, so each link gets its own attachment point.
   const nodeTargetHandles = {};
   Object.entries(linksByChild).forEach(([childId, links]) => {
     const sorted = [...links].sort(
@@ -345,9 +274,7 @@ export function buildSiteDiagramTopology(rawGraphNodes, graphLinks) {
             : "#3b82f6";
 
     if (l.isPeer) {
-      // Route via the side handles instead of top/bottom so a peer link (same rank,
-      // sitting in the same row) doesn't arc through the hierarchy edges fanning out
-      // below every node — connect whichever side each node actually faces the other.
+      // Route peer links via side handles instead of top/bottom so a same-rank link doesn't arc through the hierarchy edges fanning out below every node.
       const aX = positions[l.parentId]?.x ?? 0;
       const bX = positions[l.childId]?.x ?? 0;
       const [leftId, rightId] = aX <= bX ? [l.parentId, l.childId] : [l.childId, l.parentId];

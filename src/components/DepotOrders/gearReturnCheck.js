@@ -1,22 +1,5 @@
-// Auto-detects gear that has moved off the site it was sent to and strikes those
-// lines in the freeform "notes" box on a Gear Return record, so a manager doesn't
-// have to manually check + strikethrough every serial by hand. It also un-strikes a
-// line if a device someone already marked back is confirmed still checked out at the
-// original site — the strike shouldn't have been there.
-//
-// In practice managers paste this in from all kinds of Excel shapes — one token per
-// line, four columns on one line, blank lines between devices, blank lines standing in
-// for a missing column, none of it consistent. So before anything else runs, the notes
-// are reformatted into one canonical line per device ("<hostname> [mac] <serial>
-// [model]"), grouped by recognizing that every hostname starts with the record's own
-// site code — not by blank lines, which turned out to also mark missing fields (e.g.
-// OOB devices with no MAC) and can't be trusted as a device boundary on their own.
-// Only the serial is ever looked up in Snipe-IT — the hostname and model tokens are
-// never sent to byserial.
-//
-// Identification stays conservative: a line is only ever touched when exactly one
-// remaining token resolves to a real, existing Snipe-IT asset. Anything ambiguous
-// (zero or multiple matches, or no hostname to read a site code from) is left alone.
+// Auto-strikes gear-return notes lines for devices confirmed moved off their sent-to site, and un-strikes ones wrongly marked back, so managers don't have to check each serial by hand.
+// Notes get reformatted into one line per device (grouped by the record's site-code prefix, since blank lines can't be trusted as boundaries) and only a Snipe-IT serial match — never hostname/model — is looked up, and only when exactly one match is found; anything ambiguous is left alone.
 
 const MAC_RE = /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/i;
 const STRIKE_TAGS = new Set(["S", "STRIKE", "DEL"]);
@@ -38,10 +21,7 @@ export function resolveLocationByName(locations, name) {
   return (locations || []).find((l) => String(l?.name || "").trim().toLowerCase() === target) || null;
 }
 
-// Safety net for content pasted before RichNotesEditor started normalizing pastes
-// (or any browser that inserts a literal "\n" instead of a real <br>/<div>) — without
-// this, a whole multi-device blob can collapse into a single unsplit "line", which
-// pulls hostnames into the candidate pool and makes false collisions much more likely.
+// Safety net for pastes with a literal "\n" instead of a real <br>/<div> — without this, a whole multi-device blob can collapse into one unsplit line, pulling hostnames into the candidate pool and risking false collisions.
 function normalizeNewlines(node) {
   Array.from(node.childNodes).forEach((child) => {
     if (child.nodeType === 3 && child.nodeValue.includes("\n")) {
@@ -81,11 +61,7 @@ function collectLineGroups(container) {
   return groups;
 }
 
-// A plain .textContent read silently drops <br> line breaks (they contribute empty
-// text), gluing whatever sat on either side together with zero separator — a real
-// risk once normalizeNewlines can leave <br> nested inside a single top-level <div>
-// rather than as a sibling. Walk manually and treat every <br>, nested or not, as a
-// space instead.
+// .textContent silently drops <br> breaks and glues the surrounding text together with no separator — a real risk since normalizeNewlines can leave <br> nested inside a single <div> — so walk manually and treat every <br> as a space.
 function textWithBreaksAsSpaces(node) {
   if (node.nodeType === 3) return node.nodeValue || "";
   if (node.nodeType !== 1) return "";
@@ -153,12 +129,7 @@ function escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Flattens every source line into individual whitespace-separated tokens, each tagged
-// with whether its source line was struck. Device boundaries can't be trusted at the
-// line level — some pastes land as one token per line, others as everything on a
-// single line with no breaks at all, so the only reliable signal in either case is the
-// token content itself: a token that starts with the record's own site code is a
-// hostname and marks the start of a new device.
+// Flattens every line into whitespace-separated tokens tagged with whether the line was struck — line breaks aren't a reliable device boundary, so a token starting with the record's site code is what actually marks a new device.
 function tokenizeGroups(groups) {
   const stream = [];
   groups.forEach((group) => {
@@ -172,14 +143,7 @@ function tokenizeGroups(groups) {
   return stream;
 }
 
-// Some pastes glue the tail of one device's serial straight onto the front of the
-// next device's hostname with no separator at all (e.g.
-// "A073922060D1CSOCCAAQUWAP0103"), which whitespace-splitting can never pull apart.
-// A hostname has a recognizable shape wherever it sits — an 8-char site code
-// immediately followed by one of the device-type markers seen in every record so far
-// — so scan every token for that shape and cut the token at each match's start,
-// regardless of position. A token with a match only at position 0 (already clean)
-// or no match at all (a MAC/serial/model) is returned untouched.
+// Some pastes glue one device's serial straight onto the next device's hostname with no separator (e.g. "A073922060D1CSOCCAAQUWAP0103") — scan for the site-code-plus-device-type-marker shape anywhere in a token and cut there; already-clean tokens are returned untouched.
 const DEVICE_TYPE_MARKERS = "WAP|SWA|RWA|OOB";
 const EMBEDDED_HOSTNAME_RE = new RegExp(`[A-Z0-9]{${SITE_CODE_LENGTH}}(?:${DEVICE_TYPE_MARKERS})\\d{1,4}`, "gi");
 
@@ -206,12 +170,7 @@ function splitFusedTokens(stream) {
   return result;
 }
 
-// The record's own "Site" field isn't reliable — it's often blank — so the site code
-// is read straight out of the device names instead: every hostname in one record
-// shares the same first-8-character prefix (that's the whole naming convention), so
-// whichever 8-char prefix repeats across multiple non-MAC, non-numeric tokens is it.
-// Requiring at least 2 occurrences keeps a lone serial/model that happens to share a
-// prefix with nothing else from being mistaken for a site code.
+// The record's "Site" field is often blank, so the site code is inferred from whichever 8-char prefix repeats across multiple non-MAC, non-numeric tokens — requiring 2+ occurrences keeps a lone serial/model from being mistaken for a site code.
 function inferSiteCode(tokens) {
   const counts = new Map();
   tokens.forEach((token) => {
@@ -232,9 +191,7 @@ function inferSiteCode(tokens) {
   return bestPrefix;
 }
 
-// Falls back to "one source line = one block" (a no-op) when no site code can be
-// inferred at all, so unrecognizable content passes through unchanged rather than
-// guessing.
+// Falls back to one-line-per-block (a no-op) when no site code can be inferred, so unrecognizable content passes through unchanged rather than guessing.
 function groupIntoDeviceBlocks(groups) {
   const stream = splitFusedTokens(tokenizeGroups(groups));
   const siteCode = inferSiteCode(stream.map((entry) => entry.token));
@@ -286,12 +243,7 @@ function candidateTokens(restTokens, modelExclusionSet) {
     .filter((t) => !modelExclusionSet.has(t.toUpperCase()));
 }
 
-// null = can't determine either way — leaves the line untouched rather than guessing.
-// Missing location data must NOT default to "moved off": that was the actual bug —
-// devices checked out to a person (not a location record) can come back from
-// byserial with location=null even while genuinely still checked out at the site,
-// and defaulting unknown to "moved off" was quietly confirming an already-wrong
-// strike as correct instead of leaving it alone.
+// Returns null (line left untouched) when it can't be determined either way — the actual bug this fixes was defaulting a missing location to "moved off", which silently confirmed an already-wrong strike for devices checked out to a person rather than a location record.
 function isStillAtOriginalSite(asset, { hostname, siteLocation }) {
   const locationName = String(asset?.location?.name || "").trim().toUpperCase();
   const assignedToName = String(asset?.assigned_to?.name || "").trim().toUpperCase();
@@ -336,9 +288,7 @@ export async function checkAndStrikeReturnedGear(notesHtml, { siteName, location
   container.innerHTML = reformattedHtml;
   const groups = collectLineGroups(container);
 
-  // Work out every line's candidates first, then fire every unique lookup at once
-  // instead of awaiting line-by-line — a 20-device list was making 20+ sequential
-  // round trips before; now it's a single parallel batch.
+  // Batches every unique lookup in parallel instead of awaiting line-by-line — a 20-device list used to make 20+ sequential round trips.
   const lineInfos = groups.map((group) => {
     const text = groupText(group);
     if (!text.trim()) return null;

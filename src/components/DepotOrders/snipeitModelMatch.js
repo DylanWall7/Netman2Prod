@@ -38,10 +38,7 @@ function scoreCandidate(productCode, model) {
   for (const field of fields) {
     let score = similarity(code, field);
     const [shorter, longer] = code.length <= field.length ? [code, field] : [field, code];
-    // Only treat one as "containing" the other when the extra characters start at a
-    // token boundary (e.g. "AP47-US" contains "AP47"). Otherwise a shorter model number
-    // that happens to be a raw prefix (e.g. "AP47" inside "AP47D-US") isn't the same
-    // device and shouldn't get boosted just for sharing a prefix.
+    // Only treat one as "containing" the other when the extra characters start at a token boundary (e.g. "AP47-US" contains "AP47") — a raw prefix like "AP47" inside "AP47D-US" isn't the same device and shouldn't get boosted.
     if (isBoundaryContainment(shorter, longer)) score = Math.max(score, 0.85);
     best = Math.max(best, score);
   }

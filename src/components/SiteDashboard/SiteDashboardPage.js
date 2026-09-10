@@ -39,10 +39,7 @@ const NETBOX_UI_BASE_URL = "https://netbox.kiewit.com";
 const SNIPEIT_UI_BASE_URL = "https://netinv.kiewitplaza.com";
 const SERVICENOW_INCIDENT_BASE_URL = `https://${process.env.REACT_APP_SERVICENOW_BASEURL}/now/nav/ui/classic/params/target/incident.do%3Fsys_id%3D`;
 
-// This endpoint has no site filter (see getRecentIncidents) — every option here pulls every
-// incident assigned to the network group org-wide, filtered down client-side afterward, so
-// the window is capped rather than left open-ended: going back further means fetching (and
-// discarding) proportionally more org-wide records just to find this one site's handful.
+// No site filter on this endpoint — every option pulls org-wide incidents, filtered client-side, so the window is capped to limit wasted fetching.
 const INCIDENTS_DEFAULT_DAYS = 30;
 const INCIDENTS_MAX_DAYS = 90;
 const INCIDENTS_DAY_OPTIONS = [7, 14, 30, 60, INCIDENTS_MAX_DAYS];
@@ -55,19 +52,14 @@ function mistDetailUrl(mistId, type, mistSiteId) {
   return `https://manage.mist.com/admin/?org_id=${orgId}#!${mistType}/detail/${mistId}/${mistSiteId ?? ""}`;
 }
 
-// Prefers a real name resolved via getServiceNowUsers (sys_id -> display name, fetched for
-// every assigned_to/opened_by/caller_id sys_id across the current incident list) over
-// referenceDisplay's raw-sys_id fallback — see the userDisplayMap effect below.
+// Prefers a real name from getServiceNowUsers over referenceDisplay's raw-sys_id fallback — see userDisplayMap below.
 function resolveReference(field, userMap) {
   if (!field) return null;
   if (typeof field === "string") return field || null;
   return userMap.get(field.value) || referenceDisplay(field);
 }
 
-// "state"/"incident_state" arrive as human text like "Closed"/"In Progress" if
-// sysparm_display_value is honored (see getRecentIncidents), or as ServiceNow's raw numeric
-// codes if it isn't. Confirmed org-specific mapping (not the ServiceNow OOB defaults) — 3/4/5
-// are unused at this org, and the negative codes are the various "awaiting X" states.
+// "state" arrives as text or ServiceNow's raw numeric code depending on sysparm_display_value — this org-specific mapping skips unused 3/4/5 and covers the negative "awaiting X" codes.
 const CLOSED_STATE_CODES = new Set(["6", "7", "8"]);
 const INCIDENT_STATE_LABELS = {
   1: "Open",
@@ -85,8 +77,7 @@ function isClosedState(state) {
   return CLOSED_STATE_CODES.has((state ?? "").toString().trim());
 }
 
-// Confirmed org-specific incident priority scale (from getPriorityString()) — this org only
-// uses 1-4, unlike ServiceNow's OOB 1-5 scale. Severity is still unconfirmed for this org.
+// This org uses a 1-4 priority scale, not ServiceNow's OOB 1-5 — severity scale is still unconfirmed.
 const PRIORITY_LABELS = { 1: "Critical", 2: "High", 3: "Medium", 4: "Low" };
 const SEVERITY_LABELS = { 1: "High", 2: "Medium", 3: "Low" };
 function codeLabel(value, labels) {
@@ -104,9 +95,7 @@ function isHighPriority(priority) {
   return s === "1" || s === "2";
 }
 
-// ServiceNow's display timestamps come back as "YYYY-MM-DD HH:MM:SS" — readable, but not
-// localized. Reformatted into the viewer's own locale/date-time style; falls back to the raw
-// string if it doesn't parse as a date (e.g. any unexpected format).
+// ServiceNow's timestamps aren't localized — reformatted to the viewer's locale, falling back to the raw string if it doesn't parse.
 function formatSnowDate(value) {
   if (!value) return null;
   const date = new Date(value.replace(" ", "T"));
@@ -193,25 +182,17 @@ function IncidentsCard({ incidents, loading, error, onSelect, userMap, daysAgo, 
 function circuitName(c) {
   return resolveScalar(c.name) || "—";
 }
-// u_primary_service (e.g. "Point to Point", "Internet", "SIP", "POTS", "Ethernet") is the
-// meaningful type breakdown. The top-level `type` field is always "AC" on every circuit —
-// unrelated CMDB metadata, not circuit type — so it's not used despite being non-empty.
-// u_type (Data/Voice) is a coarser fallback for records missing u_primary_service.
+// u_primary_service is the real type breakdown — the top-level `type` field is unrelated CMDB metadata (always "AC"), not circuit type. u_type is a coarser fallback.
 function circuitType(c) {
   return resolveScalar(c.u_primary_service) || resolveScalar(c.u_type) || null;
 }
-// The coarse Data/Voice split — used for the type filter (per request, instead of the more
-// granular u_primary_service breakdown above, which is still shown per-row).
+// The coarse Data/Voice split, used for the type filter — the finer breakdown still shows per-row.
 function circuitCategory(c) {
   return resolveScalar(c.u_type) || null;
 }
 const CIRCUIT_ACTIVE_WORDS = ["active", "connected", "installed", "operational"];
 const CIRCUIT_INACTIVE_WORDS = ["disconnected", "inactive", "cancelled", "canceled", "removed"];
-// u_status ("Active"/"Disconnected") is the real signal — operational_status/install_status
-// are both a constant "1" across every circuit regardless of actual state (confirmed in the
-// same payload), so they'd always say "active" even for a disconnected circuit and aren't
-// used. null = couldn't tell, treated as "still show it" by the Active filter below rather
-// than hiding a circuit whose u_status uses a word this doesn't recognize.
+// u_status is the real signal — operational_status/install_status are a constant "1" regardless of actual state. null means unrecognized, treated as "show it" rather than hidden.
 function circuitIsActive(c) {
   const status = resolveScalar(c.u_status).toLowerCase().trim();
   if (!status) return null;
@@ -346,10 +327,7 @@ function formatCurrency(value) {
   return Number.isNaN(n) ? value : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Mirrors the real ServiceNow circuit form's field layout, two-column left/right grouping.
-// Key names beyond the four already confirmed (u_primary_service, u_type, u_status,
-// u_max_speed) are best guesses following this integration's u_-prefix convention; if one's
-// wrong, that field just renders blank rather than breaking anything.
+// Mirrors the real ServiceNow circuit form's layout — unconfirmed field names are best guesses at the u_-prefix convention; a wrong one just renders blank.
 const CIRCUIT_LEFT_FIELDS = [
   { key: "u_type", label: "Type" },
   { key: "u_max_speed", label: "Max Speed" },
@@ -380,16 +358,11 @@ function buildCircuitFields(circuit, fieldDefs) {
 const FOCUSABLE_SELECTOR =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-// Extra padding (offset by a matching negative margin so it doesn't shift surrounding layout)
-// brings the click/tap target close to the 44x44px guideline without changing the visible ×.
+// Padding offset by a matching negative margin — grows the tap target toward 44x44px without moving the visible × or shifting layout.
 const MODAL_CLOSE_BUTTON_CLASS =
   "text-gray-500 hover:text-gray-300 text-2xl leading-none p-2 -m-2 rounded hover:bg-gray-800/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-500";
 
-// Focus trap + Escape-to-close + focus restore — same pattern already used by
-// ManageDHCP/DHCPScopeModal.js, shared here since every modal on this page needs identical
-// behavior. Every modal that uses this is only ever mounted while open (the parent renders it
-// via `{selectedX && <Modal .../>}`), so mount = open and unmount = close; the effect just runs
-// once per mount rather than needing an explicit "active" flag.
+// Focus trap + Escape-to-close + focus restore, same pattern as DHCPScopeModal.js — every caller only mounts this while open, so mount/unmount doubles as open/close with no active flag needed.
 function useModalA11y(dialogRef, onClose) {
   const previouslyFocusedRef = useRef(null);
   useEffect(() => {
@@ -425,9 +398,7 @@ function useModalA11y(dialogRef, onClose) {
   }, []);
 }
 
-// locationRecord is the already-fetched /servicenow/locations record for the current site
-// (see the siteCode-keyed effect above) — used here instead of the circuit's own `location`
-// reference field, which only carries an unresolved sys_id.
+// locationRecord (already fetched above) is used instead of the circuit's own `location` field, which only carries an unresolved sys_id.
 function CircuitDetailModal({ circuit, locationRecord, onClose }) {
   const dialogRef = useRef(null);
   useModalA11y(dialogRef, onClose);
@@ -501,18 +472,13 @@ function IncidentDetailField({ label, value }) {
   );
 }
 
-// The list endpoint's own results already contain the full record (description, close
-// notes, every timestamp) — same object shown in the card row, no separate detail fetch.
+// The list endpoint's results already carry the full record — no separate detail fetch needed.
 function IncidentDetailModal({ incident, onClose, userMap }) {
   const dialogRef = useRef(null);
   useModalA11y(dialogRef, onClose);
   if (!incident) return null;
   const state = incident.state || incident.incident_state;
-  // Portaled straight to document.body — this page nests the modal many levels deep, and a
-  // "fixed" backdrop only actually covers the full viewport if none of those ancestors set a
-  // transform/filter/perspective (any of which quietly turns "fixed" into "positioned
-  // relative to that ancestor" instead of the viewport, leaving a gap wherever that ancestor
-  // starts). A portal sidesteps the question entirely.
+  // Portaled to document.body — a deeply nested "fixed" backdrop can get scoped to an ancestor's transform/filter instead of the viewport; a portal sidesteps that.
   return createPortal(
     <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
       <div
@@ -625,10 +591,7 @@ function SkeletonBar({ className }) {
   return <div className={`animate-pulse bg-gray-800 rounded ${className}`} />;
 }
 
-// Every section fetches independently with its own cancel-safe effect, so retrying is cheap —
-// previously a failed section had no recovery path besides a full page reload, which also
-// wiped unrelated state (device-table search/sort/columns) that had nothing to do with the
-// failure. onRetry is optional so callers with no retry path (e.g. weather) can omit it.
+// Each section retries on its own instead of needing a full page reload, which used to wipe unrelated state too. onRetry is optional for callers with no retry path (e.g. weather).
 function RetryError({ message, onRetry }) {
   return (
     <div className="flex items-center justify-between gap-2">
@@ -669,9 +632,7 @@ function SkeletonTable({ rows = 4 }) {
   );
 }
 
-// Source styling mirrors ManageDHCP/DHCPManager.js so a scope reads the same way in both
-// places. Each row is exactly one server's deployment of a subnet (see getScopesForSite) —
-// a subnet on both Gizmo and Kea produces two rows here, not one merged row.
+// Mirrors DHCPManager.js's styling — a subnet on both Gizmo and Kea gets two rows here, not one merged row.
 function dhcpSourceLabel(scope) {
   if (scope.hasGizmo) return "Gizmo";
   if (scope.hasKea) return "Kea";
@@ -828,11 +789,7 @@ function DhcpScopesCard({ siteCode, scopes, error, onRetry }) {
   );
 }
 
-// icmp = 4G connection, snmp = Wired connection, same labeling as OpengearReports.js.
-// loading is distinct from !conn: loading means the status call just hasn't resolved yet,
-// while !conn (once loaded) means the connection is genuinely not configured — conflating
-// the two would flash a false "Not Configured" while the slower of the two Opengear calls
-// is still in flight.
+// icmp = 4G, snmp = Wired (same as OpengearReports.js). loading is kept distinct from !conn so an in-flight call doesn't flash a false "Not Configured".
 function OpengearConnectionRow({ label, conn, loading }) {
   const isActive = conn?.status === 1;
   return (
@@ -870,12 +827,7 @@ function OpengearConnectionRow({ label, conn, loading }) {
   );
 }
 
-// Inventory fields from the summary endpoint. Wired/Cell IP are shown even though
-// OpengearConnectionRow already shows the LibreNMS-monitored IP+status for each
-// connection — the two can disagree (e.g. LibreNMS says "Not Configured" while the
-// summary endpoint has a real wiredip), and that mismatch is itself the useful signal:
-// it tells someone whether they're looking at a real config/wiring issue or just a
-// monitoring gap.
+// Wired/Cell IP shown even though OpengearConnectionRow also shows them — the two can disagree, and that mismatch itself signals a real config issue vs. just a monitoring gap.
 function OpengearInventoryFields({ device, loading }) {
   const fields = [
     ["Wired IP", device.wiredip],
@@ -887,8 +839,7 @@ function OpengearInventoryFields({ device, loading }) {
     ["IMEI", device.imei],
     ["ICCID", device.iccid],
   ].filter(([, value]) => value);
-  // The summary call hasn't resolved yet for this device (it showed up via the status call
-  // instead) — show a placeholder rather than silently rendering nothing.
+  // Device showed up via the status call before summary resolved — show a placeholder, not nothing.
   if (fields.length === 0 && loading) {
     return (
       <div className="mt-1.5 pt-1.5 border-t border-gray-800/60">
@@ -909,9 +860,7 @@ function OpengearInventoryFields({ device, loading }) {
   );
 }
 
-// Matches OpengearCard's own width/shape (SkeletonTable is full-width and doesn't fit the
-// narrow max-w-sm slot this card sits in next to DHCP Scopes) so the loading state doesn't
-// jump in size once real data replaces it.
+// Matches OpengearCard's own narrow width (SkeletonTable is full-width) so it doesn't jump in size once real data loads.
 function OpengearCardSkeleton() {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 w-full max-w-sm flex-shrink-0">
@@ -966,8 +915,7 @@ function OpengearCard({ devices, error, statusLoading, summaryLoading, onRetry }
   );
 }
 
-// Name is the only field consistently present across all sources, so it's the merge key —
-// first non-empty value wins per field.
+// Name is the merge key (the only field consistent across all sources) — first non-empty value wins per field.
 function mergeDevicesByName(netboxDevices, diagramDevices, mistDevices, mistSiteId, opengearDevices = []) {
   const map = new Map();
   const upsert = (rawName, fields) => {
@@ -998,12 +946,7 @@ function mergeDevicesByName(netboxDevices, diagramDevices, mistDevices, mistSite
     });
     map.set(key, existing);
   };
-  // Mist devices are always Juniper hardware by definition — a structural default, not a
-  // guess, for the vendor field Mist's summary doesn't itself report.
-  //
-  // inMist is set unconditionally here — a device that came from THIS SITE's Mist device
-  // list is definitionally in Mist, regardless of what Netbox's own mistdevice/mistdevicesite
-  // custom fields (used below for devices Mist didn't report) claim.
+  // Mist devices are always Juniper (Mist's summary doesn't report vendor) and unconditionally inMist — a device Mist reports for this site is in Mist, regardless of Netbox's own custom fields.
   mistDevices.forEach((d) =>
     upsert(d.name, {
       model: d.model,
@@ -1036,8 +979,7 @@ function mergeDevicesByName(netboxDevices, diagramDevices, mistDevices, mistSite
       netboxId: d.id,
     });
   });
-  // Opengear devices aren't Mist/diagram-managed, so this is usually the only status source
-  // for them — fills the gap left by "Unknown" rather than overriding a real one.
+  // Usually the only status source for Opengear devices — fills the "Unknown" gap, never overrides a real one.
   opengearDevices.forEach((og) => {
     upsert(og.name, { status: og.snmp ? (og.snmp.status === 1 ? "connected" : "disconnected") : null });
   });
@@ -1121,11 +1063,7 @@ function capitalize(word) {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
-// "connected" was assumed to be the only online value Mist/the diagram endpoint report, but
-// at least one real device came back with "online" instead — that exact-match check treated
-// it as offline (red) while the fallback text still displayed capitalize(status) = "Online",
-// so the badge read "Online" in red. Matched case-insensitively against both known values now.
-// Devices with no live status source stay an explicit "Unknown" rather than being shown as down.
+// A device reporting "online" instead of "connected" used to render as a red "Online" badge — now matched against both. No status source stays an explicit "Unknown", not "down".
 const ONLINE_STATUS_VALUES = new Set(["connected", "online"]);
 function StatusBadge({ status }) {
   if (!status) {
@@ -1214,8 +1152,7 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
   const [expanded, setExpanded] = useState(new Set());
   const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
 
-  // Escape-to-close, since a keyboard user who opens the picker via Enter/Space has no other
-  // way to dismiss it (onMouseLeave alone doesn't help them).
+  // Escape-to-close — a keyboard user who opened this via Enter/Space has no other way to dismiss it.
   useEffect(() => {
     if (!showColumnPicker) return;
     function handleKeyDown(e) {
@@ -1225,10 +1162,7 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [showColumnPicker]);
 
-  // Pointer capture (not a document-level listener) keeps pointermove/pointerup targeting
-  // this exact handle even once the cursor drags off its thin hit area — without it, a
-  // mouseup that lands back over the header text fires a click there too, which re-triggers
-  // the column's sort handler mid-drag.
+  // Pointer capture keeps drag events on this handle even off its thin hit area — without it, a mouseup landing back on the header text re-triggers the sort handler mid-drag.
   const startResize = (key) => (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1257,8 +1191,7 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
   };
   const [snipeitStatus, setSnipeitStatus] = useState({});
 
-  // Looked up by serial on click (not prefetched per row) — tab opens synchronously so
-  // popup blockers don't kill it while the lookup is in flight.
+  // Tab opens synchronously (not after the lookup) so popup blockers don't kill it.
   const handleSnipeitClick = async (device) => {
     const win = window.open("", "_blank");
     setSnipeitStatus((prev) => ({ ...prev, [device.name]: "loading" }));
@@ -1280,8 +1213,7 @@ function AllDevicesCard({ netboxDevices, diagram, mist, opengearDevices, mistSit
     [netboxDevices, diagram.devices, mist.devices, mistSiteId, opengearDevices],
   );
 
-  // Stack members are named like "KSCVICHCSWA0201_0"/"_1" — grouped under the base device
-  // only when that base name actually exists as a device itself.
+  // Stack members ("..._0"/"_1") group under the base device only when that base name itself exists as a device.
   const grouped = useMemo(() => {
     const byName = new Map(merged.map((d) => [d.name, d]));
     const childrenByParent = new Map();
@@ -1604,10 +1536,7 @@ function resolveScalar(v) {
   return v ?? "";
 }
 
-// Confirmed org-specific scale (from the location's getPriorityString()). "0" is a real,
-// meaningful value here ("No Monitoring"), not an empty/unset field — resolved and mapped to
-// text *before* Field's own emptiness check runs, since a raw 0 there reads as falsy and
-// would otherwise get silently hidden like a genuinely missing value.
+// "0" is a real, meaningful value ("No Monitoring") — mapped to text before Field's emptiness check runs, since a raw 0 reads as falsy and would get hidden.
 const SITE_PRIORITY_LABELS = { 0: "No Monitoring", 1: "Next Business Day", 2: "24/7" };
 function sitePriorityLabel(rawValue) {
   const resolved = resolveScalar(rawValue);
@@ -1616,8 +1545,7 @@ function sitePriorityLabel(rawValue) {
   return SITE_PRIORITY_LABELS[s] ?? resolved;
 }
 
-// Appending T00:00:00 forces local-time parsing so a date-only string like "2026-07-01"
-// doesn't shift a day earlier in negative-UTC-offset timezones.
+// Appending T00:00:00 forces local-time parsing so a date-only string doesn't shift a day earlier in negative-UTC timezones.
 function formatFullDate(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr;
@@ -1635,9 +1563,7 @@ function Field({ label, value, format }) {
   );
 }
 
-// A sys_user reference field renders as its raw sys_id until userMap resolves it — shows a
-// skeleton instead of that hex string for the specific window where resolution is still in
-// flight, rather than flashing the id and then swapping to a name.
+// Shows a skeleton while userMap resolves this sys_id, instead of flashing the raw hex string then swapping to a name.
 function ContactField({ label, refField, userMap, loading }) {
   if (!refField) return null;
   const isPending = loading && typeof refField === "object" && !userMap.has(refField.value);
@@ -1679,8 +1605,7 @@ function SnowLocationCard({ location, error, contacts, userMap, userMapLoading, 
     const siteDocUrl = get("u_site_doc_url");
     const hasAddress = streetLine || cityStateZip || country;
 
-    // contacts is a separate record (see getServiceNowLocationBySite) from a different backend
-    // endpoint than `location` — description/comments live on that record, not this one.
+    // contacts is a separate record from `location` — description/comments live there, not here.
     const description = contacts && resolveScalar(contacts.u_description);
     const comments = contacts && resolveScalar(contacts.u_comments);
     const hasNotes = description || comments;
@@ -1818,8 +1743,7 @@ function SnowLocationCard({ location, error, contacts, userMap, userMapLoading, 
   );
 }
 
-// lat/long are often blank, but u_lat_long_url (a Google Maps link) reliably has them
-// embedded in its query string — fall back to parsing that.
+// lat/long are often blank — falls back to parsing them out of u_lat_long_url's query string.
 function extractCoords(location) {
   if (!location) return null;
   const lat = parseFloat(resolveScalar(location.latitude));
@@ -1883,16 +1807,14 @@ const WEATHER_EMOJI = {
   99: "⛈️",
 };
 
-// Leaflet's default marker icon path breaks under CRA's webpack bundling — a remote iconUrl
-// sidesteps that (same pattern as Map/MapCluster.js).
+// Leaflet's default marker icon path breaks under CRA's bundling — a remote iconUrl sidesteps it (same as Map/MapCluster.js).
 const siteMarkerIcon = new Icon({
   iconUrl: "https://cdn-icons-png.flaticon.com/512/447/447031.png",
   iconSize: [28, 28],
   iconAnchor: [14, 28],
 });
 
-// RainViewer generates radar tiles only up to zoom 7 — "512" gets double pixel-density
-// tiles for the sharpest image at that ceiling.
+// RainViewer tops out at zoom 7 — "512" gets double pixel-density tiles for the sharpest image at that ceiling.
 function buildRadarTileUrl(frame) {
   if (!frame) return null;
   return `${frame.host}${frame.path}/512/{z}/{x}/{y}/2/1_1.png`;
@@ -2009,8 +1931,7 @@ function SiteLocationCard({ location }) {
   const [alerts, setAlerts] = useState([]);
   const [now, setNow] = useState(() => new Date());
 
-  // Ticks the site's local-time display — only actually rendered once `weather.timezone`
-  // (from Open-Meteo's timezone=auto) resolves, but cheap enough to just run unconditionally.
+  // Runs unconditionally even though the clock only renders once weather.timezone resolves — cheap either way.
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(id);
@@ -2141,9 +2062,7 @@ function SiteLocationCard({ location }) {
   );
 }
 
-// Small live analog + digital clock for the site's own timezone — reuses the ServiceNow
-// location record's raw `time_zone` field (e.g. "US/Arizona") that's already fetched for
-// the Site Info card, rather than firing a second network call just for this.
+// Reuses the ServiceNow location record's own time_zone field, already fetched for the Site Info card — no second network call.
 function SiteClock({ timeZone }) {
   const [now, setNow] = useState(() => new Date());
 
@@ -2164,8 +2083,7 @@ function SiteClock({ timeZone }) {
       hour12: false,
     }).formatToParts(now);
   } catch {
-    // time_zone came back as something Intl doesn't recognize as a valid IANA zone —
-    // fail quietly rather than crash the whole dashboard over a clock widget.
+    // time_zone isn't a valid IANA zone Intl recognizes — fail quietly rather than crash over a clock widget.
     return null;
   }
   const get = (type) => Number(parts.find((p) => p.type === type)?.value ?? 0);
@@ -2244,8 +2162,7 @@ export default function SiteDashboardPage() {
   const getToken = useSiteDashboardToken();
   const navigate = useNavigate();
 
-  // Inline site switcher — lets an engineer jump to another site's dashboard
-  // without leaving this page and re-navigating through site search.
+  // Inline site switcher — jump to another site's dashboard without leaving this page.
   const [sites, setSites] = useState([]);
   const [sitesLoading, setSitesLoading] = useState(false);
   const [siteInput, setSiteInput] = useState(siteCode || "");
@@ -2264,8 +2181,7 @@ export default function SiteDashboardPage() {
         const data = await listSites(token);
         if (!cancelled) setSites(data);
       } catch {
-        // Non-critical: the switcher just has no options if this fails. The
-        // page's actual dashboard data loads independently and isn't blocked by it.
+        // Non-critical — the switcher just has no options; dashboard data loads independently.
       } finally {
         if (!cancelled) setSitesLoading(false);
       }
@@ -2281,8 +2197,7 @@ export default function SiteDashboardPage() {
     if (trimmed && trimmed !== siteCode) navigate(`/${trimmed}/dashboard`);
   };
 
-  // Bumped by each section's Retry button to force its effect to re-run even though siteCode
-  // (its usual trigger) hasn't changed.
+  // Bumped by each section's Retry button to re-run its effect even though siteCode hasn't changed.
   const [dataRetryNonce, setDataRetryNonce] = useState(0);
   const [circuitsRetryNonce, setCircuitsRetryNonce] = useState(0);
   const [incidentsRetryNonce, setIncidentsRetryNonce] = useState(0);
@@ -2293,8 +2208,7 @@ export default function SiteDashboardPage() {
   const [snowLocation, setSnowLocation] = useState(null);
   const [snowLoading, setSnowLoading] = useState(true);
   const [snowLocationError, setSnowLocationError] = useState(null);
-  // A different backend endpoint/record than snowLocation above — only fetched for the
-  // business/IT contact fields that one doesn't carry.
+  // A different record than snowLocation above — fetched only for the contact fields that one doesn't carry.
   const [locationRecord, setLocationRecord] = useState(null);
   const [locationRecordLoading, setLocationRecordLoading] = useState(true);
   const [dhcpScopes, setDhcpScopes] = useState([]);
@@ -2311,11 +2225,7 @@ export default function SiteDashboardPage() {
   const [incidentsLoading, setIncidentsLoading] = useState(true);
   const [incidentsError, setIncidentsError] = useState(null);
   const [incidentsDaysAgo, setIncidentsDaysAgo] = useState(INCIDENTS_DEFAULT_DAYS);
-  // Split into two independent lists, each filtered by site prefix on its own, and unioned
-  // by name below — whichever of the two calls resolves first is what determines the initial
-  // device list (a name can come from either source), rather than always waiting on summary
-  // specifically. A name-only entry from whichever source hasn't arrived yet just renders
-  // with its fields absent/skeletoned until that call catches up.
+  // Two independent lists unioned by name below — whichever resolves first seeds the device list, with the other's fields skeletoned until it catches up.
   const [opengearSummaryDevices, setOpengearSummaryDevices] = useState([]);
   const [opengearLoading, setOpengearLoading] = useState(true);
   const [opengearError, setOpengearError] = useState(null);
@@ -2338,10 +2248,7 @@ export default function SiteDashboardPage() {
       })
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [opengearSummaryDevices, opengearStatusDevices]);
-  // Only block the card entirely while NEITHER source has produced anything yet — as soon as
-  // either one has a device to show, the card mounts and shows per-field skeletons for
-  // whichever piece (inventory vs. live status) is still pending. A summary error surfaces
-  // immediately rather than waiting on the status call too.
+  // Blocks the card only while neither source has anything yet — one device is enough to mount it with per-field skeletons for the rest.
   const opengearInitialLoading =
     !opengearError && (opengearLoading || opengearStatusLoading) && opengearDevices.length === 0;
   const [diagramDevices, setDiagramDevices] = useState([]);
@@ -2351,9 +2258,7 @@ export default function SiteDashboardPage() {
   const [mistLoading, setMistLoading] = useState(false);
   const [mistError, setMistError] = useState(null);
 
-  // Each section renders as soon as its own fetch resolves rather than waiting on the
-  // slowest — they still share one token fetch so switching sites doesn't trigger repeat
-  // MSAL popups.
+  // Each section renders as soon as its own fetch resolves, but they share one token fetch to avoid repeat MSAL popups.
   useEffect(() => {
     let cancelled = false;
     setDataLoading(true);
@@ -2423,16 +2328,8 @@ export default function SiteDashboardPage() {
           if (!cancelled) setDhcpLoading(false);
         });
 
-      // Site code is always the first 8 characters of the device name (e.g. "KSCVICHC" in
-      // "KSCVICHCSWA0201") — keep every match since some sites have more than one Opengear.
-      // The summary endpoint (netmanid, netboxid, name, model, serial, wiredip, cellip,
-      // version, imei, mac, iccid) is the real device inventory; the status endpoint has no
-      // inventory info of its own — it's only used for icmp/snmp, the live connection state
-      // from the network monitoring tool.
-      //
-      // These two are fetched independently (not Promise.all'd), and each is filtered by site
-      // prefix on its own — whichever resolves first (it varies) populates opengearDevices via
-      // the name-union in the useMemo above, instead of always waiting on summary specifically.
+      // Site code is the device name's first 8 chars — keeps every match since some sites have more than one Opengear.
+      // summary is the real device inventory; status only has live icmp/snmp state — fetched independently, each filtered by prefix, whichever resolves first populates the list.
       const opengearPrefix = siteCode.slice(0, 8);
 
       getOpengearSummary(token)
@@ -2455,9 +2352,7 @@ export default function SiteDashboardPage() {
           setOpengearStatusDevices(matches);
         })
         .catch(() => {
-          // Non-critical — the summary-derived device list still renders fine without live
-          // status; treat "failed" the same as "loaded, nothing found" rather than leaving
-          // the skeleton showing forever.
+          // Non-critical — treat a failed status call as "nothing found" rather than leaving the skeleton showing forever.
           if (!cancelled) setOpengearStatusDevices([]);
         })
         .finally(() => {
@@ -2477,14 +2372,7 @@ export default function SiteDashboardPage() {
   const devices = data?.devices || [];
   const mistSiteId = mistSite?.id;
 
-  // Circuits' `location` filter needs the actual cmn_location sys_id (confirmed by testing
-  // that the display-value/site-code string doesn't match — see getCircuitsForSite), so the
-  // location record has to resolve first. Originally two separate effects — one fetching the
-  // location record, one reacting to it to fetch circuits — but that let the circuits effect
-  // read a stale (previous site's) locationRecord/locationRecordLoading for one render right
-  // after a site switch, before the location-record effect's own reset had committed. Merged
-  // into one sequential effect keyed only on siteCode so there's no window where either piece
-  // of state is stale relative to the other.
+  // Circuits need the location sys_id first, so this is one sequential effect (not two) — split effects let the circuits fetch briefly read a stale locationRecord right after a site switch.
   useEffect(() => {
     if (!siteCode) return;
     let cancelled = false;
@@ -2537,8 +2425,7 @@ export default function SiteDashboardPage() {
 
   const retryCircuits = () => setCircuitsRetryNonce((n) => n + 1);
 
-  // Its own effect (not part of the big siteCode-keyed one above) so widening the days-back
-  // window doesn't have to re-fetch DHCP/Opengear/etc. too.
+  // Its own effect, separate from the big siteCode-keyed one, so widening the days-back window doesn't also re-fetch DHCP/Opengear/etc.
   useEffect(() => {
     if (!siteCode) return;
     let cancelled = false;
@@ -2576,14 +2463,7 @@ export default function SiteDashboardPage() {
 
   const retryIncidents = () => setIncidentsRetryNonce((n) => n + 1);
 
-  // getRecentIncidents now does the real site filtering server-side (short_descriptionLIKE in
-  // sysparm_query — incidents have no Location field to filter on like circuits do), so this
-  // is just a client-side safety net plus the sort. A widened days-back window was previously
-  // returning FEWER site-matching incidents than a narrower one, because the old client-only
-  // filter ran after the API's flat 200-record cap — a wider window pulled in more org-wide
-  // noise while the cap stayed fixed, truncating this site's incidents before they were ever
-  // filtered. Filtering server-side means the cap now applies after the site match, so a wider
-  // window can only add incidents, never lose them.
+  // getRecentIncidents already filters server-side now — this is just a client-side safety net plus the sort.
   const siteIncidents = useMemo(
     () =>
       incidents
@@ -2596,10 +2476,7 @@ export default function SiteDashboardPage() {
     [incidents, siteCode],
   );
 
-  // Resolves whichever of these reference fields still came back as a raw {link, value}
-  // sys_id (sysparm_display_value isn't confirmed to be honored on either call it covers)
-  // into real names, batched into one users request rather than one per field. Covers both
-  // incident people (assigned_to/opened_by/caller_id) and the location record's contacts.
+  // Resolves any reference fields still in raw sys_id form into real names, batched into one users request instead of one per field.
   useEffect(() => {
     const ids = new Set();
     siteIncidents.forEach((inc) => {
@@ -2649,8 +2526,7 @@ export default function SiteDashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteIncidents, locationRecord]);
 
-  // Resolved via its own lookup rather than data.netboxsite.id, which isn't confirmed to be
-  // in the same ID space the diagrams endpoint expects.
+  // Resolved via its own lookup rather than data.netboxsite.id, which isn't confirmed to share the diagrams endpoint's ID space.
   useEffect(() => {
     if (!siteCode) {
       setDiagramDevices([]);
@@ -2738,19 +2614,13 @@ export default function SiteDashboardPage() {
               onInputChange={setSiteInput}
               onSelectionChange={(key) => {
                 if (key) {
-                  // Set immediately rather than waiting on the siteCode-driven effect —
-                  // the library's own post-selection state update can otherwise race it
-                  // and leave the input showing blank/placeholder after navigating.
+                  // Set immediately — waiting on the siteCode-driven effect can race the library's own post-selection update and leave the input blank.
                   setSiteInput(key);
                   goToSite(key);
                 }
               }}
               onKeyDown={(e) => {
-                // Only treat Enter as "navigate to this literal typed text" when nothing in the
-                // list matches it at all. If any site matches (even a partial, arrow-key-
-                // highlighted one), leave Enter to the Autocomplete's own selection handling —
-                // otherwise this fired in addition to it, navigating to whatever partial text
-                // was still in the box instead of the highlighted suggestion.
+                // Free-text nav only when nothing matches — otherwise this fires alongside Autocomplete's own Enter-selects-highlighted-item handling.
                 const hasMatch = sites.some((s) => s.name.toLowerCase().includes(siteInput.trim().toLowerCase()));
                 if (e.key === "Enter" && !hasMatch) goToSite(siteInput);
               }}
@@ -2874,10 +2744,7 @@ export default function SiteDashboardPage() {
           </div>
 
           <AllDevicesCard
-            // Remounts on site change so search/type-filter/sort/expanded-row state (plain
-            // useState, previously untied to siteCode) doesn't silently carry over from the
-            // last site and hide devices at the new one. Column width/visibility prefs are
-            // unaffected — those are read from localStorage on init, not component instance.
+            // Remounts on site change so search/filter/sort state doesn't silently carry over and hide devices at the new site (column prefs are unaffected — read from localStorage).
             key={siteCode}
             netboxDevices={devices}
             diagram={{ devices: diagramDevices, loading: diagramLoading, error: diagramError }}

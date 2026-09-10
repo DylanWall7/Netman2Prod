@@ -281,9 +281,7 @@ function DiffModelRenderer({ model, label, currentChangeIndex, depth = 0, search
 
     if (!label) return body;
 
-    // Deep subtrees with no changes and no search match default collapsed and aren't
-    // even rendered until expanded — anything containing a real change or a search hit
-    // always stays fully rendered so navigation can always find and scroll to it.
+    // Deep subtrees with no changes and no search match default collapsed and aren't rendered until expanded; anything with a real change or search hit stays fully rendered so navigation can find and scroll to it.
     if (depth <= 1 || modelHasChanges(model) || modelMatchesSearch(model, searchTerm)) {
       return (
         <div className="space-y-3">

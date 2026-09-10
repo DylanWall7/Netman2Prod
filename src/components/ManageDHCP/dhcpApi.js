@@ -2,9 +2,7 @@ const API_ROOT = `https://${process.env.REACT_APP_API_BASEURL}/api`;
 const NETBOX_ROOT = `${API_ROOT}/netbox`;
 const DHCP_ROOT = `${API_ROOT}/dhcp`;
 
-// subnetv4 (same family as reservationv4) is Kea-specific — a scope's own `id` from
-// getScopesForSite is a synthetic `${cidrKey}::${server}` string, not a real Kea subnet
-// ID, so this deletes by network address + prefix length instead of the id-based variant.
+// Deletes by network address + prefix length — the scope's own `id` is synthetic, not a real Kea subnet id.
 export async function deleteSubnet(subnet, cidr, token) {
   const res = await fetch(`${DHCP_ROOT}/subnetv4/${encodeURIComponent(subnet)}/${encodeURIComponent(cidr)}`, {
     method: "DELETE",
@@ -14,9 +12,7 @@ export async function deleteSubnet(subnet, cidr, token) {
   return res.json();
 }
 
-// Kea's real API takes an array of subnets even for a single one — confirmed against
-// dhcp-api.kiewitplaza.com's own docs. This deploys one at a time, so it's wrapped here
-// rather than pushing array-handling onto every caller.
+// Kea's API takes an array even for one subnet — wrapped here so callers don't have to.
 export async function createSubnet(payload, token) {
   const res = await fetch(`${DHCP_ROOT}/subnetv4`, {
     method: "POST",
@@ -27,8 +23,7 @@ export async function createSubnet(payload, token) {
   return res.json();
 }
 
-// Generated params are otherwise passed straight through — shared-network-name isn't part of
-// the generate response, but Kea's create API requires it.
+// shared-network-name isn't in the generate response but Kea's create API requires it.
 export function buildKeaDeployPayload(params, start, end) {
   return {
     ...params,
@@ -37,8 +32,7 @@ export function buildKeaDeployPayload(params, start, end) {
   };
 }
 
-// Generates the Kea subnet params for a Netbox prefix that isn't deployed yet —
-// used to pre-fill the deploy-to-Kea form before POSTing to createSubnet.
+// Pre-fills the deploy-to-Kea form for a not-yet-deployed Netbox prefix.
 export async function generateDhcpScopeParams(netboxPrefixId, token) {
   const res = await fetch(`${NETBOX_ROOT}/prefixes/${encodeURIComponent(netboxPrefixId)}/dhcp/generate`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -47,14 +41,12 @@ export async function generateDhcpScopeParams(netboxPrefixId, token) {
   return res.json();
 }
 
-// Returns every Kea + Gizmo scope for a site in one call, replacing the old
-// per-prefix subnetv4 lookup loop.
+// Returns every Kea + Gizmo scope for a site in one call.
 export async function getDhcpSiteSummary(siteCode, token) {
   const res = await fetch(`${DHCP_ROOT}/sitesummary/${encodeURIComponent(siteCode)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  // A real, common state (e.g. this site hasn't been created in Netbox yet) — not a
-  // transient failure, so callers can tell it apart from an actual error worth retrying.
+  // 404 is a real, common state, not a transient failure — flagged so callers can tell them apart.
   if (res.status === 404) {
     const err = new Error("Site not found in Netbox.");
     err.siteNotFound = true;
@@ -74,8 +66,7 @@ export async function getReservationsForSubnet(subnet, token) {
   return Array.isArray(body) ? body : body?.results || body?.data || [];
 }
 
-// reservationv4 is Kea-specific (see the note on getReservationsForSubnet's caller) —
-// these create/delete calls only ever act on a Kea reservation, not a Gizmo one.
+// reservationv4 is Kea-specific — these calls never touch a Gizmo reservation.
 export async function createReservation({ ipaddress, hwaddress, description }, token) {
   const res = await fetch(`${DHCP_ROOT}/reservationv4`, {
     method: "POST",
@@ -105,8 +96,7 @@ export async function deleteReservationByIp(ip, token) {
   return res.json();
 }
 
-// Gizmo-specific — keyed by Gizmo's own scopeID (see gizmoId on a scope row),
-// not the subnet address reservationv4/Kea use.
+// Gizmo-specific — keyed by its own scopeID, not the subnet address Kea uses.
 export async function getGizmoReservations(gizmoId, token) {
   const res = await fetch(`${DHCP_ROOT}/gizmo/${encodeURIComponent(gizmoId)}/reservations`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -125,8 +115,7 @@ export async function getGizmoLeases(gizmoId, token) {
   return Array.isArray(body) ? body : body?.results || body?.data || [];
 }
 
-// Kea-specific — same REST family as reservationv4/subnetv4 (filterable by
-// ip, mac, or subnet; only subnet is used here, same as reservations).
+// Kea-specific, same REST family as reservationv4/subnetv4 — filtered by subnet only.
 export async function getKeaLeases(subnet, token) {
   const res = await fetch(`${DHCP_ROOT}/leasev4?subnet=${encodeURIComponent(subnet)}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -141,12 +130,7 @@ function cidrToMask(cidr) {
   return [24, 16, 8, 0].map((shift) => (bits >>> shift) & 255).join(".");
 }
 
-// Kea and Gizmo use two different option-list conventions, confirmed against
-// a real sitesummary response, 2026-08-25:
-// - Kea's `optionData`: [{ name: "routers", data: "10.1.2.1" }] — lowercase
-//   name, single string value on `data`.
-// - Gizmo's `dhcpOptions`: [{ name: "Router", value: ["10.1.2.1"] }] —
-//   capitalized name, array value.
+// Kea's optionData is lowercase name + string data; Gizmo's dhcpOptions is capitalized name + array value.
 function getKeaOption(optionData, name) {
   const opt = Array.isArray(optionData) ? optionData.find((o) => o.name === name) : null;
   return opt?.data ?? null;
@@ -157,20 +141,14 @@ function getGizmoOptionValues(dhcpOptions, name) {
   return opt?.value ?? null;
 }
 
-// Confirmed shape: `pools: [{ pool: "10.145.252.10-10.145.253.244" }]`, a
-// "start-end" string. Only the first pool is used — a Kea scope with multiple
-// pools will under-report its range until this sums across all of them.
-// `pools` itself can be `null` on an otherwise-valid kea_scope.
+// First pool only — a scope with multiple Kea pools under-reports its range; pools can be null.
 export function firstKeaPoolRange(pools) {
   const first = Array.isArray(pools) ? pools[0] : null;
   const [start, end] = String(first?.pool || "").split("-").map((s) => s.trim());
   return { start: start || null, end: end || null };
 }
 
-// Builds one scope row for exactly one server's view of a subnet. `server` is
-// "gizmo", "kea", or "none" (not deployed anywhere) — only the fields for
-// that server are populated on the input, so the same extraction logic
-// naturally produces the right row regardless of which one it is.
+// One row per server's view of a subnet — same extraction logic for gizmo/kea/none.
 function buildScopeRow(cidrKey, prefix, server, { gizmo, gizmoStats, kea, keaStats } = {}) {
   const [subnet, cidrStr] = cidrKey.split("/");
   const cidr = cidrStr ? Number(cidrStr) : null;
@@ -201,8 +179,7 @@ function buildScopeRow(cidrKey, prefix, server, { gizmo, gizmoStats, kea, keaSta
   const gizmoDomain = getGizmoOptionValues(gizmo?.dhcpOptions, "DNS Domain Name");
   const domain = (gizmoDomain && gizmoDomain[0]) || getKeaOption(kea?.optionData, "domain-name") || "—";
 
-  // Real usage numbers — Gizmo gives inUse/reserved/percentageUsed directly;
-  // Kea gives allocatedAddresses/totalAddresses to compute the same from.
+  // Gizmo gives usage numbers directly; Kea only gives raw counts to compute them from.
   let leases = 0;
   let reservations = 0;
   let utilization = null;
@@ -219,12 +196,10 @@ function buildScopeRow(cidrKey, prefix, server, { gizmo, gizmoStats, kea, keaSta
   }
 
   return {
-    // Scoped by server so a subnet deployed on both Gizmo and Kea gets two
-    // distinct, stable ids rather than colliding on the shared cidrKey.
+    // Scoped by server so a subnet on both Gizmo and Kea gets two distinct ids.
     id: `${cidrKey}::${server}`,
     scopeId: subnet || "—",
-    // Gizmo's own internal scope id — distinct from scopeId (the subnet
-    // address above) and required by the /dhcp/gizmo/{id}/... endpoints.
+    // Required by /dhcp/gizmo/{id}/... endpoints — distinct from scopeId above.
     gizmoId: gizmo?.scopeID ?? null,
     mask,
     cidr,
@@ -237,36 +212,19 @@ function buildScopeRow(cidrKey, prefix, server, { gizmo, gizmoStats, kea, keaSta
     leases,
     reservations,
     utilization,
-    // A scope deployed nowhere isn't meaningfully "active" or "unknown" the
-    // way a deployed-but-unread status would be — it gets its own state.
-    // Gizmo's own state (confirmed to include "Inactive", not just "Active")
-    // is the only real operational signal we have; Kea has no status field
-    // at all. Netbox's prefix status ("active" vs "container") describes the
-    // prefix RECORD, not whether a scope is actively serving DHCP — a
-    // container prefix's children read "active" too, which is why Kea rows
-    // were showing a false "Active" before this was a fallback here. Netbox
-    // presence/status is now surfaced separately via hasNetbox/netboxStatus.
+    // Kea has no status field — Netbox's prefix status describes the record, not live DHCP state.
     status: server === "none" ? "not_deployed" : gizmo?.state?.toLowerCase() || "unknown",
     hasGizmo: server === "gizmo",
     hasKea: server === "kea",
     hasNetbox: Boolean(prefix),
-    // Needed to call /netbox/prefixes/{id}/dhcp/generate when deploying a
-    // not-yet-deployed (Netbox-only) scope to Kea.
+    // Needed to call /netbox/prefixes/{id}/dhcp/generate for a Netbox-only scope.
     netboxPrefixId: prefix?.id ?? null,
     netboxStatus: prefix?.status?.value ?? null,
     expanded: false,
   };
 }
 
-// The sitesummary response is one object keyed by CIDR string (e.g.
-// "10.146.32.0/22"), confirmed 2026-08-25. Each entry independently may or
-// may not carry netbox_prefix / gizmo_scope+gizmo_stats / kea_scope+kea_stats.
-// Confirmed 2026-08-25: a subnet CAN be deployed on Gizmo and Kea
-// simultaneously (e.g. mid-migration) — those are two independent,
-// separately-tracked deployments of the same subnet, so each gets its own
-// row here rather than being merged into one. This function no longer needs
-// a separate Netbox site/prefix call — netbox_prefix, when it exists, is
-// already embedded per entry.
+// sitesummary is keyed by CIDR; a subnet deployed on both Gizmo and Kea gets its own row for each.
 export async function getScopesForSite(siteCode, token) {
   const summary = await getDhcpSiteSummary(siteCode, token);
   const scopes = [];
@@ -286,11 +244,7 @@ export async function getScopesForSite(siteCode, token) {
     if (!hasGizmo && !hasKea) scopes.push(buildScopeRow(cidrKey, prefix, "none"));
   }
 
-  // Unlike Gizmo (whose gizmo_stats.reserved gives a real count for free),
-  // kea_stats carries no reservation count at all — confirmed 2026-08-25
-  // after a Kea row's list count (silently defaulted to 0) didn't match the
-  // real count the modal fetched from reservationv4. The only way to get a
-  // real number here is to ask reservationv4 directly, per Kea scope.
+  // kea_stats has no reservation count, unlike Gizmo — fetched directly from reservationv4 per scope.
   await Promise.all(
     scopes
       .filter((s) => s.hasKea)
@@ -299,8 +253,7 @@ export async function getScopesForSite(siteCode, token) {
           const data = await getReservationsForSubnet(s.scopeId, token);
           s.reservations = Array.isArray(data) ? data.length : 0;
         } catch {
-          // Leave at 0 rather than failing the whole scope list over one
-          // subnet's reservation count.
+          // Leave at 0 rather than failing the whole list over one subnet's count.
         }
       })
   );

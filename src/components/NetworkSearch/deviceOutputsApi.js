@@ -46,12 +46,7 @@ export function useNetworkSearchToken() {
       const res = await instance.acquireTokenSilent(request);
       return res.accessToken;
     } catch {
-      // Full-page redirect, not a popup — this app's redirectUri points at the SPA root, so
-      // a popup just loads the whole app inside itself instead of closing (known MSAL issue,
-      // worsened by browsers partitioning storage between popup and opener). Redirect reuses
-      // the already-registered URI, no Azure changes needed. Navigates the tab away, so this
-      // never meaningfully returns — the user lands back in the app freshly authenticated
-      // and just retries whatever they were doing.
+      // Popup auth reloads the whole app inside itself here and never closes (known MSAL issue) — redirect to the SPA root instead, and the user lands back authenticated after the tab navigates away.
       await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
       return null;
     }

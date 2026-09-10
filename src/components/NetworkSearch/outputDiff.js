@@ -17,8 +17,7 @@ function valuesEqual(a, b) {
   return false;
 }
 
-// Finds a column whose values are unique across both row sets, so rows can be matched
-// by identity (e.g. an interface name or port id) instead of by position.
+// Finds a column whose values are unique across both row sets, so rows can be matched by identity (e.g. an interface name or port id) instead of by position.
 function findRowKey(rowsA, rowsB) {
   const columns = new Set();
   [...rowsA, ...rowsB].forEach((row) => Object.keys(row).forEach((k) => columns.add(k)));
@@ -84,16 +83,10 @@ export function diffObjectFields(objA, objB) {
   });
 }
 
-// Cap on edit distance the Myers algorithm will chase before giving up. Trace memory is
-// O(d * (n+m)), not O(n*m) — for two similar texts (the expected case: two snapshots of
-// the same device) d stays tiny regardless of how long the texts are. This only guards
-// against genuinely unrelated huge inputs where d could approach n+m.
+// Cap on edit distance before giving up — trace memory is O(d*(n+m)) not O(n*m), so d stays tiny for two similar texts and this only guards against genuinely unrelated huge inputs.
 const MAX_EDIT_DISTANCE = 3000;
 
-// Myers' O(ND) diff algorithm — same approach `git diff` uses. Unlike a classic DP-table
-// LCS (O(n*m) time AND space), this scales with the number of actual differences, so two
-// mostly-identical multi-thousand-line texts diff in a fraction of a second and a fraction
-// of the memory instead of allocating an n*m table that can run into gigabytes.
+// Myers' O(ND) diff algorithm (same approach `git diff` uses) scales with the number of actual differences rather than allocating an O(n*m) DP table, so multi-thousand-line texts diff fast without risking gigabytes of memory.
 function myersTrace(linesA, linesB, maxD) {
   const n = linesA.length;
   const m = linesB.length;
@@ -160,18 +153,14 @@ export function diffLines(textA, textB) {
   const found = myersTrace(linesA, linesB, MAX_EDIT_DISTANCE);
   if (found) return backtrackMyers(linesA, linesB, found.trace, found.max);
 
-  // Edit distance exceeded the cap (the two texts are wildly different, not just two
-  // snapshots with a few changed lines) — bail out to a memory-safe blunt diff rather
-  // than risk exhausting memory chasing an exact minimal edit script.
+  // Edit distance exceeded the cap (wildly different texts, not just a few changed lines) — bail out to a memory-safe blunt diff rather than risk exhausting memory chasing an exact minimal edit script.
   return [
     ...linesA.map((text) => ({ status: "removed", text })),
     ...linesB.map((text) => ({ status: "added", text })),
   ];
 }
 
-// Builds a plain-data diff tree with a sequential changeIndex baked into every
-// changed node, computed BEFORE any rendering happens — so a "N changes / next /
-// previous" toolbar can know the total up front instead of counting during render.
+// Builds a plain-data diff tree with a sequential changeIndex baked into every changed node before any rendering happens, so a "N changes / next / previous" toolbar knows the total up front.
 function buildDiffModel(a, b, counter) {
   if (isObjectArray(a) || isObjectArray(b)) {
     const { columns, rows } = diffTables(isObjectArray(a) ? a : [], isObjectArray(b) ? b : []);
@@ -207,8 +196,7 @@ function buildDiffModel(a, b, counter) {
   return { kind: "scalar", a, b, changed, changeIndex: changed ? counter.value++ : null };
 }
 
-// Groups consecutive added/removed lines into one "hunk" so next/previous jumps
-// between blocks of change instead of one line at a time.
+// Groups consecutive added/removed lines into one "hunk" so next/previous jumps between blocks of change instead of one line at a time.
 function buildTextDiffModel(textA, textB, counter) {
   const rawLines = diffLines(textA, textB);
   const lines = [];

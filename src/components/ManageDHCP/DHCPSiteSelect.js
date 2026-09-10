@@ -66,10 +66,7 @@ export default function DHCPSiteSelect() {
             if (key) goToSite(key);
           }}
           onKeyDown={(e) => {
-            // Only treat Enter as "navigate to this literal typed text" when nothing in the
-            // list matches it at all — otherwise let the Autocomplete's own Enter-selects-
-            // highlighted-item handling win, instead of also firing this on the stale partial
-            // text still in the box.
+            // Only treat Enter as navigating to the raw typed text when nothing in the list matches it — otherwise let the Autocomplete's own highlighted-item Enter handling win instead of also firing on the stale text.
             const hasMatch = sites.some((s) => s.name.toLowerCase().includes(inputText.trim().toLowerCase()));
             if (e.key === "Enter" && !hasMatch) goToSite(inputText);
           }}

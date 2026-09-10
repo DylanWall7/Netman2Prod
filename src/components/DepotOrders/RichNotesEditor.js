@@ -34,11 +34,7 @@ export default function RichNotesEditor({ value, onChange, placeholder, rows = 3
     onChange(ref.current?.innerHTML || "");
   };
 
-  // Pasting a multi-row Excel selection into a bare contentEditable lets the browser
-  // insert whatever HTML the clipboard provides (often a <table>, or one line with no
-  // real breaks) — unusable for line-by-line automation downstream. Force plain text
-  // instead, split on rows, and rebuild each row as its own <div> so every paste
-  // produces one predictable line per device with tab-separated cells turned into spaces.
+  // Force pasted content to plain text and rebuild each row as its own <div> — letting the browser paste raw clipboard HTML (e.g. an Excel <table>) breaks the line-by-line automation downstream.
   const handlePaste = (e) => {
     const clipboard = e.clipboardData || window.clipboardData;
     const text = clipboard?.getData("text/plain") || "";
