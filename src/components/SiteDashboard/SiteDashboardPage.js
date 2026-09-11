@@ -1578,7 +1578,7 @@ function ContactField({ label, refField, userMap, loading }) {
   return <Field label={label} value={resolveReference(refField, userMap)} />;
 }
 
-function SnowLocationCard({ location, error, contacts, userMap, userMapLoading, onRetry, mobType }) {
+function SnowLocationCard({ location, error, contacts, userMap, userMapLoading, onRetry, mobeType }) {
   const [showNotesModal, setShowNotesModal] = useState(false);
   let body;
   if (error) {
@@ -1620,7 +1620,7 @@ function SnowLocationCard({ location, error, contacts, userMap, userMapLoading, 
           </h4>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3">
             <Field label="Site Type" value={location.u_site_type} />
-            <Field label="Mob Type" value={mobType} />
+            <Field label="Mobe Type" value={mobeType} />
             <Field label="Priority" value={sitePriorityLabel(location.u_priority)} />
             <Field label="Active" value={boolLabel(get("u_active"))} />
             <Field label="Time Zone" value={location.time_zone} />
@@ -2667,7 +2667,7 @@ export default function SiteDashboardPage() {
               contacts={locationRecord}
               userMap={userDisplayMap}
               userMapLoading={userMapLoading}
-              mobType={netboxSite?.custom_fields?.MOB_TYPE}
+              mobeType={netboxSite?.custom_fields?.MOBE_TYPE}
               onRetry={retryData}
             />
             <SiteLocationCard location={snowLocation} />

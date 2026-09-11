@@ -45,10 +45,10 @@ export const ProvStepper = () => {
   const [dhcpModalScope, setDhcpModalScope] = useState(null);
   const [dhcpModalTab, setDhcpModalTab] = useState("leases");
   const [modelList, setModelList] = React.useState([]);
-  const [mobTypesList, setMobTypesList] = React.useState([]);
-  const [mobTypesLoading, setMobTypesLoading] = React.useState(false);
-  const [mobTypesError, setMobTypesError] = React.useState(null);
-  const [selectedMobType, setSelectedMobType] = React.useState("");
+  const [mobeTypesList, setMobeTypesList] = React.useState([]);
+  const [mobeTypesLoading, setMobeTypesLoading] = React.useState(false);
+  const [mobeTypesError, setMobeTypesError] = React.useState(null);
+  const [selectedMobeType, setSelectedMobeType] = React.useState("");
   const [netboxLoading, setNetboxLoading] = useState(false);
   const [template, setTemplate] = React.useState(new Set([]));
   const [skeletonLoading, setSkeletonLoading] = React.useState(false);
@@ -99,7 +99,7 @@ export const ProvStepper = () => {
   const DeployDeviceURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/devices`;
   const netboxtomistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/devices`;
   const ModelURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/devicetypes`;
-  const MobTypesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/mobtypes`;
+  const MobeTypesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/mobtypes`;
   const NetboxDevicesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/management/netbox/${siteCodeSelected}/devices/`;
   const DeviceProfilesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/deviceprofiles`;
   const PushDeviceToMistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/device`;
@@ -134,7 +134,7 @@ export const ProvStepper = () => {
     setDeviceDeployStatus([]);
     setTemplate(new Set([]));
     setAvailableIps([]);
-    setSelectedMobType("");
+    setSelectedMobeType("");
     setDhcpScopes([]);
     setDhcpScopesError(null);
     setDhcpSiteNotFound(false);
@@ -204,7 +204,7 @@ export const ProvStepper = () => {
   }, [accounts.length === 0]);
 
   const handleAddNetbox = async () => {
-    if (!selectedMobType) return;
+    if (!selectedMobeType) return;
     resetforms();
     setNetboxLoading(true);
     setSkeletonLoading(true);
@@ -340,7 +340,7 @@ export const ProvStepper = () => {
       });
   }
 
-  async function GetMobTypes({ token }) {
+  async function GetMobeTypes({ token }) {
     const headers = new Headers();
     const bearer = `Bearer ${token}`;
 
@@ -352,20 +352,20 @@ export const ProvStepper = () => {
       headers: headers,
     };
 
-    setMobTypesLoading(true);
-    setMobTypesError(null);
-    return fetch(MobTypesURL, options)
+    setMobeTypesLoading(true);
+    setMobeTypesError(null);
+    return fetch(MobeTypesURL, options)
       .then(async (response) => {
-        if (!response.ok) throw new Error(`Failed to load mob types (${response.status})`);
+        if (!response.ok) throw new Error(`Failed to load mobe types (${response.status})`);
         let text = await response.json();
 
-        setMobTypesList(text);
-        setMobTypesLoading(false);
+        setMobeTypesList(text);
+        setMobeTypesLoading(false);
       })
       .catch((error) => {
-        console.error("Error fetching mob types:", error);
-        setMobTypesLoading(false);
-        setMobTypesError(error.message || "Failed to load mob types.");
+        console.error("Error fetching mobe types:", error);
+        setMobeTypesLoading(false);
+        setMobeTypesError(error.message || "Failed to load mobe types.");
       });
   }
 
@@ -378,7 +378,7 @@ export const ProvStepper = () => {
   useEffect(() => {
     (async () => {
       const token = await getToken();
-      GetMobTypes({ token });
+      GetMobeTypes({ token });
     })();
   }, []);
 
@@ -392,7 +392,7 @@ export const ProvStepper = () => {
 
     const options = {
       method: "POST",
-      body: JSON.stringify({ mob_type: selectedMobType }),
+      body: JSON.stringify({ mobe_type: selectedMobeType }),
       headers: headers,
     };
 
@@ -809,7 +809,7 @@ export const ProvStepper = () => {
       : {
           site_code: siteCodeSelected,
           mist_site_id: mistDeviceSite?.id ?? null,
-          mob_type: selectedMobType,
+          mobe_type: selectedMobeType,
           name: device.name,
           serial: device.serial,
         };
@@ -1186,7 +1186,7 @@ export const ProvStepper = () => {
     ? "2rem 1.5fr 1.5fr 1.5fr 1fr 5.5rem 5.5rem"
     : "2rem 1.5fr 1.5fr 1.5fr 1fr 5.5rem";
 
-  const isRapType = selectedMobType.includes("RAP");
+  const isRapType = selectedMobeType.includes("RAP");
 
   const steps = [
     { id: 0, label: "Select Site", short: "Site" },
@@ -1213,7 +1213,7 @@ export const ProvStepper = () => {
   }, [currentStep, isSiteFullySelected]);
 
   useEffect(() => {
-    // Not gated on mob type — profile need is per-device (AP12), not per-site.
+    // Not gated on mobe type — profile need is per-device (AP12), not per-site.
     if (currentStep === PUSH_MIST_STEP) {
       loadDeviceProfiles();
     }
@@ -1259,7 +1259,7 @@ export const ProvStepper = () => {
     setTimeout(() => setSummaryCopied(false), 2000);
   };
 
-  const isStepDisabled = (index) => index !== 0 && (!isSiteFullySelected || !selectedMobType);
+  const isStepDisabled = (index) => index !== 0 && (!isSiteFullySelected || !selectedMobeType);
 
   const goToStep = (index) => {
     if (isStepDisabled(index)) return;
@@ -1281,7 +1281,7 @@ export const ProvStepper = () => {
   };
   const nextDisabled =
     currentStep === maxVisibleStep ||
-    (currentStep === 0 && (!isSiteFullySelected || !selectedMobType));
+    (currentStep === 0 && (!isSiteFullySelected || !selectedMobeType));
 
   return (
     <>
@@ -1395,40 +1395,40 @@ export const ProvStepper = () => {
               )}
               <div className="p-2 text-left dark text-foreground mt-2">
                 <p className="text-xs text-pink-400 uppercase tracking-wider font-medium mb-2">
-                  Mob Type <span className="text-red-400">*</span>
+                  Mobe Type <span className="text-red-400">*</span>
                 </p>
-                {mobTypesLoading ? (
+                {mobeTypesLoading ? (
                   <div className="flex flex-col gap-2">
                     {[...Array(3)].map((_, i) => (
                       <div key={i} className="h-5 bg-pink-300/40 rounded animate-pulse w-2/3" />
                     ))}
                   </div>
-                ) : mobTypesError ? (
+                ) : mobeTypesError ? (
                   <div>
-                    <p className="text-xs text-red-400">{mobTypesError}</p>
+                    <p className="text-xs text-red-400">{mobeTypesError}</p>
                     <button
-                      onClick={() => getToken().then((token) => GetMobTypes({ token }))}
+                      onClick={() => getToken().then((token) => GetMobeTypes({ token }))}
                       className="mt-1 text-xs font-semibold text-red-300 underline hover:text-red-100 transition-colors"
                     >
                       Try again
                     </button>
                   </div>
-                ) : mobTypesList.length > 0 ? (
+                ) : mobeTypesList.length > 0 ? (
                   <div className="flex flex-row flex-wrap gap-x-4 gap-y-1">
-                    {mobTypesList.map((mobType) => (
+                    {mobeTypesList.map((mobeType) => (
                       <Checkbox
-                        key={mobType}
+                        key={mobeType}
                         size="sm"
-                        isSelected={selectedMobType === mobType}
-                        onValueChange={(checked) => setSelectedMobType(checked ? mobType : "")}
+                        isSelected={selectedMobeType === mobeType}
+                        onValueChange={(checked) => setSelectedMobeType(checked ? mobeType : "")}
                         classNames={{ label: "text-pink-200 text-sm" }}
                       >
-                        {mobType}
+                        {mobeType}
                       </Checkbox>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-pink-200/50">No mob types available.</p>
+                  <p className="text-xs text-pink-200/50">No mobe types available.</p>
                 )}
               </div>
             </div>
@@ -1449,10 +1449,10 @@ export const ProvStepper = () => {
                     />
                     <Input
                       size="sm"
-                      label="Mob Type"
+                      label="Mobe Type"
                       className="max-w-[200px]"
                       variant="bordered"
-                      value={selectedMobType}
+                      value={selectedMobeType}
                       isReadOnly
                     />
                   </div>
@@ -1460,14 +1460,14 @@ export const ProvStepper = () => {
                     <Button
                       size="sm"
                       isLoading={netboxLoading}
-                      isDisabled={!selectedMobType}
+                      isDisabled={!selectedMobeType}
                       onPress={handleSubmit(handleAddNetbox)}
                       className="bg-pink-600"
                     >
                       Add Site
                     </Button>
-                    {!selectedMobType && (
-                      <p className="text-xs text-pink-200/50">Select a mob type to continue.</p>
+                    {!selectedMobeType && (
+                      <p className="text-xs text-pink-200/50">Select a mobe type to continue.</p>
                     )}
                   </div>
                 </div>
@@ -2313,9 +2313,9 @@ export const ProvStepper = () => {
               Select a site to continue.
             </p>
           )}
-          {currentStep === 0 && isSiteFullySelected && !selectedMobType && (
+          {currentStep === 0 && isSiteFullySelected && !selectedMobeType && (
             <p className="text-xs text-pink-200/50 text-center mt-2">
-              Select a mob type to continue.
+              Select a mobe type to continue.
             </p>
           )}
         </div>

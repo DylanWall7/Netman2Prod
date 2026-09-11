@@ -161,7 +161,7 @@ export const ManageDevicePage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accounts.length]);
 
-  const pushDeviceToMist = async (device, key, siteCode, mistSiteId, mobType) => {
+  const pushDeviceToMist = async (device, key, siteCode, mistSiteId, mobeType) => {
     setMistPushStatus((prev) => ({ ...prev, [key]: "pending" }));
 
     const body = isRapDevice(device)
@@ -173,7 +173,7 @@ export const ManageDevicePage = () => {
       : {
           site_code: siteCode,
           mist_site_id: mistSiteId ?? null,
-          mob_type: mobType,
+          mobe_type: mobeType,
           name: device.name,
           serial: device.serial,
         };
@@ -367,8 +367,16 @@ export const ManageDevicePage = () => {
                 .map((d) => (d.name || "").trim().toLowerCase())
                 .filter(Boolean)
             );
+            // Live names from other loaded Mist sites, for confirming a wrong-site device live rather than trusting Netbox's field.
+            const otherSiteMistNames = new Set(
+              Object.entries(mistLiveBySite)
+                .filter(([mistId]) => mistId !== String(mist?.id))
+                .flatMap(([, list]) => list)
+                .map((d) => (d.name || "").trim().toLowerCase())
+                .filter(Boolean)
+            );
             const siteCode = site?.name || siteCodeSelected;
-            const mobType = site?.custom_fields?.MOB_TYPE;
+            const mobeType = site?.custom_fields?.MOBE_TYPE;
 
             const filteredDevices = devices.filter((device) =>
               device.name?.toLowerCase().includes((searchTerms[index] || "").toLowerCase())
@@ -405,7 +413,7 @@ export const ManageDevicePage = () => {
               if (targets.length === 0) return;
               setMistPushRunning(true);
               const results = await Promise.all(
-                targets.map(({ device, key }) => pushDeviceToMist(device, key, siteCode, mist?.id, mobType))
+                targets.map(({ device, key }) => pushDeviceToMist(device, key, siteCode, mist?.id, mobeType))
               );
               setMistPushRunning(false);
 
@@ -417,7 +425,7 @@ export const ManageDevicePage = () => {
             };
 
             const handleRetryMistPushForSite = async (device, key) => {
-              const result = await pushDeviceToMist(device, key, siteCode, mist?.id, mobType);
+              const result = await pushDeviceToMist(device, key, siteCode, mist?.id, mobeType);
               setMistPushLog((prev) => ({ ...prev, [index]: result.log }));
               setMistPushLogStatus((prev) => ({ ...prev, [index]: result.status }));
               setMistLogFilter((prev) => ({ ...prev, [index]: null }));
@@ -521,13 +529,12 @@ export const ManageDevicePage = () => {
                             const pushStatus = mistPushStatus[key];
                             const effectivelyInMist = inMist || pushStatus === "done";
                             const needsProfile = !effectivelyInMist && isRapDevice(device);
-                            // Null mistdevicesite means "not in Mist yet," not "wrong site."
+                            // RAPs share one consolidated Mist site so they're excluded; others only flag once seen live under a different site.
                             const wrongSite =
                               !inMist &&
-                              !!device.custom?.mistdevicesite &&
-                              device.custom?.mistdevicesite !== mist?.id &&
-                              device.device_type?.manufacturer?.name ===
-                                "Juniper";
+                              !isRapDevice(device) &&
+                              device.device_type?.manufacturer?.name === "Juniper" &&
+                              otherSiteMistNames.has((device.name || "").trim().toLowerCase());
 
                             return (
                               <Fragment key={key}>
