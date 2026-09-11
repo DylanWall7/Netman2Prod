@@ -35,6 +35,8 @@ export const ProvStepper = () => {
   const [, setLoading] = React.useState(false);
   const [siteCodeSelected, setSiteCodeSelected] = React.useState("");
   const [isSiteFullySelected, setIsSiteFullySelected] = React.useState(false);
+  const [existingNetboxSite, setExistingNetboxSite] = React.useState(null);
+  const [checkingExistingSite, setCheckingExistingSite] = React.useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [siteList, setSiteList] = useState([]);
   const [postStatus, setPostStatus] = useState("");
@@ -69,6 +71,7 @@ export const ProvStepper = () => {
   const [mistDeviceSite, setMistDeviceSite] = React.useState(null);
   const [mistLiveDevices, setMistLiveDevices] = React.useState([]);
   const [mistSerialStatus, setMistSerialStatus] = React.useState({});
+  const [siteMobeType, setSiteMobeType] = React.useState(null);
   const [mistDevicesLoading, setMistDevicesLoading] = React.useState(false);
   const [mistDevicesError, setMistDevicesError] = React.useState(null);
   const [selectedMistKeys, setSelectedMistKeys] = React.useState(() => new Set());
@@ -137,6 +140,7 @@ export const ProvStepper = () => {
   function resetForNewSite() {
     setStepRuns({});
     resetforms();
+    setExistingNetboxSite(null);
     setDevices([{ serial: "", name: "", model: "", ip: "", oob_ip: "" }]);
     setDeviceDeployStatus([]);
     setTemplate(new Set([]));
@@ -389,6 +393,45 @@ export const ProvStepper = () => {
     })();
   }, []);
 
+  // Already-built sites keep their real mobe type — no point letting the user pick a different one.
+  useEffect(() => {
+    if (!isSiteFullySelected) {
+      setExistingNetboxSite(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setCheckingExistingSite(true);
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const res = await fetch(NetboxDevicesURL, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Site not found");
+        const response = await res.json();
+        const dataArray = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.data)
+          ? response.data
+          : [];
+        const netboxSite = dataArray[0]?.data?.netboxsite || null;
+        if (cancelled) return;
+        setExistingNetboxSite(netboxSite);
+        const mobeType = netboxSite?.custom_fields?.MOBE_TYPE;
+        if (mobeType) setSelectedMobeType(mobeType);
+      } catch {
+        if (!cancelled) setExistingNetboxSite(null);
+      } finally {
+        if (!cancelled) setCheckingExistingSite(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteCodeSelected, isSiteFullySelected]);
+
   async function CreateNetbox({ token }) {
     setPostStatus("");
     const headers = new Headers();
@@ -591,12 +634,6 @@ export const ProvStepper = () => {
     }
   };
 
-  useEffect(() => {
-    if (!isSiteFullySelected) return;
-    loadDhcpScopes(siteCodeSelected);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSiteFullySelected]);
-
   // Same generate-then-create flow as DHCPManager, minus the range-edit modal.
   const deployDhcpScope = async (scope) => {
     setDeployingScopeIds((prev) => new Set(prev).add(scope.id));
@@ -718,7 +755,10 @@ export const ProvStepper = () => {
       setMistPushStatus({});
       setMistSerialStatus({});
 
-      const rapMistId = RAP_MIST_SITE_IDS[selectedMobeType];
+      // Netbox's own record beats the wizard's step-1 selection — the two can disagree (wrong checkbox, reopened site).
+      const effectiveMobeType = siteItem?.data?.netboxsite?.custom_fields?.MOBE_TYPE || selectedMobeType;
+      setSiteMobeType(effectiveMobeType);
+      const rapMistId = RAP_MIST_SITE_IDS[effectiveMobeType];
       if (rapMistId) {
         // RAPs share one Mist site per country instead of having their own — check each device by serial rather than
         // pulling the whole shared site's devicesummary, which 404s if any other device there has no stats yet.
@@ -784,7 +824,7 @@ export const ProvStepper = () => {
   }
 
   const notInMistDevices = React.useMemo(() => {
-    const isRap = !!RAP_MIST_SITE_IDS[selectedMobeType];
+    const isRap = !!RAP_MIST_SITE_IDS[siteMobeType || selectedMobeType];
     // Name is the merge key — same one the Site Dashboard uses against this list.
     const liveMistNames = new Set(
       mistLiveDevices.map((d) => (d.name || "").trim().toLowerCase()).filter(Boolean)
@@ -796,7 +836,7 @@ export const ProvStepper = () => {
       const name = (device.name || "").trim().toLowerCase();
       return !name || !liveMistNames.has(name);
     });
-  }, [mistDevices, mistLiveDevices, mistSerialStatus, mistPushStatus, selectedMobeType]);
+  }, [mistDevices, mistLiveDevices, mistSerialStatus, mistPushStatus, siteMobeType, selectedMobeType]);
 
   const getMistDeviceKey = (device, idx) => device.serial || device.name || `idx-${idx}`;
 
@@ -1245,6 +1285,14 @@ export const ProvStepper = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, isSiteFullySelected]);
 
+  // Waits for the DHCP step — firing on site selection alone hit Netbox before the site existed.
+  useEffect(() => {
+    if (currentStep === DHCP_STEP && isSiteFullySelected) {
+      loadDhcpScopes(siteCodeSelected);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, isSiteFullySelected]);
+
   useEffect(() => {
     // Not gated on mobe type — profile need is per-device (AP12), not per-site.
     if (currentStep === PUSH_MIST_STEP) {
@@ -1424,12 +1472,18 @@ export const ProvStepper = () => {
               {siteCodeSelected && (
                 <p className="text-xs text-zinc-400 mt-4">
                   Selected: <span className="font-mono text-pink-400">{siteCodeSelected}</span>
+                  {checkingExistingSite && <span className="text-pink-200/50"> — checking Netbox…</span>}
                 </p>
               )}
               <div className="p-2 text-left dark text-foreground mt-2">
                 <p className="text-xs text-pink-400 uppercase tracking-wider font-medium mb-2">
                   Mobe Type <span className="text-red-400">*</span>
                 </p>
+                {existingNetboxSite && (
+                  <p className="text-xs text-amber-300/80 mb-2">
+                    This site is already built in Netbox — mobe type is fixed to what's on record.
+                  </p>
+                )}
                 {mobeTypesLoading ? (
                   <div className="flex flex-col gap-2">
                     {[...Array(3)].map((_, i) => (
@@ -1453,6 +1507,7 @@ export const ProvStepper = () => {
                         key={mobeType}
                         size="sm"
                         isSelected={selectedMobeType === mobeType}
+                        isDisabled={!!existingNetboxSite}
                         onValueChange={(checked) => setSelectedMobeType(checked ? mobeType : "")}
                         classNames={{ label: "text-pink-200 text-sm" }}
                       >
@@ -1493,14 +1548,17 @@ export const ProvStepper = () => {
                     <Button
                       size="sm"
                       isLoading={netboxLoading}
-                      isDisabled={!selectedMobeType}
+                      isDisabled={!selectedMobeType || !!existingNetboxSite}
                       onPress={handleSubmit(handleAddNetbox)}
                       className="bg-pink-600"
                     >
-                      Add Site
+                      Create Site in Netbox
                     </Button>
-                    {!selectedMobeType && (
+                    {!selectedMobeType && !existingNetboxSite && (
                       <p className="text-xs text-pink-200/50">Select a mobe type to continue.</p>
+                    )}
+                    {existingNetboxSite && (
+                      <p className="text-xs text-amber-300/80">Already deployed in Netbox — nothing to create here.</p>
                     )}
                   </div>
                 </div>
