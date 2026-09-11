@@ -18,7 +18,16 @@ import { ServerStackIcon } from "@heroicons/react/24/outline";
 import { useMsal } from "@azure/msal-react";
 import Badge from "../DepotOrders/Badge";
 import AddDevicesModal from "./AddDevicesModal";
-import { getMistDevices } from "../SiteDashboard/siteDashboardApi";
+import { getMistDevices, getMistDeviceBySerial } from "../SiteDashboard/siteDashboardApi";
+
+// RAPs have no Mist site of their own — keyed by exact mobe type since each one (e.g. a future US2) is its own separate site, not just its country.
+const RAP_MIST_SITE_IDS = {
+  MIST_RAP_US1: "3594d59e-9c38-4a59-8a53-73c94e3a95fb",
+  MIST_RAP_CA1: "2dc6770b-4a3f-4538-8475-a4a91afef447",
+};
+function rapMistIdForMobeType(mobeType) {
+  return RAP_MIST_SITE_IDS[mobeType] || null;
+}
 
 export const ManageDevicePage = () => {
   const { instance, accounts, inProgress } = useMsal();
@@ -39,6 +48,7 @@ export const ManageDevicePage = () => {
   const copiedTimeoutRef = useRef(null);
   const [showAddDevicesModal, setShowAddDevicesModal] = useState(false);
   const [mistLiveBySite, setMistLiveBySite] = useState({});
+  const [mistSerialStatus, setMistSerialStatus] = useState({});
   const [selectedMistKeys, setSelectedMistKeys] = useState(() => new Set());
   const [mistPushStatus, setMistPushStatus] = useState({});
   const [mistPushRunning, setMistPushRunning] = useState(false);
@@ -217,6 +227,7 @@ export const ManageDevicePage = () => {
     setNetboxLoading(true);
     setGetDeviceData([]);
     setMistLiveBySite({});
+    setMistSerialStatus({});
     setSelectedMistKeys(new Set());
     setMistPushStatus({});
     setDeviceProfileSelections({});
@@ -243,9 +254,26 @@ export const ManageDevicePage = () => {
         : [];
       setGetDeviceData(dataArray);
 
-      // Netbox's custom.mistdevice fields lag — the live Mist devicesummary list is authoritative.
+      // Netbox's custom.mistdevice fields lag — the live Mist devicesummary list is authoritative. RAPs share one Mist
+      // site instead of having their own, so they're checked per device by serial — that endpoint is org-wide, not
+      // site-scoped, so a device still comes back (with site_id null) once unassigned, unlike a bulk devicesummary hit.
       const entries = await Promise.all(
         dataArray.map(async (siteItem) => {
+          const rapMistId = rapMistIdForMobeType(siteItem?.data?.netboxsite?.custom_fields?.MOBE_TYPE);
+          if (rapMistId) {
+            await Promise.all(
+              (siteItem?.data?.devices || []).map(async (device) => {
+                if (!device.serial) return;
+                try {
+                  const found = await getMistDeviceBySerial(device.serial, token);
+                  setMistSerialStatus((prev) => ({ ...prev, [device.serial]: found?.site_id === rapMistId }));
+                } catch {
+                  setMistSerialStatus((prev) => ({ ...prev, [device.serial]: false }));
+                }
+              })
+            );
+            return null;
+          }
           const mistId = siteItem?.data?.mistsite?.id;
           if (!mistId) return null;
           try {
@@ -332,7 +360,7 @@ export const ManageDevicePage = () => {
           </div>
         )}
 
-        <div className="w-full max-w-6xl space-y-8">
+        <div className="w-full max-w-6xl space-y-8 px-4 sm:px-6 lg:px-8">
           {netboxLoading && (
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
               <div
@@ -357,10 +385,12 @@ export const ManageDevicePage = () => {
             </div>
           )}
 
-          {getDeviceData.map((siteItem, index) => {
+          {!netboxLoading && getDeviceData.map((siteItem, index) => {
             const site = siteItem.data?.netboxsite;
             const mist = siteItem.data?.mistsite;
             const devices = siteItem.data?.devices || [];
+            const mobeType = site?.custom_fields?.MOBE_TYPE;
+            const rapMistId = rapMistIdForMobeType(mobeType);
             // Name is the merge key — same one the Site Dashboard and Prov tool use.
             const liveMistNames = new Set(
               (mistLiveBySite[mist?.id] || [])
@@ -370,20 +400,20 @@ export const ManageDevicePage = () => {
             // Live names from other loaded Mist sites, for confirming a wrong-site device live rather than trusting Netbox's field.
             const otherSiteMistNames = new Set(
               Object.entries(mistLiveBySite)
-                .filter(([mistId]) => mistId !== String(mist?.id))
+                .filter(([id]) => id !== String(mist?.id))
                 .flatMap(([, list]) => list)
                 .map((d) => (d.name || "").trim().toLowerCase())
                 .filter(Boolean)
             );
             const siteCode = site?.name || siteCodeSelected;
-            const mobeType = site?.custom_fields?.MOBE_TYPE;
+
+            const isDeviceInMist = (device) =>
+              rapMistId ? mistSerialStatus[device.serial] === true : liveMistNames.has((device.name || "").trim().toLowerCase());
 
             const filteredDevices = devices.filter((device) =>
               device.name?.toLowerCase().includes((searchTerms[index] || "").toLowerCase())
             );
-            const notInMistDevices = filteredDevices.filter(
-              (device) => !liveMistNames.has((device.name || "").trim().toLowerCase())
-            );
+            const notInMistDevices = filteredDevices.filter((device) => !isDeviceInMist(device));
             const notInMistKeys = new Set(notInMistDevices.map((d) => getMistDeviceKey(index, d)));
             const selectedInThisSite = [...selectedMistKeys].filter((k) => notInMistKeys.has(k));
             const allSelected = notInMistKeys.size > 0 && selectedInThisSite.length === notInMistKeys.size;
@@ -522,9 +552,7 @@ export const ManageDevicePage = () => {
                       {filteredDevices.length > 0 ? (
                         filteredDevices
                           .map((device, idx) => {
-                            const inMist = liveMistNames.has(
-                              (device.name || "").trim().toLowerCase()
-                            );
+                            const inMist = isDeviceInMist(device);
                             const key = getMistDeviceKey(index, device);
                             const pushStatus = mistPushStatus[key];
                             const effectivelyInMist = inMist || pushStatus === "done";

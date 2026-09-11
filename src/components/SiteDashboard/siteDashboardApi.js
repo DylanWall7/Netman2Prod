@@ -100,6 +100,17 @@ export async function getMistDevices(mistSiteId, token) {
   return Array.isArray(body) ? body : (body?.data ?? []);
 }
 
+// Single-device lookup by serial — avoids devicesummary's per-site stats loop, which 404s the whole request if any one device at the site has no stats yet.
+export async function getMistDeviceBySerial(serial, token) {
+  const res = await fetch(`${API_ROOT}/mist/device/serial/${encodeURIComponent(serial)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed to load Mist device (${res.status})`);
+  const body = await res.json();
+  return body?.data ?? body ?? null;
+}
+
 // NWS's feed also carries non-weather public-safety alerts — this keeps only types severe enough to threaten power/network gear.
 const IMPACTFUL_WEATHER_ALERT_EVENTS = new Set(
   [

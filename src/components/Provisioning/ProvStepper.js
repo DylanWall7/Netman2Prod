@@ -20,7 +20,13 @@ import {
   getScopesForSite,
 } from "../ManageDHCP/dhcpApi";
 import DHCPScopeModal from "../ManageDHCP/DHCPScopeModal";
-import { getMistDevices } from "../SiteDashboard/siteDashboardApi";
+import { getMistDevices, getMistDeviceBySerial } from "../SiteDashboard/siteDashboardApi";
+
+// RAPs have no Mist site of their own — keyed by exact mobe type since each one (e.g. a future US2) is its own separate site, not just its country.
+const RAP_MIST_SITE_IDS = {
+  MIST_RAP_US1: "3594d59e-9c38-4a59-8a53-73c94e3a95fb",
+  MIST_RAP_CA1: "2dc6770b-4a3f-4538-8475-a4a91afef447",
+};
 
 export const ProvStepper = () => {
   const [, setDHCPSite] = React.useState("");
@@ -62,6 +68,7 @@ export const ProvStepper = () => {
   const [mistDevices, setMistDevices] = React.useState([]);
   const [mistDeviceSite, setMistDeviceSite] = React.useState(null);
   const [mistLiveDevices, setMistLiveDevices] = React.useState([]);
+  const [mistSerialStatus, setMistSerialStatus] = React.useState({});
   const [mistDevicesLoading, setMistDevicesLoading] = React.useState(false);
   const [mistDevicesError, setMistDevicesError] = React.useState(null);
   const [selectedMistKeys, setSelectedMistKeys] = React.useState(() => new Set());
@@ -99,7 +106,7 @@ export const ProvStepper = () => {
   const DeployDeviceURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netboxsite/${siteCodeSelected}/devices`;
   const netboxtomistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/devices`;
   const ModelURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/devicetypes`;
-  const MobeTypesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/mobtypes`;
+  const MobeTypesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/netbox/mobetypes`;
   const NetboxDevicesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/management/netbox/${siteCodeSelected}/devices/`;
   const DeviceProfilesURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/deviceprofiles`;
   const PushDeviceToMistURL = `https://${process.env.REACT_APP_API_BASEURL}/api/provisioning/mist/site/${siteCodeSelected}/device`;
@@ -704,27 +711,49 @@ export const ProvStepper = () => {
         : [];
       const siteItem = dataArray[0];
       const mistSite = siteItem?.data?.mistsite || null;
+      const devices = siteItem?.data?.devices || [];
       setMistDeviceSite(mistSite);
-      setMistDevices(siteItem?.data?.devices || []);
+      setMistDevices(devices);
       setSelectedMistKeys(new Set());
       setMistPushStatus({});
+      setMistSerialStatus({});
 
-      // Netbox's custom.mistdevice fields lag — the live Mist devicesummary list is authoritative.
-      if (mistSite?.id) {
+      const rapMistId = RAP_MIST_SITE_IDS[selectedMobeType];
+      if (rapMistId) {
+        // RAPs share one Mist site per country instead of having their own — check each device by serial rather than
+        // pulling the whole shared site's devicesummary, which 404s if any other device there has no stats yet.
+        setMistLiveDevices([]);
+        await checkRapDevicesInMist(devices, token, rapMistId);
+      } else {
+        // Netbox's custom.mistdevice fields lag — the live Mist devicesummary list is authoritative.
         try {
-          const liveList = await getMistDevices(mistSite.id, token);
+          const liveList = mistSite?.id ? await getMistDevices(mistSite.id, token) : [];
           setMistLiveDevices(liveList);
         } catch (err) {
           setMistLiveDevices([]);
         }
-      } else {
-        setMistLiveDevices([]);
       }
     } catch (err) {
       setMistDevicesError(err.message || "Failed to load devices from Netbox.");
     } finally {
       setMistDevicesLoading(false);
     }
+  }
+
+  // Checked one at a time by serial — same reasoning as the devicesummary fallback above, so one unconnected RAP elsewhere can't block the rest.
+  // Org-wide lookup, not site-scoped, so existence alone doesn't mean "in Mist" — a device stays in this response with site_id null once unassigned.
+  async function checkRapDevicesInMist(devices, token, expectedMistId) {
+    await Promise.all(
+      devices.map(async (device) => {
+        if (!device.serial) return;
+        try {
+          const found = await getMistDeviceBySerial(device.serial, token);
+          setMistSerialStatus((prev) => ({ ...prev, [device.serial]: found?.site_id === expectedMistId }));
+        } catch (err) {
+          setMistSerialStatus((prev) => ({ ...prev, [device.serial]: false }));
+        }
+      })
+    );
   }
 
   async function loadDeviceProfiles() {
@@ -755,15 +784,19 @@ export const ProvStepper = () => {
   }
 
   const notInMistDevices = React.useMemo(() => {
+    const isRap = !!RAP_MIST_SITE_IDS[selectedMobeType];
     // Name is the merge key — same one the Site Dashboard uses against this list.
     const liveMistNames = new Set(
       mistLiveDevices.map((d) => (d.name || "").trim().toLowerCase()).filter(Boolean)
     );
     return mistDevices.filter((device) => {
+      const key = device.serial || device.name || "";
+      if (mistPushStatus[key] === "done") return false; // just pushed — trust it instead of waiting on Mist to catch up
+      if (isRap) return !mistSerialStatus[device.serial];
       const name = (device.name || "").trim().toLowerCase();
       return !name || !liveMistNames.has(name);
     });
-  }, [mistDevices, mistLiveDevices]);
+  }, [mistDevices, mistLiveDevices, mistSerialStatus, mistPushStatus, selectedMobeType]);
 
   const getMistDeviceKey = (device, idx) => device.serial || device.name || `idx-${idx}`;
 
