@@ -20,7 +20,7 @@ import {
   getScopesForSite,
 } from "../ManageDHCP/dhcpApi";
 import DHCPScopeModal from "../ManageDHCP/DHCPScopeModal";
-import { getMistDevices, getMistDeviceBySerial } from "../SiteDashboard/siteDashboardApi";
+import { getMistDevices, getMistDeviceBySerial, liveMistSerials } from "../SiteDashboard/siteDashboardApi";
 
 // RAPs have no Mist site of their own — keyed by exact mobe type since each one (e.g. a future US2) is its own separate site, not just its country.
 const RAP_MIST_SITE_IDS = {
@@ -829,12 +829,14 @@ export const ProvStepper = () => {
     const liveMistNames = new Set(
       mistLiveDevices.map((d) => (d.name || "").trim().toLowerCase()).filter(Boolean)
     );
+    // A stack's physical members each keep their own serial in module_stat, even though Mist lists the whole virtual chassis under one name.
+    const liveMistMemberSerials = liveMistSerials(mistLiveDevices);
     return mistDevices.filter((device) => {
       const key = device.serial || device.name || "";
       if (mistPushStatus[key] === "done") return false; // just pushed — trust it instead of waiting on Mist to catch up
       if (isRap) return !mistSerialStatus[device.serial];
       const name = (device.name || "").trim().toLowerCase();
-      return !name || !liveMistNames.has(name);
+      return !((name && liveMistNames.has(name)) || liveMistMemberSerials.has(device.serial));
     });
   }, [mistDevices, mistLiveDevices, mistSerialStatus, mistPushStatus, siteMobeType, selectedMobeType]);
 

@@ -18,6 +18,7 @@ import {
   getDiagramDevices,
   getLatestRadarFrame,
   getMistDevices,
+  liveMistSerials,
   getNetboxSiteIdByCode,
   getOpengearDevices,
   getOpengearSummary,
@@ -965,9 +966,15 @@ function mergeDevicesByName(netboxDevices, diagramDevices, mistDevices, mistSite
   diagramDevices.forEach((d) =>
     upsert(d.name, { vendor: d.vendor, model: d.model, ip: d.ip, status: d.status, version: d.version, uptime: d.uptime }),
   );
+  // A stack's physical members each keep their own serial in module_stat, even though Mist lists the whole virtual chassis under one name — check that before falling back to Netbox's lag-prone custom fields.
+  const liveMemberSerials = liveMistSerials(mistDevices);
   netboxDevices.forEach((d) => {
     const inMist =
-      mistSiteId != null ? (!!d.custom?.mistdevice && d.custom?.mistdevicesite === mistSiteId ? "Yes" : "No") : null;
+      mistSiteId == null
+        ? null
+        : liveMemberSerials.has(d.serial) || (!!d.custom?.mistdevice && d.custom?.mistdevicesite === mistSiteId)
+        ? "Yes"
+        : "No";
     upsert(d.name, {
       vendor: d.device_type?.manufacturer?.name,
       model: d.device_type?.display,

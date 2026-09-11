@@ -100,6 +100,19 @@ export async function getMistDevices(mistSiteId, token) {
   return Array.isArray(body) ? body : (body?.data ?? []);
 }
 
+// A virtual chassis is one devicesummary entry named after the whole stack — pull every physical member's own
+// serial out of module_stat too, so each Netbox row for that stack can match live status by serial, not just name.
+export function liveMistSerials(liveList) {
+  const serials = new Set();
+  (liveList || []).forEach((d) => {
+    if (d.serial) serials.add(d.serial);
+    (d.module_stat || []).forEach((m) => {
+      if (m.serial) serials.add(m.serial);
+    });
+  });
+  return serials;
+}
+
 // Single-device lookup by serial — avoids devicesummary's per-site stats loop, which 404s the whole request if any one device at the site has no stats yet.
 export async function getMistDeviceBySerial(serial, token) {
   const res = await fetch(`${API_ROOT}/mist/device/serial/${encodeURIComponent(serial)}`, {

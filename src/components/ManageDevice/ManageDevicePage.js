@@ -18,7 +18,7 @@ import { ServerStackIcon } from "@heroicons/react/24/outline";
 import { useMsal } from "@azure/msal-react";
 import Badge from "../DepotOrders/Badge";
 import AddDevicesModal from "./AddDevicesModal";
-import { getMistDevices, getMistDeviceBySerial } from "../SiteDashboard/siteDashboardApi";
+import { getMistDevices, getMistDeviceBySerial, liveMistSerials } from "../SiteDashboard/siteDashboardApi";
 
 // RAPs have no Mist site of their own — keyed by exact mobe type since each one (e.g. a future US2) is its own separate site, not just its country.
 const RAP_MIST_SITE_IDS = {
@@ -397,6 +397,8 @@ export const ManageDevicePage = () => {
                 .map((d) => (d.name || "").trim().toLowerCase())
                 .filter(Boolean)
             );
+            // A stack's physical members each keep their own serial in module_stat, even though Mist lists the whole virtual chassis under one name.
+            const liveMistMemberSerials = liveMistSerials(mistLiveBySite[mist?.id]);
             // Live names from other loaded Mist sites, for confirming a wrong-site device live rather than trusting Netbox's field.
             const otherSiteMistNames = new Set(
               Object.entries(mistLiveBySite)
@@ -408,7 +410,9 @@ export const ManageDevicePage = () => {
             const siteCode = site?.name || siteCodeSelected;
 
             const isDeviceInMist = (device) =>
-              rapMistId ? mistSerialStatus[device.serial] === true : liveMistNames.has((device.name || "").trim().toLowerCase());
+              rapMistId
+                ? mistSerialStatus[device.serial] === true
+                : liveMistNames.has((device.name || "").trim().toLowerCase()) || liveMistMemberSerials.has(device.serial);
 
             const filteredDevices = devices.filter((device) =>
               device.name?.toLowerCase().includes((searchTerms[index] || "").toLowerCase())
