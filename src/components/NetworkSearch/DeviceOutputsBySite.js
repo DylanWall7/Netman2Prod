@@ -40,6 +40,7 @@ export default function DeviceOutputsBySite() {
   const [selectedSite, setSelectedSite] = useState(null);
   const [devices, setDevices] = useState([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
+  const [search, setSearch] = useState("");
 
   const [activeNetboxId, setActiveNetboxId] = useState(null);
 
@@ -68,6 +69,7 @@ export default function DeviceOutputsBySite() {
   const handleSelectSite = async (site) => {
     setSelectedSite(site);
     setDevices([]);
+    setSearch("");
     setLoadingDevices(true);
     setError(null);
     try {
@@ -81,8 +83,12 @@ export default function DeviceOutputsBySite() {
     }
   };
 
+  const filteredDevices = devices.filter((device) =>
+    (device.name || "").toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
-    <div className="max-w-3xl mx-auto py-10 px-6 space-y-5">
+    <div className="max-w-5xl mx-auto py-10 px-6 space-y-5">
       <NetworkSearchBackLink />
       <div className="text-center mb-2">
         <h1 className="inline-block text-3xl font-bold leading-tight mb-2 pb-4 relative">
@@ -113,35 +119,47 @@ export default function DeviceOutputsBySite() {
       ) : selectedSite && devices.length === 0 ? (
         <p className="text-sm text-gray-600 italic">No devices found for {selectedSite.name}.</p>
       ) : devices.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border border-gray-700">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-900 text-gray-500">
-              <tr>
-                <th className="text-left px-4 py-2.5">Name</th>
-                <th className="text-left px-4 py-2.5">Role</th>
-                <th className="text-left px-4 py-2.5">Type</th>
-                <th className="text-left px-4 py-2.5">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {devices.map((device) => (
-                <tr
-                  key={device.id}
-                  onClick={() => setActiveNetboxId(device.id)}
-                  className="cursor-pointer hover:bg-gray-800/60 text-gray-200"
-                >
-                  <td className="px-4 py-2.5 font-medium">{device.name || `#${device.id}`}</td>
-                  <td className="px-4 py-2.5 text-gray-400">
-                    {device.role?.name || device.device_role?.name || "—"}
-                  </td>
-                  <td className="px-4 py-2.5 text-gray-400">
-                    {device.device_type?.model || device.device_type?.display || "—"}
-                  </td>
-                  <td className="px-4 py-2.5 text-gray-400">{device.status?.label || device.status?.value || "—"}</td>
+        <div className="space-y-3">
+          <input
+            type="text"
+            placeholder="Search devices by name…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full max-w-sm px-3 py-1.5 text-sm rounded-lg bg-gray-900 border border-gray-700 text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-pink-500/50 transition-colors"
+          />
+          <div className="rounded-lg border border-gray-700">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-900 text-gray-500">
+                <tr>
+                  <th className="text-left px-4 py-2.5">Name</th>
+                  <th className="text-left px-4 py-2.5">Role</th>
+                  <th className="text-left px-4 py-2.5">Type</th>
+                  <th className="text-left px-4 py-2.5">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {filteredDevices.map((device) => (
+                  <tr
+                    key={device.id}
+                    onClick={() => setActiveNetboxId(device.id)}
+                    className="cursor-pointer hover:bg-gray-800/60 text-gray-200"
+                  >
+                    <td className="px-4 py-2.5 font-medium">{device.name || `#${device.id}`}</td>
+                    <td className="px-4 py-2.5 text-gray-400">
+                      {device.role?.name || device.device_role?.name || "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-400">
+                      {device.device_type?.model || device.device_type?.display || "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-400">{device.status?.label || device.status?.value || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {filteredDevices.length === 0 && (
+            <p className="text-sm text-gray-600 italic">No devices match "{search}".</p>
+          )}
         </div>
       ) : null}
 
