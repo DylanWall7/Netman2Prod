@@ -188,7 +188,10 @@ export default function UnifiedUploadModal({ csvRows, poTabResults, models, reco
   const getSupplierOrdersToken = useSupplierOrdersToken();
   const getSnipeitToken = useSnipeitToken();
 
-  const diff = useMemo(() => computeSupplierOrdersDiff(csvRows, records), [csvRows, records]);
+  const diff = useMemo(
+    () => computeSupplierOrdersDiff(csvRows, records, (csvRow) => lineItemsForPO(poTabResults, csvRow.kiewit_po)),
+    [csvRows, records, poTabResults],
+  );
   const stagePlan = useMemo(() => buildDeviceStagePlan(poTabResults, models), [poTabResults, models]);
 
   const [selectedOrders, setSelectedOrders] = useState(() => {

@@ -43,6 +43,7 @@ export const FIELD_LABELS = {
   eta_for_hw: "ETA for HW",
   tracking: "Tracking Info",
   notes: "Notes",
+  line_items: "Line Items",
 };
 
 const DATE_FIELDS = new Set(["order_date", "eta_for_hw"]);
@@ -93,7 +94,7 @@ function matchKey(row) {
   return `${row.kiewit_po}||${row.order_date || ""}`;
 }
 
-export function computeSupplierOrdersDiff(csvRows, dbRows) {
+export function computeSupplierOrdersDiff(csvRows, dbRows, computeLineItems) {
   const dbByKey = new Map(dbRows.map((r) => [matchKey(r), r]));
   const seen = new Set();
   const newRows = [];
@@ -121,6 +122,12 @@ export function computeSupplierOrdersDiff(csvRows, dbRows) {
       if (from !== to) acc.push({ field, from, to });
       return acc;
     }, []);
+
+    // Line items aren't a CSV column, so a re-upload with nothing else changed needs its own check to still flag the order for update.
+    const newLineItems = computeLineItems ? computeLineItems(csvRow) : null;
+    if (newLineItems && newLineItems !== (existing.line_items || null)) {
+      changes.push({ field: "line_items", from: existing.line_items ? "existing items" : "none", to: "new items" });
+    }
 
     if (changes.length) {
       updatedRows.push({ id: existing.id, existingRow: existing, csvRow, changes });
