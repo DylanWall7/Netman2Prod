@@ -54,7 +54,8 @@ export function isCompleted(notes) {
 
 export function normalizeDate(value) {
   const match = typeof value === "string" && value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
-  if (!match) return value;
+  // Non-date text (blank, "TBD", "Cloud Delivery", etc.) can't be sent as a date field — blank it instead of failing the whole order.
+  if (!match) return typeof value === "string" ? "" : value;
   const [, month, day, rawYear] = match;
   const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
@@ -122,7 +123,7 @@ export function computeSupplierOrdersDiff(csvRows, dbRows) {
     }, []);
 
     if (changes.length) {
-      updatedRows.push({ id: existing.id, csvRow, changes });
+      updatedRows.push({ id: existing.id, existingRow: existing, csvRow, changes });
     } else {
       unchangedRows.push(csvRow);
     }

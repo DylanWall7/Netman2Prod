@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { computeSupplierOrdersDiff, FIELD_LABELS, PERSISTED_FIELDS } from "./supplierOrdersCsv";
 import { createSupplierOrder, updateSupplierOrder, useSupplierOrdersToken } from "./supplierOrdersApi";
 import { buildDeviceStagePlan } from "./poTabsStaging";
+import { lineItemsForPO } from "./poTabsParser";
 import {
   listSnipeitHardwareByModel,
   createSnipeitAsset,
@@ -314,6 +315,8 @@ export default function UnifiedUploadModal({ csvRows, poTabResults, models, reco
             acc[f] = entry.csvRow[f];
             return acc;
           }, {});
+          const lineItems = lineItemsForPO(poTabResults, entry.csvRow.kiewit_po);
+          if (lineItems) payload.line_items = lineItems;
           try {
             await createSupplierOrder(payload, ordersToken);
             ordersCreated += 1;
@@ -329,6 +332,8 @@ export default function UnifiedUploadModal({ csvRows, poTabResults, models, reco
             acc[f] = entry.csvRow[f];
             return acc;
           }, {});
+          const lineItems = lineItemsForPO(poTabResults, entry.csvRow.kiewit_po) || entry.existingRow?.line_items;
+          if (lineItems) payload.line_items = lineItems;
           try {
             await updateSupplierOrder(entry.id, payload, ordersToken);
             ordersUpdated += 1;

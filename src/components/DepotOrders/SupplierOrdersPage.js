@@ -86,6 +86,49 @@ function DetailField({ label, value }) {
   );
 }
 
+function formatEta(value) {
+  if (!value) return "—";
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDate(value) : value;
+}
+
+function OrderLineItems({ raw }) {
+  let items = [];
+  try {
+    items = raw ? JSON.parse(raw) : [];
+  } catch {
+    items = [];
+  }
+
+  if (items.length === 0) {
+    return <p className="text-sm text-gray-600 italic">No line item data for this order</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-700">
+      <table className="min-w-full text-sm">
+        <thead className="bg-gray-900 text-gray-400">
+          <tr>
+            <th className="px-4 py-2 text-left font-semibold whitespace-nowrap">Product Code</th>
+            <th className="px-4 py-2 text-left font-semibold whitespace-nowrap">Quantity</th>
+            <th className="px-4 py-2 text-left font-semibold whitespace-nowrap">Shipment Status</th>
+            <th className="px-4 py-2 text-left font-semibold whitespace-nowrap">ETA</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-700/60">
+          {items.map((item, i) => (
+            <tr key={i} className="bg-gray-800/60 text-gray-200">
+              <td className="px-4 py-2 whitespace-nowrap">{item.product_code || "—"}</td>
+              <td className="px-4 py-2 whitespace-nowrap">{item.quantity || "—"}</td>
+              <td className="px-4 py-2 whitespace-nowrap">{item.shipment_status || "—"}</td>
+              <td className="px-4 py-2 whitespace-nowrap">{formatEta(item.eta)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DeviceTableModal({ devices, poNumber, onClose }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70">
@@ -262,6 +305,11 @@ function OrderDetailModal({ order, onClose, onMarkReceived, markingReceived, onD
           )}
         </div>
 
+        <div className="mb-5">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Order Contents</p>
+          <OrderLineItems raw={order.line_items} />
+        </div>
+
         <div className="mb-6">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Notes</p>
           <p className="text-sm text-gray-300 whitespace-pre-wrap">{order.notes || "—"}</p>
@@ -371,6 +419,7 @@ export default function SupplierOrdersPage() {
         return acc;
       }, {});
       payload.received = true;
+      payload.line_items = selectedOrder.line_items;
       await updateSupplierOrder(selectedOrder.id, payload, token);
       await refresh();
       setSelectedOrder(null);

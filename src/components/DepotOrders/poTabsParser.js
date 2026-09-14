@@ -171,6 +171,20 @@ export function parsePOTabsWorkbook(arrayBuffer) {
   return results;
 }
 
+// Order-contents view, keyed by PO number to a supplier order's kiewit_po — drops serials, that's covered by Snipe-IT.
+export function lineItemsForPO(poTabResults, poNumber) {
+  const items = poTabResults
+    .filter((tab) => String(tab.poNumber || "").trim() === String(poNumber || "").trim())
+    .flatMap((tab) => tab.lineItems)
+    .map((item) => ({
+      product_code: item.product_code,
+      quantity: item.quantity,
+      shipment_status: item.shipment_status,
+      eta: item.eta,
+    }));
+  return items.length > 0 ? JSON.stringify(items) : null;
+}
+
 export function parseMainSheetFromWorkbook(arrayBuffer) {
   const workbook = XLSX.read(arrayBuffer, { type: "array", cellDates: true });
   const mainSheetName = workbook.SheetNames.find((name) => !isPOTabSheetName(name));
