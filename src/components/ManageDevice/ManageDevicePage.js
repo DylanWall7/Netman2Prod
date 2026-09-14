@@ -1,9 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { GizmoRequest } from "../../authConfig";
-import {
-  InteractionRequiredAuthError,
-  InteractionStatus,
-} from "@azure/msal-browser";
+import { InteractionStatus } from "@azure/msal-browser";
 
 import { Button, Autocomplete, AutocompleteItem, Checkbox, Select, SelectItem } from "@nextui-org/react";
 import {
@@ -97,13 +94,10 @@ export const ManageDevicePage = () => {
     try {
       const response = await instance.acquireTokenSilent(request);
       return response.accessToken;
-    } catch (error) {
-      if (error instanceof InteractionRequiredAuthError) {
-        // Full-page redirect, not a popup — a popup would just reload the whole SPA inside itself.
-        await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
-        return null;
-      }
-      throw error;
+    } catch {
+      // Redirect on any silent-auth failure — this network's iframe silent auth reliably times out rather than asking for interaction.
+      await instance.acquireTokenRedirect({ ...request, redirectStartPage: window.location.href });
+      return null;
     }
   }
 
