@@ -69,7 +69,18 @@ export const ManageDevicePage = () => {
   };
 
   const getMistDeviceKey = (siteIndex, device) =>
-    `${siteIndex}-${device.serial || device.name || device.id}`;
+    `${siteIndex}-${device.id || device.serial || device.name}`;
+
+  // The Netbox devices endpoint can hand back the same device more than once (e.g. a join across its tags/interfaces) — collapse by id/serial/name before it ever hits state.
+  const dedupeDevices = (devices) => {
+    const seen = new Set();
+    return devices.filter((device) => {
+      const key = device.id || device.serial || device.name;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
 
   async function GetAllSites({ token }) {
     try {
@@ -382,7 +393,7 @@ export const ManageDevicePage = () => {
           {!netboxLoading && getDeviceData.map((siteItem, index) => {
             const site = siteItem.data?.netboxsite;
             const mist = siteItem.data?.mistsite;
-            const devices = siteItem.data?.devices || [];
+            const devices = dedupeDevices(siteItem.data?.devices || []);
             const mobeType = site?.custom_fields?.MOBE_TYPE;
             const rapMistId = rapMistIdForMobeType(mobeType);
             // Name is the merge key — same one the Site Dashboard and Prov tool use.

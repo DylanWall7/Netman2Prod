@@ -256,8 +256,21 @@ export const HomeLayout = () => {
 
           {isEngineer && (
             <Card to="/managedevices" title="Netbox Device Manager" description="Manage devices in Netbox." searchQuery={search}>
-              <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="-351 153 256 256" width="28" height="28">
-                <path d="M-139.1,345.7c-6.5-5.9-14.1-8.6-23-8.3c-3,0-5.9,0.7-8.9,1.7l-44.6-40.8l28.7-33.9l45.6,40.2l40.3-45.9l-114.1-100.4 l-40.3,45.9l44.4,39.1l-29.7,32.1l-40.6-37.2c0.7-3,1-5.9,0.7-8.9c-0.3-8.9-3.8-16.5-10.3-22.3c-6.5-5.9-14.1-8.6-23-8.3 c-3,0-6.2,0.7-8.9,1.7l25.8,23.4l-22.8,25l-25.8-23.4c-0.7,3-1,6.2-0.7,8.9c0.3,8.9,3.8,16.1,10.3,22c6.5,5.9,14.1,8.6,23,8.3 c3,0,6.5-0.7,9.6-2.1l39.4,36.1l-65.2,67.6c-4.5,3.8-6.8,9.2-6.8,15.1c0,11,8.9,19.9,19.9,19.9c6.8,0,12.7-3.5,16.5-8.6l62.8-69.2 l37.1,33.9l6.2,5.9c-0.7,3-1,6.5-1,9.6c0.3,8.9,3.8,16.1,10.3,22.3c6.5,5.9,14.1,8.6,23,8.3c3,0,5.9-0.7,8.9-1.7l-25.8-23.4l23-25.1 l25.5,23.5c0.7-3,1-6.2,0.7-8.9C-129.1,358.7-132.6,351.5-139.1,345.7z" />
+              <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" width="28" height="28">
+                <circle cx="37" cy="284" r="23" />
+                <circle cx="101" cy="37" r="23" />
+                <circle cx="101" cy="220" r="23" />
+                <circle cx="284" cy="220" r="23" />
+                <circle cx="284" cy="37" r="23" />
+                <circle cx="37" cy="101" r="23" />
+                <circle cx="220" cy="101" r="23" />
+                <circle cx="220" cy="284" r="23" />
+                <rect x="93" y="37" width="16" height="180" />
+                <rect x="101" y="212" width="180" height="16" />
+                <rect x="93" y="212" width="16" height="90" transform="rotate(45 101 220)" />
+                <rect x="37" y="93" width="180" height="16" />
+                <rect x="212" y="101" width="16" height="180" />
+                <rect x="212" y="93" width="16" height="90" transform="rotate(225 220 101)" />
               </svg>
             </Card>
           )}

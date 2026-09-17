@@ -28,6 +28,17 @@ const RAP_MIST_SITE_IDS = {
   MIST_RAP_CA1: "2dc6770b-4a3f-4538-8475-a4a91afef447",
 };
 
+// The Netbox devices endpoint can hand back the same device more than once (e.g. a join across its tags/interfaces) — collapse by id/serial/name before it ever hits state.
+const dedupeDevices = (devices) => {
+  const seen = new Set();
+  return devices.filter((device) => {
+    const key = device.id || device.serial || device.name;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
 export const ProvStepper = () => {
   const [, setDHCPSite] = React.useState("");
   const [createNetbox, setCreateNetbox] = React.useState("");
@@ -748,7 +759,7 @@ export const ProvStepper = () => {
         : [];
       const siteItem = dataArray[0];
       const mistSite = siteItem?.data?.mistsite || null;
-      const devices = siteItem?.data?.devices || [];
+      const devices = dedupeDevices(siteItem?.data?.devices || []);
       setMistDeviceSite(mistSite);
       setMistDevices(devices);
       setSelectedMistKeys(new Set());
@@ -840,7 +851,7 @@ export const ProvStepper = () => {
     });
   }, [mistDevices, mistLiveDevices, mistSerialStatus, mistPushStatus, siteMobeType, selectedMobeType]);
 
-  const getMistDeviceKey = (device, idx) => device.serial || device.name || `idx-${idx}`;
+  const getMistDeviceKey = (device, idx) => device.id || device.serial || device.name || `idx-${idx}`;
 
   // AP12 is the RAP hardware model — only these need a device profile to push.
   const isRapDevice = (device) => {
@@ -923,15 +934,15 @@ export const ProvStepper = () => {
   };
 
   const handlePushAllToMist = async () => {
-    const targets = notInMistDevices.filter((device, idx) =>
-      selectedMistKeys.has(getMistDeviceKey(device, idx))
-    );
+    const targets = notInMistDevices
+      .map((device, idx) => ({ device, key: getMistDeviceKey(device, idx) }))
+      .filter(({ key }) => selectedMistKeys.has(key));
     if (targets.length === 0) return;
 
     setMistPushRunning(true);
     // Parallel — aggregate result is computed once every request settles.
     const results = await Promise.all(
-      targets.map((device) => pushDeviceToMist(device, getMistDeviceKey(device, notInMistDevices.indexOf(device))))
+      targets.map(({ device, key }) => pushDeviceToMist(device, key))
     );
     setMistPushRunning(false);
 
